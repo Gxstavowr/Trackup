@@ -423,9 +423,9 @@
   }
 
   // "Resumo do período" — tendências em linguagem cautelosa, sem causalidade
-  function buildPeriodSummary(client, n) {
-    n = n || 8;
-    var weeks = weeksInRange(client, String(n)).filter(function (w) { return w.metrics.adherence != null; });
+  function buildPeriodSummary(client, range) {
+    range = range || "8";
+    var weeks = weeksInRange(client, range).filter(function (w) { return w.metrics.adherence != null; });
     if (weeks.length < 4) return null;
 
     var first = weeks[0].metrics, last = weeks[weeks.length - 1].metrics;
@@ -782,6 +782,7 @@
     cur.orientationSentAt = now;
     cur.orientationSentTime = fmtTime(now);
     cur.focusOverride = payload.focus || null;
+    if (payload.note) cur.coachReview = { note: payload.note };
     var nextGoals = {};
     trackedGoals(cur, client).forEach(function (g) {
       if (g.key === "adherence") return;
@@ -790,6 +791,7 @@
     if (global.TracklyStore) {
       TracklyStore.patchClient(clientId, {
         orientation: payload.orientation, focus: payload.focus || null, nextGoals: nextGoals,
+        coachNote: payload.note || null,
         completedAt: now.toISOString(), completedTime: cur.orientationSentTime
       });
     }
@@ -890,6 +892,7 @@
         cur.orientation = patch.orientation;
         cur.focusOverride = patch.focus || null;
         if (patch.completedAt) { cur.orientationSentAt = new Date(patch.completedAt); cur.orientationSentTime = patch.completedTime || fmtTime(cur.orientationSentAt); }
+        if (patch.coachNote) cur.coachReview = { note: patch.coachNote };
       }
       if (patch.nextGoals) c._nextGoals = patch.nextGoals;
       if (patch.remindedAt) { c.remindedAt = new Date(patch.remindedAt); c.remindedTime = patch.remindedTime; }
