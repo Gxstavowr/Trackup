@@ -24,8 +24,8 @@
 
   function coachShell(root, active, client) {
     var items = [
-      { key: "dashboard", label: "Dashboard", href: root + "coach/dashboard.html", icon: I.grid },
-      { key: "clientes", label: "Clientes", href: root + "coach/clientes.html", icon: I.users }
+      { key: "dashboard", label: "Acompanhamento", href: root + "coach/dashboard.html", icon: I.grid },
+      { key: "clientes", label: "Alunos", href: root + "coach/clientes.html", icon: I.users }
     ];
     var nav = items.map(function (it) {
       return '<a href="' + it.href + '" class="nav-item' + (it.key === active ? " active" : "") + '">' + it.icon + "<span>" + it.label + "</span></a>";

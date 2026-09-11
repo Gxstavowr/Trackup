@@ -27,7 +27,7 @@
       <button class="mobile-menu-btn" id="mobile-menu-btn">☰</button>
       <p class="greet" id="greet"></p>
       <div class="page-head" style="margin-bottom:0;">
-        <div><h1>Acompanhamento da semana</h1></div>
+        <div><h1>Acompanhamento</h1></div>
       </div>
 
       <div class="week-summary">
@@ -69,11 +69,10 @@
     var allDone = active.length > 0 && !received.length && !awaiting.length;
 
     document.getElementById("week-counter").innerHTML =
-      '<div class="num">' + completed.length + '<span class="of">/' + snap.total + '</span></div>' +
-      '<div class="cap">acompanhados</div>' +
+      '<div class="num">' + completed.length + '<span class="of"> de ' + snap.total + '</span></div>' +
+      '<div class="cap">concluídos</div>' +
       '<div class="sub">' +
-        (received.length ? '<span><b>' + received.length + '</b> para revisar</span>' : '') +
-        (awaiting.length ? '<span><b>' + awaiting.length + '</b> aguardando resposta</span>' : '') +
+        (snap.total - completed.length > 0 ? '<span><b>' + (snap.total - completed.length) + '</b> restante' + (snap.total - completed.length === 1 ? "" : "s") + '</span>' : '') +
       '</div>';
     document.getElementById("week-fill").style.width = (snap.total ? Math.round(100 * completed.length / snap.total) : 0) + "%";
 
@@ -87,23 +86,24 @@
     }
 
     document.getElementById("queue-received").innerHTML = !received.length ? "" : (
-      '<p class="section-label">Para revisar</p>' + received.map(function (c) {
-        var u = Trackly.studentUpdate(c), color = TracklyNav.colorFor(c);
+      '<p class="section-label">Para fazer</p>' + received.map(function (c) {
+        var u = Trackly.studentUpdate(c), color = TracklyNav.colorFor(c), st = Trackly.computeStatus(c);
         var stats = [];
         if (u.weightDelta != null && Math.abs(u.weightDelta) >= 0.1) stats.push('<span style="color:' + (u.weightGood ? "var(--brand)" : "var(--coral)") + ';">Peso ' + (u.weightDelta < 0 ? "↓" : "↑") + ' ' + Math.abs(u.weightDelta) + 'kg</span>');
         else if (u.weightDelta != null) stats.push('<span>Peso estável</span>');
         stats.push('<span>Aderência ' + u.adherenceNow + '%' + (u.adherenceTrend === "up" ? " ↑" : u.adherenceTrend === "down" ? " ↓" : "") + '</span>');
         if (u.sleepTrend === "down") stats.push('<span style="color:var(--coral);">Sono ↓</span>');
+        var ctaLabel = st.code === "progress" ? "Continuar avaliação" : "Avaliar agora";
         return '<div class="list-row"><span class="avatar lr-lead" style="background:' + color + '">' + c.initials + '</span>' +
-          '<div class="lr-body"><strong>' + c.name + '</strong><span class="lr-meta">' + u.label + '</span><div class="lr-stats">' + stats.join("") + '</div></div>' +
-          '<div class="lr-actions"><a href="revisar.html?id=' + c.id + '" class="btn btn-primary">Revisar</a></div></div>';
+          '<div class="lr-body"><strong>' + c.name + '</strong><span class="lr-meta">' + st.label + ' · ' + u.label + '</span><div class="lr-stats">' + stats.join("") + '</div></div>' +
+          '<div class="lr-actions"><a href="revisar.html?id=' + c.id + '" class="btn btn-primary">' + ctaLabel + '</a></div></div>';
       }).join("")
     );
 
     document.getElementById("queue-completed").innerHTML = renderCompletedSection(completed);
 
     document.getElementById("queue-awaiting").innerHTML = !awaiting.length ? "" : (
-      '<p class="section-label">Aguardando resposta</p>' + awaiting.map(function (c) {
+      '<p class="section-label">Aguardando aluno</p>' + awaiting.map(function (c) {
         var color = TracklyNav.colorFor(c), u = Trackly.studentUpdate(c);
         var reminded = c.remindedAt;
         return '<div class="list-row"><span class="avatar lr-lead" style="background:' + color + '">' + c.initials + '</span>' +
@@ -130,13 +130,14 @@
     return (
       '<div class="list-row" id="completed-toggle" tabindex="0" role="button" aria-expanded="false" style="cursor:pointer;">' +
         '<div class="lr-lead" style="color:var(--brand);">' + ICONS.check + '</div>' +
-        '<div class="lr-body"><strong>' + completed.length + ' concluído' + (completed.length === 1 ? "" : "s") + '</strong><span class="lr-meta">Revisados esta semana</span></div>' +
+        '<div class="lr-body"><strong>' + completed.length + ' concluído' + (completed.length === 1 ? "" : "s") + '</strong><span class="lr-meta">Avaliações concluídas esta semana</span></div>' +
         '<div class="lr-actions"><span style="font-size:12.5px;color:var(--brand);font-weight:600;">Ver concluídos</span></div>' +
       '</div>' +
       '<div id="completed-list" style="display:none;">' + completed.map(function (c) {
         var u = Trackly.studentUpdate(c), color = TracklyNav.colorFor(c);
+        var whenLabel = u.completedAtLabel ? u.completedAtLabel.replace("Orientação enviada ", "") : "";
         return '<div class="list-row"><span class="avatar lr-lead" style="background:' + color + '">' + c.initials + '</span>' +
-          '<div class="lr-body"><strong>' + c.name + '</strong><span class="lr-meta">' + ICONS.check + ' ' + (u.completedAtLabel || "Acompanhamento concluído") + '</span></div>' +
+          '<div class="lr-body"><strong>' + c.name + '</strong><span class="lr-meta">' + ICONS.check + ' Avaliação concluída' + (whenLabel ? " · " + whenLabel : "") + '</span></div>' +
           '<div class="lr-actions"><a href="cliente.html?id=' + c.id + '" class="btn btn-secondary">Ver</a></div></div>';
       }).join("") + '</div>'
     );
