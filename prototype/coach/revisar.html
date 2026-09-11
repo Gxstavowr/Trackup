@@ -136,7 +136,10 @@
   var recent = Trackly.recentWeeksTable(client, 3);
   var recentTableHtml = recent.weeks.length < 2 ? "" : (
     '<div style="margin-bottom:26px;">' +
-      '<p class="section-label">Últimas semanas</p>' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">' +
+        '<p class="section-label" style="margin-bottom:0;">Últimas semanas</p>' +
+        '<a href="cliente.html?id=' + client.id + '#historico" style="font-size:12px;color:var(--brand);font-weight:600;">Ver histórico</a>' +
+      '</div>' +
       '<div style="overflow-x:auto;"><table class="recent-table"><thead><tr><th></th>' +
         recent.weeks.map(function (w, i) { return '<th class="' + (i === recent.weeks.length - 1 ? "now" : "") + '">' + (i === recent.weeks.length - 1 ? "Atual" : "S-" + (recent.weeks.length - 1 - i)) + '</th>'; }).join("") +
       '</tr></thead><tbody>' +
