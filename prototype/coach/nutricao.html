@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nutrição — Trackly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  .plan-name-field { max-width: 420px; margin-bottom: 26px; }
+  .meal-card { margin-bottom: 18px; }
+  .meal-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+  .meal-head input[type="text"].meal-name { font-family: var(--font-display); font-size: 17px; font-weight: 600; border: none; background: none; color: var(--ink); padding: 4px 2px; width: auto; min-width: 90px; }
+  .meal-head input[type="text"].meal-name:focus { outline: none; border-bottom: 1.5px solid var(--brand); }
+  .meal-head .time { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-faint); }
+  .meal-head .time input { width: 68px; padding: 5px 7px; border: 1px solid var(--line-strong); border-radius: 6px; font-size: 12.5px; background: var(--surface); color: var(--ink); }
+  .meal-actions { margin-left: auto; display: flex; gap: 4px; }
+  .icon-btn {
+    width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--surface);
+    color: var(--ink-muted); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all .12s; flex: none;
+  }
+  .icon-btn:hover { border-color: var(--brand); color: var(--brand); }
+  .icon-btn.danger:hover { border-color: var(--coral); color: var(--coral); }
+  .icon-btn svg { width: 15px; height: 15px; }
+  .mini-block { margin-top: 14px; }
+  .mini-block .lbl { font-size: 10.5px; color: var(--ink-faint); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; }
+  .item-row, .sub-row { display: flex; gap: 8px; align-items: center; margin-bottom: 7px; }
+  .item-row input, .sub-row input { padding: 7px 9px; border: 1px solid var(--line-strong); border-radius: 7px; font-size: 12.5px; background: var(--surface); color: var(--ink); }
+  .item-row input:first-child, .sub-row input { flex: 1; }
+  .item-row input:nth-child(2) { width: 90px; flex: none; }
+  .sub-row .arrow { color: var(--ink-faint); flex: none; font-size: 12px; }
+  .macro-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 6px; }
+  .macro-grid .m-field label { font-size: 10.5px; color: var(--ink-faint); font-weight: 600; display: block; margin-bottom: 4px; }
+  .macro-grid .m-field input { width: 100%; padding: 7px 9px; border: 1px solid var(--line-strong); border-radius: 7px; font-size: 12.5px; background: var(--surface); color: var(--ink); }
+  .add-mini { font-size: 12px; color: var(--brand); font-weight: 600; background: none; border: none; cursor: pointer; padding: 2px 0; }
+  .save-indicator { font-size: 12px; color: var(--brand); font-weight: 600; opacity: 0; transition: opacity .2s; }
+  .save-indicator.show { opacity: 1; }
+</style>
+</head>
+<body data-root="../">
+<div id="shell-demo"></div>
+<div class="shell">
+  <div id="shell-sidebar"></div>
+  <main class="main">
+    <div class="main-inner">
+      <button class="mobile-menu-btn" id="mobile-menu-btn">☰</button>
+      <a href="cliente.html" id="back-link" class="btn-ghost btn" style="padding-left:2px;margin-bottom:10px;">&larr; Voltar ao perfil</a>
+
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">Nutrição</p>
+          <h1 id="p-title">Plano alimentar</h1>
+        </div>
+        <span class="save-indicator" id="save-indicator">✓ Salvo</span>
+      </div>
+
+      <div class="field plan-name-field">
+        <label>Nome do plano</label>
+        <input type="text" id="plan-name" placeholder="Ex: Emagrecimento — déficit moderado">
+      </div>
+
+      <div id="meals"></div>
+      <button class="btn btn-secondary" id="add-meal">+ Adicionar refeição</button>
+    </div>
+  </main>
+</div>
+
+<script src="../assets/js/storage.js?v=11"></script>
+<script src="../assets/js/data.js?v=11"></script>
+<script src="../assets/js/icons.js?v=11"></script>
+<script src="../assets/js/charts.js?v=11"></script>
+<script src="../assets/js/nav.js?v=11"></script>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var client = Trackly.getClient(params.get("id") || "joao");
+  TracklyNav.mountCoachShell("clientes", client.id);
+  document.getElementById("back-link").href = "cliente.html?id=" + client.id;
+  document.getElementById("p-title").textContent = "Nutrição de " + client.name.split(" ")[0];
+
+  var plan = client.nutritionPlan ? JSON.parse(JSON.stringify(client.nutritionPlan)) : { planName: "", meals: [] };
+
+  var saveTimer = null;
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      Trackly.saveNutritionPlan(client.id, plan);
+      var ind = document.getElementById("save-indicator");
+      ind.classList.add("show");
+      setTimeout(function () { ind.classList.remove("show"); }, 1400);
+    }, 350);
+  }
+
+  function esc(s) { return (s || "").replace(/"/g, "&quot;"); }
+  function newMeal() { return { id: "m" + Date.now() + Math.floor(Math.random() * 1000), name: "Nova refeição", time: "12:00", items: [{ food: "", qty: "" }], substitutes: [], macros: { protein: 0, carbs: 0, fat: 0, kcal: 0 } }; }
+
+  function render() {
+    document.getElementById("plan-name").value = plan.planName || "";
+    document.getElementById("meals").innerHTML = plan.meals.map(function (meal, mi) {
+      var itemsHtml = meal.items.map(function (item, ii) {
+        return '<div class="item-row" data-meal="' + mi + '" data-item="' + ii + '">' +
+          '<input type="text" data-field="food" value="' + esc(item.food) + '" placeholder="Alimento">' +
+          '<input type="text" data-field="qty" value="' + esc(item.qty) + '" placeholder="Qtd.">' +
+          '<button class="icon-btn danger" data-del-item title="Remover">' + ICONS.close + '</button>' +
+        '</div>';
+      }).join("");
+      var subsHtml = meal.substitutes.map(function (pair, si) {
+        return '<div class="sub-row" data-meal="' + mi + '" data-sub="' + si + '">' +
+          '<input type="text" data-field="0" value="' + esc(pair[0]) + '" placeholder="Alimento original">' +
+          '<span class="arrow">' + ICONS.chevronR + '</span>' +
+          '<input type="text" data-field="1" value="' + esc(pair[1]) + '" placeholder="Substituto equivalente">' +
+          '<button class="icon-btn danger" data-del-sub title="Remover">' + ICONS.close + '</button>' +
+        '</div>';
+      }).join("");
+      return (
+        '<div class="card card-pad meal-card" data-meal-card="' + mi + '">' +
+          '<div class="meal-head">' +
+            '<input type="text" class="meal-name" data-field="name" data-meal="' + mi + '" value="' + esc(meal.name) + '">' +
+            '<div class="time"><input type="text" data-field="time" data-meal="' + mi + '" value="' + esc(meal.time) + '"></div>' +
+            '<div class="meal-actions">' +
+              '<button class="icon-btn" data-move-up="' + mi + '" title="Mover pra cima"' + (mi === 0 ? " disabled" : "") + '>&uarr;</button>' +
+              '<button class="icon-btn" data-move-down="' + mi + '" title="Mover pra baixo"' + (mi === plan.meals.length - 1 ? " disabled" : "") + '>&darr;</button>' +
+              '<button class="icon-btn" data-dup-meal="' + mi + '" title="Duplicar refeição">' + ICONS.plate + '</button>' +
+              '<button class="icon-btn danger" data-del-meal="' + mi + '" title="Remover refeição">' + ICONS.close + '</button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="mini-block"><div class="lbl">Itens</div>' + itemsHtml + '<button class="add-mini" data-add-item="' + mi + '">+ adicionar item</button></div>' +
+          '<div class="mini-block"><div class="lbl">Substituições equivalentes</div>' + subsHtml + '<button class="add-mini" data-add-sub="' + mi + '">+ adicionar substituição</button></div>' +
+          '<div class="mini-block"><div class="lbl">Macros</div><div class="macro-grid">' +
+            '<div class="m-field"><label>Proteína (g)</label><input type="number" min="0" data-macro="protein" data-meal="' + mi + '" value="' + meal.macros.protein + '"></div>' +
+            '<div class="m-field"><label>Carbo (g)</label><input type="number" min="0" data-macro="carbs" data-meal="' + mi + '" value="' + meal.macros.carbs + '"></div>' +
+            '<div class="m-field"><label>Gordura (g)</label><input type="number" min="0" data-macro="fat" data-meal="' + mi + '" value="' + meal.macros.fat + '"></div>' +
+            '<div class="m-field"><label>Kcal</label><input type="number" min="0" data-macro="kcal" data-meal="' + mi + '" value="' + meal.macros.kcal + '"></div>' +
+          '</div></div>' +
+        '</div>'
+      );
+    }).join("") || '<div class="empty-state"><h3>Nenhuma refeição ainda</h3><p>Adicione a primeira refeição pra começar a montar o plano.</p></div>';
+    wire();
+  }
+
+  function wire() {
+    document.getElementById("plan-name").oninput = function (e) { plan.planName = e.target.value; scheduleSave(); };
+
+    document.querySelectorAll('[data-field="name"], [data-field="time"]').forEach(function (el) {
+      el.addEventListener("input", function () {
+        plan.meals[parseInt(el.getAttribute("data-meal"), 10)][el.getAttribute("data-field")] = el.value;
+        scheduleSave();
+      });
+    });
+
+    document.querySelectorAll("[data-macro]").forEach(function (el) {
+      el.addEventListener("input", function () {
+        plan.meals[parseInt(el.getAttribute("data-meal"), 10)].macros[el.getAttribute("data-macro")] = parseInt(el.value, 10) || 0;
+        scheduleSave();
+      });
+    });
+
+    document.querySelectorAll(".item-row").forEach(function (row) {
+      var mi = parseInt(row.getAttribute("data-meal"), 10), ii = parseInt(row.getAttribute("data-item"), 10);
+      row.querySelectorAll("[data-field]").forEach(function (el) {
+        el.addEventListener("input", function () { plan.meals[mi].items[ii][el.getAttribute("data-field")] = el.value; scheduleSave(); });
+      });
+      row.querySelector("[data-del-item]").addEventListener("click", function () { plan.meals[mi].items.splice(ii, 1); scheduleSave(); render(); });
+    });
+    document.querySelectorAll("[data-add-item]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        plan.meals[parseInt(btn.getAttribute("data-add-item"), 10)].items.push({ food: "", qty: "" });
+        scheduleSave(); render();
+      });
+    });
+
+    document.querySelectorAll(".sub-row").forEach(function (row) {
+      var mi = parseInt(row.getAttribute("data-meal"), 10), si = parseInt(row.getAttribute("data-sub"), 10);
+      row.querySelectorAll("[data-field]").forEach(function (el) {
+        el.addEventListener("input", function () { plan.meals[mi].substitutes[si][parseInt(el.getAttribute("data-field"), 10)] = el.value; scheduleSave(); });
+      });
+      row.querySelector("[data-del-sub]").addEventListener("click", function () { plan.meals[mi].substitutes.splice(si, 1); scheduleSave(); render(); });
+    });
+    document.querySelectorAll("[data-add-sub]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        plan.meals[parseInt(btn.getAttribute("data-add-sub"), 10)].substitutes.push(["", ""]);
+        scheduleSave(); render();
+      });
+    });
+
+    document.querySelectorAll("[data-move-up]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var mi = parseInt(btn.getAttribute("data-move-up"), 10);
+        if (mi === 0) return;
+        var tmp = plan.meals[mi - 1]; plan.meals[mi - 1] = plan.meals[mi]; plan.meals[mi] = tmp;
+        scheduleSave(); render();
+      });
+    });
+    document.querySelectorAll("[data-move-down]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var mi = parseInt(btn.getAttribute("data-move-down"), 10);
+        if (mi === plan.meals.length - 1) return;
+        var tmp = plan.meals[mi + 1]; plan.meals[mi + 1] = plan.meals[mi]; plan.meals[mi] = tmp;
+        scheduleSave(); render();
+      });
+    });
+    document.querySelectorAll("[data-dup-meal]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var mi = parseInt(btn.getAttribute("data-dup-meal"), 10);
+        var copy = JSON.parse(JSON.stringify(plan.meals[mi]));
+        copy.id = "m" + Date.now() + Math.floor(Math.random() * 1000);
+        copy.name = copy.name + " (cópia)";
+        plan.meals.splice(mi + 1, 0, copy);
+        scheduleSave(); render();
+      });
+    });
+    document.querySelectorAll("[data-del-meal]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        plan.meals.splice(parseInt(btn.getAttribute("data-del-meal"), 10), 1);
+        scheduleSave(); render();
+      });
+    });
+  }
+
+  document.getElementById("add-meal").addEventListener("click", function () {
+    plan.meals.push(newMeal());
+    scheduleSave(); render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
