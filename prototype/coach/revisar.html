@@ -73,6 +73,8 @@
       '<a href="cliente.html?id=' + client.id + '" class="btn btn-secondary">Ver perfil do cliente</a></div>';
     return;
   }
+  Trackly.markReviewOpened(client.id);
+  var evalStatus = Trackly.computeStatus(client);
   var qa = cur.qa || {};
   var suggestedFocus = Trackly.focusLabel(client);
 
@@ -162,10 +164,22 @@
     var good = Trackly.isGoodWeightDelta(client, d);
     return '<div class="delta" style="color:' + (d === 0 ? "var(--ink-faint)" : (good ? "var(--brand)" : "var(--coral)")) + ';">' + (d === 0 ? "" : (d < 0 ? "↓ " : "↑ ")) + Math.abs(d) + 'kg</div>';
   }
+  var priorSubmittedWeeks = weeksSoFar.slice(0, -1); // todas as semanas enviadas antes da atual — opções do seletor
+  function buildCompareMeta(compareWeek) {
+    if (!compareWeek) return "";
+    var items = [
+      Trackly.isTracked(client, "weight") ? (function () { var d = Trackly.round1(cur.metrics.weight - compareWeek.metrics.weight); return { l: "Peso", from: compareWeek.metrics.weight + " kg", to: cur.metrics.weight + " kg", pct: Trackly.round1(100 * d / compareWeek.metrics.weight) }; })() : null,
+      Trackly.isTracked(client, "measurements") && compareWeek.metrics.waist != null && cur.metrics.waist != null ? { l: "Cintura", from: compareWeek.metrics.waist + " cm", to: cur.metrics.waist + " cm", pct: Trackly.round1(100 * (cur.metrics.waist - compareWeek.metrics.waist) / compareWeek.metrics.waist) } : null,
+      Trackly.isTracked(client, "adherence") ? { l: "Aderência", from: compareWeek.metrics.adherence + "%", to: cur.metrics.adherence + "%", pct: Trackly.round1(cur.metrics.adherence - compareWeek.metrics.adherence) } : null
+    ].filter(Boolean);
+    if (!items.length) return "";
+    return '<div class="compare-meta" id="evo-compare-meta">' + items.map(function (m) {
+      return '<div class="cm-item"><div class="l">' + m.l + '</div><div class="v">' + m.from + ' → ' + m.to + '</div><div style="color:' + (m.pct <= 0 ? "var(--brand)" : "var(--coral)") + ';font-weight:600;">' + (m.pct > 0 ? "+" : "") + m.pct + '%</div></div>';
+    }).join("") + '</div>';
+  }
   var evoWeekModuleHtml = (function () {
     var compareWeek = compareWeekState.weekNumber ? client.weeks[compareWeekState.weekNumber - 1] : null;
     var hasPhotoPair = Trackly.isTracked(client, "photos") && compareWeek;
-    var priorSubmittedWeeks = weeksSoFar.slice(0, -1); // todas as semanas enviadas antes da atual — opções do seletor
     var pickerHtml = priorSubmittedWeeks.length > 1 ? (
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:12.5px;color:var(--ink-faint);">' +
         '<span>Comparar com</span>' +
@@ -175,7 +189,6 @@
       '</div>'
     ) : "";
     var sliderHtml = !hasPhotoPair ? "" : (
-      pickerHtml +
       '<div class="angle-tabs" id="angle-tabs" style="margin-bottom:14px;">' +
         ["front", "back", "side"].map(function (a) {
           var names = { front: "Frente", back: "Costas", side: "Lateral" };
@@ -188,12 +201,12 @@
         '<div class="cs-handle" id="cs-handle" tabindex="0" role="slider" aria-label="Comparar antes e depois" aria-valuemin="4" aria-valuemax="96" aria-valuenow="50" style="left:50%;"></div>' +
       '</div>'
     );
-    if (!sliderHtml && !Trackly.isTracked(client, "weight")) return "";
+    if (!pickerHtml && !sliderHtml && !Trackly.isTracked(client, "weight")) return "";
     return (
       '<div style="margin-bottom:28px;">' +
         '<p class="section-label">Evolução desta semana</p>' +
         (Trackly.isTracked(client, "weight") ? '<div class="hero-stat" style="margin-bottom:16px;" id="evo-week-hero"><div class="value">' + cur.metrics.weight + '<span class="unit">kg</span></div><div id="evo-week-delta">' + moduleDeltaHtml(compareWeek) + '</div><div class="label" id="evo-week-label">peso' + (compareWeek ? " · semana " + compareWeek.weekNumber + " → " + cur.weekNumber : "") + '</div></div>' : "") +
-        sliderHtml +
+        pickerHtml + sliderHtml + buildCompareMeta(compareWeek) +
       '</div>'
     );
   })();
@@ -205,6 +218,7 @@
         (client.age && client.heightCm ? '<p style="font-size:12.5px;color:var(--ink-faint);margin:2px 0 0;">' + client.age + ' anos · ' + (client.heightCm / 100).toFixed(2).replace(".", ",") + ' m</p>' : '') +
       '</div></div>' +
       '<div class="wk">Semana ' + cur.weekNumber + ' &nbsp;·&nbsp; recebido ' + Trackly.relativeLabel(cur.checkin.submittedAt) + '</div>' +
+      '<span class="pill ' + (evalStatus.code === "ok" ? "pill-ok" : "pill-warn") + '" style="margin-top:10px;"><span class="dot"></span>' + evalStatus.label.toUpperCase() + '</span>' +
     '</div>' +
 
     '<div style="display:flex;gap:32px;flex-wrap:wrap;margin-bottom:28px;">' +
@@ -276,9 +290,12 @@
   if (compareWeekSelectEl) compareWeekSelectEl.addEventListener("change", function () {
     compareWeekState.weekNumber = parseInt(compareWeekSelectEl.value, 10);
     var compareWeek = client.weeks[compareWeekState.weekNumber - 1];
-    document.getElementById("cs-before-tag").textContent = "Antes · S" + compareWeek.weekNumber;
+    var beforeTagEl = document.getElementById("cs-before-tag");
+    if (beforeTagEl) beforeTagEl.textContent = "Antes · S" + compareWeek.weekNumber;
     document.getElementById("evo-week-delta").innerHTML = moduleDeltaHtml(compareWeek);
     document.getElementById("evo-week-label").textContent = "peso · semana " + compareWeek.weekNumber + " → " + cur.weekNumber;
+    var metaEl = document.getElementById("evo-compare-meta");
+    if (metaEl) metaEl.outerHTML = buildCompareMeta(compareWeek);
   });
 
   function wireCompareInteraction() {
@@ -329,12 +346,18 @@
     document.getElementById("review-body").style.display = "none";
     var el = document.getElementById("review-confirm");
     el.style.display = "block";
+    var firstName = client.name.split(" ")[0];
     el.innerHTML =
       '<div class="confirm-wrap"><div class="ring">' + ICONS.check + '</div>' +
-      '<h2>Orientação enviada</h2>' +
-      '<p>' + client.name.split(" ")[0] + ' vai ver o foco da semana e sua mensagem assim que abrir o app. ✓ Atualizado hoje às ' + Trackly.fmtTime(new Date()) + '.</p>' +
-      (client.phone ? '<a href="' + Trackly.whatsappUrl(client.phone, Trackly.orientationReadyMessageForStudent(client)) + '" target="_blank" rel="noopener" class="btn btn-ghost" style="margin-bottom:16px;">Avisar ' + client.name.split(" ")[0] + ' no WhatsApp</a><br>' : '') +
-      '<a href="dashboard.html" class="btn btn-primary">Voltar ao dashboard</a></div>';
+      '<h2>Avaliação concluída</h2>' +
+      '<div class="status-list" style="text-align:left;max-width:280px;margin:0 auto 20px;">' +
+        '<div class="row"><span class="mark done">' + ICONS.check + '</span><span>Peso analisado</span></div>' +
+        (Trackly.isTracked(client, "photos") ? '<div class="row"><span class="mark done">' + ICONS.check + '</span><span>Fotos comparadas</span></div>' : "") +
+        '<div class="row"><span class="mark done">' + ICONS.check + '</span><span>Orientação enviada</span></div>' +
+      '</div>' +
+      '<p>' + firstName + ' está atualizado' + (client.gender === "f" ? "a" : "") + '.</p>' +
+      (client.phone ? '<a href="' + Trackly.whatsappUrl(client.phone, Trackly.orientationReadyMessageForStudent(client)) + '" target="_blank" rel="noopener" class="btn btn-ghost" style="margin-bottom:16px;">Avisar ' + firstName + ' no WhatsApp</a><br>' : '') +
+      '<a href="dashboard.html" class="btn btn-primary">Voltar ao acompanhamento</a></div>';
   });
 })();
 </script>
