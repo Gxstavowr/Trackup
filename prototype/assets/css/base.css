@@ -297,8 +297,9 @@ button { font: inherit; }
 .week-cycle:last-child { border-bottom: none; }
 .wc-head { display: flex; align-items: center; gap: 14px; padding: 16px 4px; cursor: pointer; }
 .wc-head .wk { font-family: var(--font-mono); font-size: 13px; color: var(--ink-faint); width: 64px; flex: none; }
-.wc-head .wt { flex: 1; font-size: 13.5px; font-weight: 600; }
+.wc-head .wt { font-size: 13.5px; font-weight: 600; }
 .wc-head .wt span { font-weight: 400; color: var(--ink-faint); margin-left: 8px; }
+.wc-status { font-size: 12.5px; font-weight: 500; flex: 1; text-align: right; margin-right: 10px; }
 .wc-head .chev { color: var(--ink-faint); transition: transform .16s; flex: none; }
 .week-cycle.open .wc-head .chev { transform: rotate(90deg); }
 .wc-body { display: none; padding: 0 4px 22px; }
@@ -378,7 +379,7 @@ button { font: inherit; }
 .compare-slider { position: relative; width: 100%; max-width: 420px; margin: 0 auto; aspect-ratio: 3/4; border-radius: var(--radius-lg); overflow: hidden; background: var(--surface); user-select: none; touch-action: none; }
 .compare-slider .cs-after, .compare-slider .cs-before { position: absolute; inset: 0; }
 .compare-slider .cs-before { overflow: hidden; border-right: 1px solid rgba(242,244,239,.25); }
-.compare-slider .cs-before > div { position: absolute; inset: 0; width: 420px; max-width: none; }
+.compare-slider .cs-before > div { position: absolute; top: 0; left: 0; bottom: 0; }
 .compare-slider .cs-tag { position: absolute; top: 12px; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink); background: rgba(10,12,10,.55); backdrop-filter: blur(6px); padding: 4px 10px; border-radius: 999px; }
 .compare-slider .cs-tag.before { left: 12px; }
 .compare-slider .cs-tag.after { right: 12px; }

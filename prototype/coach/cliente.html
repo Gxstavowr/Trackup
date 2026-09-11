@@ -40,17 +40,19 @@
         <span class="pill" id="p-status"></span>
       </div>
 
+      <div style="display:flex;gap:40px;margin:18px 0 2px;flex-wrap:wrap;" id="p-hero-stats"></div>
+
       <div class="tabs" style="margin-top:22px;">
-        <button class="tab-btn active" data-tab="resumo">Resumo</button>
+        <button class="tab-btn active" data-tab="resumo">Visão geral</button>
         <button class="tab-btn" data-tab="evolucao">Evolução</button>
-        <button class="tab-btn" data-tab="historico">Histórico</button>
         <button class="tab-btn" data-tab="fotos">Fotos</button>
+        <button class="tab-btn" data-tab="historico">Histórico</button>
       </div>
 
       <div class="tab-panel active" id="tab-resumo"></div>
       <div class="tab-panel" id="tab-evolucao"></div>
-      <div class="tab-panel" id="tab-historico"></div>
       <div class="tab-panel" id="tab-fotos"></div>
+      <div class="tab-panel" id="tab-historico"></div>
     </div>
   </main>
 </div>
@@ -91,12 +93,19 @@
     return cur0;
   })();
   document.getElementById("p-meta").innerHTML =
-    '<span>Objetivo: <strong>' + client.objective + '</strong></span>' +
-    '<span>Início: <strong>' + Trackly.fmtDate(client.startDate) + '</strong></span>' +
-    '<span>Foco atual: <strong>' + Trackly.focusLabelFromOrientation(client, refWeek0) + '</strong></span>';
+    '<span>' + client.objective + '</span><span>·</span><span>Foco: ' + Trackly.focusLabelFromOrientation(client, refWeek0) + '</span>';
   var pillClass = status.code === "ok" ? "pill-ok" : status.code === "late" ? "pill-late" : "pill-warn";
   document.getElementById("p-status").className = "pill " + pillClass;
   document.getElementById("p-status").innerHTML = "<span class=\"dot\"></span>" + status.label;
+
+  var heroItems = [];
+  if (Trackly.isTracked(client, "weight")) {
+    heroItems.push('<div class="hero-stat"><div class="value">' + kpi.weightNow + '<span class="unit">kg</span></div>' + deltaHtml(kpi.weightDelta, "kg") + '<div class="label">peso</div></div>');
+  }
+  if (Trackly.isTracked(client, "adherence")) {
+    heroItems.push('<div class="hero-stat"><div class="value">' + kpi.adherenceAvg + '<span class="unit">%</span></div><div class="label">aderência</div></div>');
+  }
+  document.getElementById("p-hero-stats").innerHTML = heroItems.join("");
 
   function deltaHtml(delta, unit, goodIfDown) {
     if (delta == null) return "";
@@ -105,27 +114,25 @@
     return '<div class="delta ' + (delta === 0 ? "delta-flat" : (good ? "delta-down" : "delta-up-bad")) + '">' + arrow + Math.abs(delta) + unit + "</div>";
   }
 
-  // ---------------- RESUMO — 3 essenciais + prévia da evolução, nada além disso ----------------
+  // ---------------- VISÃO GERAL — foco atual + evolução essencial, nada além disso ----------------
   function renderResumo() {
     var cur = Trackly.currentWeek(client);
     var previewWeeks = client.weeks.slice(-8).map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.weight }; });
 
-    var possibleStats = [
-      Trackly.isTracked(client, "weight") ? { label: "Peso atual", value: kpi.weightNow, unit: "kg", delta: deltaHtml(kpi.weightDelta, "kg") } : null,
-      Trackly.isTracked(client, "adherence") ? { label: "Aderência média", value: kpi.adherenceAvg, unit: "%", delta: "" } : null,
-      Trackly.isTracked(client, "workouts") ? { label: "Treinos", value: cur.metrics.workouts + "/" + cur.metrics.workoutsGoal, unit: "esta semana", delta: "" } : null,
-      Trackly.isTracked(client, "cardio") ? { label: "Cardio", value: cur.metrics.cardio + "/" + cur.metrics.cardioGoal, unit: "esta semana", delta: "" } : null
-    ].filter(Boolean).slice(0, 3);
+    var chips = [];
+    if (Trackly.isTracked(client, "workouts")) chips.push('<div class="hero-stat sm"><div class="value">' + cur.metrics.workouts + '<span class="unit">/' + cur.metrics.workoutsGoal + '</span></div><div class="label">treinos</div></div>');
+    if (Trackly.isTracked(client, "cardio")) chips.push('<div class="hero-stat sm"><div class="value">' + cur.metrics.cardio + '<span class="unit">/' + cur.metrics.cardioGoal + '</span></div><div class="label">cardio</div></div>');
 
     document.getElementById("tab-resumo").innerHTML =
-      '<div class="stat-row" style="margin-bottom:18px;">' + possibleStats.map(function (s) {
-        return '<div class="stat"><div class="label">' + s.label + '</div><div class="value">' + s.value + '<span class="unit">' + s.unit + '</span></div>' + s.delta + '</div>';
-      }).join("") + '</div>' +
+      '<div class="section-label">Foco atual</div>' +
+      '<p style="font-size:15px;line-height:1.5;margin:0 0 18px;">' + Trackly.focusLabelFromOrientation(client, refWeek0) + '.</p>' +
+      (cur.orientation ? '<p style="font-size:13.5px;color:var(--ink-muted);line-height:1.6;margin:0 0 28px;font-style:italic;">"' + cur.orientation + '"</p>' : '') +
+      '<div class="section-label">Evolução</div>' +
+      (chips.length ? '<div style="display:flex;gap:36px;flex-wrap:wrap;margin-bottom:20px;">' + chips.join("") + '</div>' : '') +
       (Trackly.isTracked(client, "weight") ? (
-      '<div class="card card-pad">' +
-        '<div class="chart-head"><h3>Evolução do peso — últimas 8 semanas</h3><a href="#" data-goto-evolucao style="font-size:12.5px;color:var(--brand);font-weight:600;">ver tudo</a></div>' +
-        Charts.lineChart({ data: previewWeeks, height: 140, color: color, unit: "kg", maxXLabels: 4 }) +
-      '</div>') : "");
+        '<div class="chart-head"><h3 style="font-size:12.5px;font-weight:600;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.03em;">Peso · 8 semanas</h3><a href="#" data-goto-evolucao style="font-size:12.5px;color:var(--brand);font-weight:600;">ver evolução</a></div>' +
+        Charts.lineChart({ data: previewWeeks, height: 160, color: color, unit: "kg", maxXLabels: 4 })
+      ) : "");
 
     var link = document.querySelector('[data-goto-evolucao]');
     if (link) link.addEventListener("click", function (e) { e.preventDefault(); document.querySelector('[data-tab="evolucao"]').click(); });
@@ -138,41 +145,46 @@
     var ranges = [["4", "4 sem"], ["8", "8 sem"], ["12", "12 sem"], ["all", "período completo"]];
     var rangeBtns = ranges.map(function (r) { return '<button data-range="' + r[0] + '" class="' + (evoState.range === r[0] ? "active" : "") + '">' + r[1] + "</button>"; }).join("");
 
+    function microHead(label) { return '<div class="chart-head" style="margin-bottom:8px;"><h3 style="font-size:12.5px;font-weight:600;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.03em;margin:0;">' + label + '</h3></div>'; }
+
     var blocks = [];
     if (Trackly.isTracked(client, "measurements")) {
-      blocks.push('<div class="card card-pad"><div class="chart-head"><h3>Cintura</h3></div>' +
+      blocks.push('<div style="margin-bottom:22px;">' + microHead("Cintura") +
         Charts.lineChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.waist }; }), height: 190, color: "var(--c3)", unit: "cm", maxXLabels: 5 }) + '</div>');
     }
     if (Trackly.isTracked(client, "adherence")) {
       var adGoal = currentWeekGoal(client, "adherence");
-      blocks.push('<div class="card card-pad"><div class="chart-head"><h3>Aderência à dieta</h3></div>' +
+      blocks.push('<div style="margin-bottom:22px;">' + microHead("Aderência à dieta") +
         Charts.lineChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.adherence }; }), height: 190, color: "var(--gold)", unit: "%", min: 0, max: 100, goalValue: adGoal }) + '</div>');
     }
     if (Trackly.isTracked(client, "sleep")) {
-      blocks.push('<div class="card card-pad"><div class="chart-head"><h3>Sono (h)</h3></div>' +
+      blocks.push('<div style="margin-bottom:22px;">' + microHead("Sono (h)") +
         Charts.lineChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.sleep }; }), height: 190, color: "var(--c4)", unit: "h" }) + '</div>');
     }
     if (Trackly.isTracked(client, "workouts")) {
-      blocks.push('<div class="card card-pad"><div class="chart-head"><h3>Treinos realizados vs. meta</h3></div>' +
+      blocks.push('<div style="margin-bottom:22px;">' + microHead("Treinos realizados vs. meta") +
         Charts.barChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.workouts, goal: w.metrics.workoutsGoal }; }), height: 190 }) + '</div>');
     }
     if (Trackly.isTracked(client, "cardio")) {
-      blocks.push('<div class="card card-pad"><div class="chart-head"><h3>Cardio realizado vs. meta</h3></div>' +
+      blocks.push('<div style="margin-bottom:22px;">' + microHead("Cardio realizado vs. meta") +
         Charts.barChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.cardio, goal: w.metrics.cardioGoal }; }), height: 190 }) + '</div>');
     }
     if (Trackly.isTracked(client, "water")) {
-      blocks.push('<div class="card card-pad"><div class="chart-head"><h3>Água (L)</h3></div>' +
+      blocks.push('<div style="margin-bottom:22px;">' + microHead("Água (L)") +
         Charts.lineChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.water }; }), height: 190, color: "var(--c4)", unit: "L" }) + '</div>');
     }
+
+    var lastW = weeks[weeks.length - 1], prevWk = weeks.length > 1 ? weeks[weeks.length - 2] : null;
+    var wDelta = prevWk ? Trackly.round1(lastW.metrics.weight - prevWk.metrics.weight) : null;
 
     document.getElementById("tab-evolucao").innerHTML =
       '<div class="range-sel" id="range-sel" style="margin-bottom:18px;">' + rangeBtns + '</div>' +
       (Trackly.isTracked(client, "weight") ? (
-      '<div class="card card-pad chart-card" style="margin-bottom:18px;">' +
-        '<div class="chart-head"><h3>Peso</h3><div class="legend"><span class="item"><span class="sw" style="background:' + color + ';"></span>peso registrado</span></div></div>' +
+      '<div style="margin-bottom:28px;">' +
+        '<div class="hero-stat" style="margin-bottom:16px;"><div class="value">' + lastW.metrics.weight + '<span class="unit">kg</span></div>' + (wDelta != null ? deltaHtml(wDelta, "kg") : '') + '<div class="label">peso</div></div>' +
         Charts.lineChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.weight }; }), height: 260, color: color, unit: "kg" }) +
       '</div>') : "") +
-      '<div class="grid-2">' + blocks.join("") + '</div>';
+      '<div class="stack">' + blocks.join("") + '</div>';
 
     document.querySelectorAll("#range-sel button").forEach(function (b) {
       b.addEventListener("click", function () { evoState.range = b.getAttribute("data-range"); renderEvolucao(); });
@@ -183,47 +195,71 @@
     return g ? g.target : null;
   }
 
-  // ---------------- FOTOS ----------------
+  // ---------------- FOTOS — Evolução visual: a comparação antes/depois é a protagonista ----------------
   var hue = client.colorVar === "--c1" ? 155 : client.colorVar === "--c2" ? 32 : client.colorVar === "--c3" ? 265 : 205;
-  function photoSwatch(i, label) { return '<div class="photo-ph" style="background:hsl(' + hue + ',' + (26 + i * 4) + '%,' + (30 + i * 6) + '%);">' + label.toUpperCase() + '</div>'; }
+  function photoBg(i) { return "hsl(" + hue + "," + (26 + i * 6) + "%," + (30 + i * 10) + "%)"; }
 
   var compareState = {};
   function renderFotos() {
-    var angles = [["front", "Frente"], ["back", "Costas"], ["side_l", "Lat. esq."], ["side_r", "Lat. dir."]];
     var submittedWeeks = client.weeks.filter(function (w) { return w.checkin.status === "submitted"; });
-    var milestoneWeeks = client.weeks.filter(function (w, i) { return w.checkin.status === "submitted" && (i === 0 || i === client.weeks.length - 1 || (w.weekNumber - 1) % 4 === 0); });
-    var cards = milestoneWeeks.map(function (w) {
-      var imgs = angles.map(function (a, i) { return photoSwatch(i, a[1]); }).join("");
-      return '<div class="photo-week"><div class="imgs">' + imgs + '</div><div class="meta"><span>Semana ' + w.weekNumber + '</span><strong>' + w.metrics.weight + 'kg</strong></div></div>';
-    }).join("");
-
+    if (submittedWeeks.length < 2) {
+      document.getElementById("tab-fotos").innerHTML = '<div class="empty-state"><h3>Ainda não há fotos suficientes</h3><p>A comparação aparece a partir de duas semanas com check-in enviado.</p></div>';
+      return;
+    }
     if (compareState.a == null) compareState.a = submittedWeeks[0].weekNumber;
     if (compareState.b == null) compareState.b = submittedWeeks[submittedWeeks.length - 1].weekNumber;
-    var options = submittedWeeks.map(function (w) { return { v: w.weekNumber, l: "Semana " + w.weekNumber }; });
-    function optHtml(sel) { return options.map(function (o) { return '<option value="' + o.v + '"' + (o.v === sel ? " selected" : "") + '>' + o.l + '</option>'; }).join(""); }
-    function compareCol(weekNumber, side) {
-      var w = client.weeks[weekNumber - 1];
-      var imgs = ["front", "back"].map(function (a, i) { return photoSwatch(i, a === "front" ? "Frente" : "Costas"); }).join("");
-      return '<div><select class="compare-select" data-side="' + side + '">' + optHtml(weekNumber) + '</select>' +
-        '<div class="imgs" style="display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);border-radius:var(--radius-md);overflow:hidden;margin-top:10px;">' + imgs + '</div>' +
-        '<div style="text-align:center;margin-top:8px;font-family:var(--font-mono);font-size:13px;">' + w.metrics.weight + 'kg</div></div>';
-    }
-    var weightDiff = Trackly.round1(client.weeks[compareState.b - 1].metrics.weight - client.weeks[compareState.a - 1].metrics.weight);
+
+    var options = submittedWeeks.map(function (w) { return w.weekNumber; });
+    function optHtml(sel) { return options.map(function (v) { return '<option value="' + v + '"' + (v === sel ? " selected" : "") + '>Semana ' + v + '</option>'; }).join(""); }
+
+    var wA = client.weeks[compareState.a - 1], wB = client.weeks[compareState.b - 1];
+    var weightDiff = Trackly.round1(wB.metrics.weight - wA.metrics.weight);
+    var weeksBetween = compareState.b - compareState.a;
+
+    var metaItems = [
+      Trackly.isTracked(client, "weight") ? { l: "Peso", from: wA.metrics.weight + " kg", to: wB.metrics.weight + " kg", pct: Trackly.round1(100 * weightDiff / wA.metrics.weight) } : null,
+      Trackly.isTracked(client, "measurements") && wA.metrics.waist != null ? { l: "Cintura", from: wA.metrics.waist + " cm", to: wB.metrics.waist + " cm", pct: Trackly.round1(100 * (wB.metrics.waist - wA.metrics.waist) / wA.metrics.waist) } : null,
+      Trackly.isTracked(client, "adherence") ? { l: "Aderência", from: wA.metrics.adherence + "%", to: wB.metrics.adherence + "%", pct: Trackly.round1(wB.metrics.adherence - wA.metrics.adherence) } : null
+    ].filter(Boolean);
 
     document.getElementById("tab-fotos").innerHTML =
-      '<p class="card-sub" style="margin-bottom:16px;">Fotos padronizadas (frente, costas, laterais) organizadas automaticamente por semana. Placeholders ilustrativos — nenhuma foto real.</p>' +
-      (submittedWeeks.length >= 2 ? (
-        '<div class="card card-pad" style="margin-bottom:24px;">' +
-          '<p class="card-title" style="margin-bottom:14px;">Comparar semanas</p>' +
-          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">' + compareCol(compareState.a, "a") + compareCol(compareState.b, "b") + '</div>' +
-          '<div style="text-align:center;margin-top:14px;font-size:13px;color:' + (Trackly.isGoodWeightDelta(client, weightDiff) ? "var(--brand)" : "var(--coral)") + ';font-weight:600;">' + (weightDiff <= 0 ? "" : "+") + weightDiff + 'kg entre as duas semanas</div>' +
-        '</div>'
-      ) : "") +
-      '<div class="photo-strip">' + cards + '</div>';
+      '<div style="display:flex;gap:14px;margin-bottom:16px;max-width:420px;">' +
+        '<select class="compare-select" data-side="a">' + optHtml(compareState.a) + '</select>' +
+        '<select class="compare-select" data-side="b">' + optHtml(compareState.b) + '</select>' +
+      '</div>' +
+      '<div class="compare-slider" id="cs-photo">' +
+        '<div class="cs-after" style="background:' + photoBg(1) + ';"><span class="cs-tag after">Agora · S' + compareState.b + '</span></div>' +
+        '<div class="cs-before" id="cs-before-clip" style="width:50%;"><div style="background:' + photoBg(0) + ';"><span class="cs-tag before">Antes · S' + compareState.a + '</span></div></div>' +
+        '<div class="cs-handle" id="cs-handle" style="left:50%;"></div>' +
+      '</div>' +
+      '<div class="compare-meta">' + metaItems.map(function (m) {
+        return '<div class="cm-item"><div class="l">' + m.l + '</div><div class="v">' + m.from + ' → ' + m.to + '</div><div style="color:' + (m.pct <= 0 ? "var(--brand)" : "var(--coral)") + ';font-weight:600;">' + (m.pct > 0 ? "+" : "") + m.pct + '%</div></div>';
+      }).join("") + '</div>' +
+      '<p class="card-sub" style="margin-top:18px;">' + weeksBetween + ' semana' + (weeksBetween === 1 ? "" : "s") + ' entre as fotos. Placeholders ilustrativos — nenhuma foto real.</p>';
 
+    wireCompareInteraction();
     document.querySelectorAll(".compare-select").forEach(function (sel) {
       sel.addEventListener("change", function () { compareState[sel.getAttribute("data-side")] = parseInt(sel.value, 10); renderFotos(); });
     });
+  }
+
+  function wireCompareInteraction() {
+    var wrap = document.getElementById("cs-photo");
+    var handle = document.getElementById("cs-handle");
+    var clip = document.getElementById("cs-before-clip");
+    var fullWidth = wrap.getBoundingClientRect().width;
+    clip.firstElementChild.style.width = fullWidth + "px";
+    var dragging = false;
+    function setPct(clientX) {
+      var rect = wrap.getBoundingClientRect();
+      var pct = Math.max(4, Math.min(96, ((clientX - rect.left) / rect.width) * 100));
+      clip.style.width = pct + "%";
+      handle.style.left = pct + "%";
+    }
+    handle.addEventListener("pointerdown", function (e) { dragging = true; handle.setPointerCapture(e.pointerId); });
+    handle.addEventListener("pointermove", function (e) { if (dragging) setPct(e.clientX); });
+    handle.addEventListener("pointerup", function () { dragging = false; });
+    wrap.addEventListener("click", function (e) { if (e.target === wrap || e.target.classList.contains("cs-after")) setPct(e.clientX); });
   }
 
   // ---------------- HISTÓRICO — cada semana é o ciclo completo: ----------------
@@ -232,9 +268,6 @@
     var weeks = client.weeks.slice().reverse();
     var html = weeks.map(function (w, i) {
       var submitted = w.checkin.status === "submitted";
-      var statusPill = submitted
-        ? '<span class="pill pill-ok"><span class="dot"></span>enviado</span>'
-        : '<span class="pill pill-late"><span class="dot"></span>pendente</span>';
 
       var body = "";
       if (submitted) {
@@ -275,14 +308,15 @@
         '<div class="week-cycle' + (i === 0 ? " open" : "") + '">' +
         '<div class="wc-head">' +
           '<span class="wk">S' + w.weekNumber + '</span>' +
-          '<span class="wt">' + Trackly.fmtShort(w.start) + '–' + Trackly.fmtShort(w.end) + '<span style="margin-left:10px;">' + statusPill + '</span></span>' +
+          '<span class="wt">' + Trackly.fmtShort(w.end) + '</span>' +
+          '<span class="wc-status" style="color:' + (submitted ? "var(--brand)" : "var(--ink-faint)") + ';">' + (submitted ? (w.orientation ? "✓ Orientação enviada" : "✓ Check-in enviado") : "Pendente") + '</span>' +
           '<span class="chev">' + ICONS.chevronR + '</span>' +
         '</div>' +
         '<div class="wc-body">' + body + '</div>' +
         '</div>'
       );
     }).join("");
-    document.getElementById("tab-historico").innerHTML = '<div class="card card-pad">' + html + '</div>';
+    document.getElementById("tab-historico").innerHTML = html;
     document.querySelectorAll(".wc-head").forEach(function (h) {
       h.addEventListener("click", function () { h.closest(".week-cycle").classList.toggle("open"); });
     });

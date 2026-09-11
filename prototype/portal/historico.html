@@ -36,9 +36,6 @@
   var weeks = client.weeks.slice().reverse();
   document.getElementById("weeks").innerHTML = weeks.map(function (w, i) {
     var submitted = w.checkin.status === "submitted";
-    var statusPill = submitted
-      ? '<span class="pill pill-ok"><span class="dot"></span>enviado</span>'
-      : '<span class="pill pill-late"><span class="dot"></span>pendente</span>';
 
     var body = "";
     if (submitted) {
@@ -76,7 +73,8 @@
       '<div class="week-cycle' + (i === 0 ? " open" : "") + '">' +
       '<div class="wc-head">' +
         '<span class="wk">S' + w.weekNumber + '</span>' +
-        '<span class="wt">' + Trackly.fmtShort(w.start) + '–' + Trackly.fmtShort(w.end) + '<span style="margin-left:10px;">' + statusPill + '</span></span>' +
+        '<span class="wt">' + Trackly.fmtShort(w.end) + '</span>' +
+        '<span class="wc-status" style="color:' + (submitted ? "var(--brand)" : "var(--ink-faint)") + ';">' + (submitted ? (w.orientation ? "✓ Orientação enviada" : "✓ Check-in enviado") : "Pendente") + '</span>' +
         '<span class="chev">' + ICONS.chevronR + '</span>' +
       '</div>' +
       '<div class="wc-body">' + body + '</div>' +
