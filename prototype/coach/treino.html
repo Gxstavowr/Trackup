@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Treino — Trackly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  .protocol-name-field { max-width: 420px; margin-bottom: 26px; }
+  .day-card { margin-bottom: 18px; }
+  .day-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .day-head input[type="text"] { font-family: var(--font-display); font-size: 17px; font-weight: 600; border: none; background: none; color: var(--ink); padding: 4px 2px; width: auto; min-width: 90px; }
+  .day-head input[type="text"]:focus { outline: none; border-bottom: 1.5px solid var(--brand); }
+  .day-head .dur { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-faint); }
+  .day-head .dur input { width: 52px; padding: 5px 7px; border: 1px solid var(--line-strong); border-radius: 6px; font-size: 12.5px; background: var(--surface); color: var(--ink); }
+  .day-actions { margin-left: auto; display: flex; gap: 4px; }
+  .icon-btn {
+    width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--surface);
+    color: var(--ink-muted); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all .12s; flex: none;
+  }
+  .icon-btn:hover { border-color: var(--brand); color: var(--brand); }
+  .icon-btn.danger:hover { border-color: var(--coral); color: var(--coral); }
+  .icon-btn svg { width: 15px; height: 15px; }
+  .ex-row { display: grid; grid-template-columns: 1.6fr .6fr .6fr .7fr .6fr 1.3fr auto; gap: 8px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .ex-row:last-of-type { border-bottom: none; }
+  .ex-row select, .ex-row input { padding: 7px 9px; border: 1px solid var(--line-strong); border-radius: 7px; font-size: 12.5px; background: var(--surface); color: var(--ink); width: 100%; }
+  .ex-row .ex-mini-actions { display: flex; gap: 4px; }
+  .ex-col-label { font-size: 10.5px; color: var(--ink-faint); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 6px; }
+  .ex-head-row { display: grid; grid-template-columns: 1.6fr .6fr .6fr .7fr .6fr 1.3fr auto; gap: 8px; margin-bottom: 2px; }
+  .save-indicator { font-size: 12px; color: var(--brand); font-weight: 600; opacity: 0; transition: opacity .2s; }
+  .save-indicator.show { opacity: 1; }
+  @media (max-width: 860px) {
+    .ex-row, .ex-head-row { grid-template-columns: 1fr; }
+    .ex-head-row { display: none; }
+    .ex-row { gap: 6px; padding: 14px 0; }
+  }
+</style>
+</head>
+<body data-root="../">
+<div id="shell-demo"></div>
+<div class="shell">
+  <div id="shell-sidebar"></div>
+  <main class="main">
+    <div class="main-inner">
+      <button class="mobile-menu-btn" id="mobile-menu-btn">☰</button>
+      <a href="cliente.html" id="back-link" class="btn-ghost btn" style="padding-left:2px;margin-bottom:10px;">&larr; Voltar ao perfil</a>
+
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">Treino</p>
+          <h1 id="p-title">Protocolo de treino</h1>
+        </div>
+        <span class="save-indicator" id="save-indicator">✓ Salvo</span>
+      </div>
+
+      <div class="field protocol-name-field">
+        <label>Nome do protocolo</label>
+        <input type="text" id="protocol-name" placeholder="Ex: Hipertrofia — push/pull/legs">
+      </div>
+
+      <div id="days"></div>
+      <button class="btn btn-secondary" id="add-day">+ Adicionar dia de treino</button>
+    </div>
+  </main>
+</div>
+
+<script src="../assets/js/storage.js?v=11"></script>
+<script src="../assets/js/data.js?v=11"></script>
+<script src="../assets/js/icons.js?v=11"></script>
+<script src="../assets/js/charts.js?v=11"></script>
+<script src="../assets/js/nav.js?v=11"></script>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var client = Trackly.getClient(params.get("id") || "joao");
+  TracklyNav.mountCoachShell("clientes", client.id);
+  document.getElementById("back-link").href = "cliente.html?id=" + client.id;
+  document.getElementById("p-title").textContent = "Treino de " + client.name.split(" ")[0];
+
+  var workout = client.workout ? JSON.parse(JSON.stringify(client.workout)) : { protocolName: "", days: [] };
+
+  var CATEGORIES = [];
+  Trackly.EXERCISE_LIBRARY.forEach(function (e) { if (CATEGORIES.indexOf(e.category) === -1) CATEGORIES.push(e.category); });
+  function exerciseOptions(selectedId) {
+    return CATEGORIES.map(function (cat) {
+      var opts = Trackly.EXERCISE_LIBRARY.filter(function (e) { return e.category === cat; }).map(function (e) {
+        return '<option value="' + e.id + '"' + (e.id === selectedId ? " selected" : "") + '>' + e.name + '</option>';
+      }).join("");
+      return '<optgroup label="' + cat + '">' + opts + '</optgroup>';
+    }).join("");
+  }
+
+  var saveTimer = null;
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      Trackly.saveWorkoutProtocol(client.id, workout);
+      var ind = document.getElementById("save-indicator");
+      ind.classList.add("show");
+      setTimeout(function () { ind.classList.remove("show"); }, 1400);
+    }, 350);
+  }
+
+  function newExercise() { return { exerciseId: Trackly.EXERCISE_LIBRARY[0].id, sets: 3, reps: 12, restSec: 60, rir: null, notes: "" }; }
+  function newDay() { return { id: "d" + Date.now() + Math.floor(Math.random() * 1000), name: "Novo treino", durationMin: 45, exercises: [newExercise()] }; }
+
+  function render() {
+    document.getElementById("protocol-name").value = workout.protocolName || "";
+    document.getElementById("days").innerHTML = workout.days.map(function (day, di) {
+      var exHead = '<div class="ex-head-row">' +
+        '<div class="ex-col-label">Exercício</div><div class="ex-col-label">Séries</div><div class="ex-col-label">Reps</div>' +
+        '<div class="ex-col-label">Descanso</div><div class="ex-col-label">RIR</div><div class="ex-col-label">Observações</div><div></div></div>';
+      var exRows = day.exercises.map(function (ex, ei) {
+        return '<div class="ex-row" data-day="' + di + '" data-ex="' + ei + '">' +
+          '<select data-field="exerciseId">' + exerciseOptions(ex.exerciseId) + '</select>' +
+          '<input type="number" min="1" data-field="sets" value="' + ex.sets + '">' +
+          '<input type="text" data-field="reps" value="' + ex.reps + '" placeholder="12">' +
+          '<input type="number" min="0" step="15" data-field="restSec" value="' + ex.restSec + '">' +
+          '<input type="number" min="0" max="5" data-field="rir" value="' + (ex.rir == null ? "" : ex.rir) + '" placeholder="—">' +
+          '<input type="text" data-field="notes" value="' + (ex.notes || "").replace(/"/g, "&quot;") + '" placeholder="opcional">' +
+          '<div class="ex-mini-actions">' +
+            '<button class="icon-btn" data-dup-ex title="Duplicar exercício">' + ICONS.plate + '</button>' +
+            '<button class="icon-btn danger" data-del-ex title="Remover exercício">' + ICONS.close + '</button>' +
+          '</div>' +
+        '</div>';
+      }).join("");
+      return (
+        '<div class="card card-pad day-card" data-day-card="' + di + '">' +
+          '<div class="day-head">' +
+            '<input type="text" data-field="name" data-day="' + di + '" value="' + day.name.replace(/"/g, "&quot;") + '">' +
+            '<div class="dur"><input type="number" min="10" step="5" data-field="durationMin" data-day="' + di + '" value="' + day.durationMin + '"> min</div>' +
+            '<div class="day-actions">' +
+              '<button class="icon-btn" data-move-day-up="' + di + '" title="Mover pra cima"' + (di === 0 ? " disabled" : "") + '>&uarr;</button>' +
+              '<button class="icon-btn" data-move-day-down="' + di + '" title="Mover pra baixo"' + (di === workout.days.length - 1 ? " disabled" : "") + '>&darr;</button>' +
+              '<button class="icon-btn" data-dup-day="' + di + '" title="Duplicar dia">' + ICONS.plate + '</button>' +
+              '<button class="icon-btn danger" data-del-day="' + di + '" title="Remover dia">' + ICONS.close + '</button>' +
+            '</div>' +
+          '</div>' +
+          exHead + exRows +
+          '<button class="btn btn-ghost" style="margin-top:10px;padding-left:0;" data-add-ex="' + di + '">+ Adicionar exercício</button>' +
+        '</div>'
+      );
+    }).join("") || '<div class="empty-state"><h3>Nenhum dia de treino ainda</h3><p>Adicione o primeiro dia pra começar a montar o protocolo.</p></div>';
+    wire();
+  }
+
+  function wire() {
+    document.getElementById("protocol-name").oninput = function (e) { workout.protocolName = e.target.value; scheduleSave(); };
+
+    document.querySelectorAll('[data-field="name"], [data-field="durationMin"]').forEach(function (el) {
+      el.addEventListener("input", function () {
+        var di = parseInt(el.getAttribute("data-day"), 10);
+        var field = el.getAttribute("data-field");
+        workout.days[di][field] = field === "durationMin" ? (parseInt(el.value, 10) || 0) : el.value;
+        scheduleSave();
+      });
+    });
+
+    document.querySelectorAll(".ex-row").forEach(function (row) {
+      var di = parseInt(row.getAttribute("data-day"), 10), ei = parseInt(row.getAttribute("data-ex"), 10);
+      row.querySelectorAll("[data-field]").forEach(function (el) {
+        el.addEventListener(el.tagName === "SELECT" ? "change" : "input", function () {
+          var field = el.getAttribute("data-field");
+          var ex = workout.days[di].exercises[ei];
+          if (field === "sets" || field === "restSec") ex[field] = parseInt(el.value, 10) || 0;
+          else if (field === "rir") ex[field] = el.value === "" ? null : parseInt(el.value, 10);
+          else ex[field] = el.value;
+          scheduleSave();
+        });
+      });
+      row.querySelector("[data-dup-ex]").addEventListener("click", function () {
+        workout.days[di].exercises.splice(ei + 1, 0, JSON.parse(JSON.stringify(workout.days[di].exercises[ei])));
+        scheduleSave(); render();
+      });
+      row.querySelector("[data-del-ex]").addEventListener("click", function () {
+        workout.days[di].exercises.splice(ei, 1);
+        scheduleSave(); render();
+      });
+    });
+
+    document.querySelectorAll("[data-add-ex]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var di = parseInt(btn.getAttribute("data-add-ex"), 10);
+        workout.days[di].exercises.push(newExercise());
+        scheduleSave(); render();
+      });
+    });
+
+    document.querySelectorAll("[data-move-day-up]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var di = parseInt(btn.getAttribute("data-move-day-up"), 10);
+        if (di === 0) return;
+        var tmp = workout.days[di - 1]; workout.days[di - 1] = workout.days[di]; workout.days[di] = tmp;
+        scheduleSave(); render();
+      });
+    });
+    document.querySelectorAll("[data-move-day-down]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var di = parseInt(btn.getAttribute("data-move-day-down"), 10);
+        if (di === workout.days.length - 1) return;
+        var tmp = workout.days[di + 1]; workout.days[di + 1] = workout.days[di]; workout.days[di] = tmp;
+        scheduleSave(); render();
+      });
+    });
+    document.querySelectorAll("[data-dup-day]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var di = parseInt(btn.getAttribute("data-dup-day"), 10);
+        var copy = JSON.parse(JSON.stringify(workout.days[di]));
+        copy.id = "d" + Date.now() + Math.floor(Math.random() * 1000);
+        copy.name = copy.name + " (cópia)";
+        workout.days.splice(di + 1, 0, copy);
+        scheduleSave(); render();
+      });
+    });
+    document.querySelectorAll("[data-del-day]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var di = parseInt(btn.getAttribute("data-del-day"), 10);
+        workout.days.splice(di, 1);
+        scheduleSave(); render();
+      });
+    });
+  }
+
+  document.getElementById("add-day").addEventListener("click", function () {
+    workout.days.push(newDay());
+    scheduleSave(); render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

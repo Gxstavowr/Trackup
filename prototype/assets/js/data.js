@@ -443,6 +443,13 @@
       });
     }
   }
+  // autosave do builder do coach — sobrescreve o protocolo inteiro (mesmo padrão de
+  // mutate-then-patch; o objeto é pequeno o bastante pra não precisar de merge por campo).
+  function saveWorkoutProtocol(clientId, workout) {
+    var client = getClient(clientId);
+    client.workout = workout;
+    if (global.TracklyStore) TracklyStore.patchClient(clientId, { workoutProtocol: workout });
+  }
   function todaysWorkoutDay(client) {
     if (!client.workout || !client.workout.days.length) return null;
     var idx = (Trackly_currentWeekNumberSafe(client) - 1) % client.workout.days.length;
@@ -536,6 +543,11 @@
   };
   CLIENTS.forEach(function (c) { c.nutritionPlan = NUTRITION_PLANS[c.id] || null; });
   function todaysMeals(client) { return client.nutritionPlan ? client.nutritionPlan.meals : []; }
+  function saveNutritionPlan(clientId, plan) {
+    var client = getClient(clientId);
+    client.nutritionPlan = plan;
+    if (global.TracklyStore) TracklyStore.patchClient(clientId, { nutritionPlan: plan });
+  }
 
   // ================================================================
   // V11 — Pagamentos: abstração de provedor (nunca chamado de verdade — só
@@ -1240,6 +1252,8 @@
         });
       }
       if (patch.weekWorkoutsDone != null) c._weekWorkoutsDone = patch.weekWorkoutsDone;
+      if (patch.workoutProtocol) c.workout = patch.workoutProtocol;
+      if (patch.nutritionPlan) c.nutritionPlan = patch.nutritionPlan;
       if (patch.paymentSettled) {
         var pay = c.paymentsHistory.filter(function (p) { return p.id === patch.paymentSettled.paymentId; })[0];
         if (pay && pay.status !== "paid") {
@@ -1286,8 +1300,8 @@
     completeOrientation: completeOrientation, submitCheckin: submitCheckin, sendReminder: sendReminder, markReviewOpened: markReviewOpened,
     createClient: createClient, sendInvite: sendInvite, acceptInvite: acceptInvite,
     EXERCISE_LIBRARY: EXERCISE_LIBRARY, getExercise: getExercise,
-    logWorkoutSession: logWorkoutSession, todaysWorkoutDay: todaysWorkoutDay,
-    todaysMeals: todaysMeals,
+    logWorkoutSession: logWorkoutSession, todaysWorkoutDay: todaysWorkoutDay, saveWorkoutProtocol: saveWorkoutProtocol,
+    todaysMeals: todaysMeals, saveNutritionPlan: saveNutritionPlan,
     paymentProvider: paymentProvider, currentPayment: currentPayment,
     overduePaymentMessage: overduePaymentMessage, simulatePayment: simulatePayment
   };
