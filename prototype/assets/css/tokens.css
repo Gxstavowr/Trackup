@@ -53,6 +53,20 @@
   --radius-lg: 20px;
   --sidebar-w: 248px;
 
+  /* escala de espaçamento — V6: a interface deve respirar (menos elementos, mais espaço) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* tipografia — números grandes são protagonistas, labels pequenos e discretos */
+  --text-hero: 34px;
+  --text-counter: 56px;
+  --text-label: 11.5px;
+
   /* clientes — cor de identidade em gráficos/avatares (ciclo), calibradas para contraste em fundo escuro */
   --c1: #3FAE81;
   --c2: #D6A94E;

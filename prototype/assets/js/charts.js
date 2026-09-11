@@ -80,16 +80,17 @@
     var d = pathFromPoints(pts, true);
     var uidArea = "area" + Math.random().toString(36).slice(2, 9);
 
+    // V6: fundo praticamente vazio — só uma linha de base e uma no meio, nada de grid denso
     var gridLines = "", n = 4;
-    for (var g = 0; g <= n; g++) {
+    [n, n / 2].forEach(function (g) {
       var gy = margin.top + (ih / n) * g;
       var gv = max - ((max - min) / n) * g;
-      gridLines += el("line", { x1: margin.left, x2: margin.left + iw, y1: gy.toFixed(1), y2: gy.toFixed(1), stroke: "var(--line)", "stroke-width": 1 });
+      gridLines += el("line", { x1: margin.left, x2: margin.left + iw, y1: gy.toFixed(1), y2: gy.toFixed(1), stroke: "var(--line)", "stroke-width": 1, "stroke-dasharray": "2 4", "stroke-opacity": .6 });
       gridLines += el("text", { x: margin.left - 8, y: (gy + 3.5).toFixed(1), "text-anchor": "end", class: "chart-axis" }, false) + (opts.yFormat ? opts.yFormat(gv) : Math.round(gv)) + "</text>";
-    }
+    });
 
     var xLabels = "";
-    var step = Math.ceil(data.length / (opts.maxXLabels || 6));
+    var step = Math.ceil(data.length / (opts.maxXLabels || 4));
     data.forEach(function (d, i) {
       if (i % step === 0 || i === data.length - 1) {
         xLabels += el("text", { x: xAt(i).toFixed(1), y: h - 6, "text-anchor": "middle", class: "chart-axis" }, false) + d.label + "</text>";
@@ -106,9 +107,9 @@
       var isLast = idx === pts.length - 1;
       var tip = p.label + ": " + p.v + (opts.unit || "");
       return el("circle", {
-        cx: p.x.toFixed(2), cy: p.y.toFixed(2), r: isLast ? 3.6 : 2.6,
+        cx: p.x.toFixed(2), cy: p.y.toFixed(2), r: isLast ? 3.8 : 2.4,
         fill: isLast ? color : "var(--surface)", stroke: color, "stroke-width": 1.6,
-        class: "chart-dot", style: "animation-delay:" + (idx * 25) + "ms", "data-tip": tip
+        class: isLast ? "chart-dot chart-dot-current" : "chart-dot", style: "animation-delay:" + (idx * 25) + "ms", "data-tip": tip
       });
     }).join("");
 
