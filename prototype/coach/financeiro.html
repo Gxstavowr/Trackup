@@ -9,6 +9,22 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../assets/css/base.css?v=12">
 <style>
+  .fin-hero { margin-bottom: 26px; }
+  .fin-hero .value { font-family: var(--font-display); font-size: 44px; font-weight: 600; letter-spacing: -.01em; line-height: 1; }
+  .fin-hero .label { font-size: 12.5px; color: var(--ink-faint); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin-top: 8px; }
+  .fin-hero .delta { font-size: 13.5px; font-weight: 600; margin-top: 8px; }
+  .fin-sub-row { display: flex; gap: 40px; flex-wrap: wrap; margin-bottom: 30px; }
+  .alert-bar {
+    display: flex; align-items: center; gap: 10px; background: var(--late-tint); border: 1px solid var(--coral);
+    border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 24px; font-size: 13.5px; color: var(--coral); font-weight: 600;
+  }
+  .alert-bar a { margin-left: auto; color: var(--coral); text-decoration: underline; font-weight: 700; white-space: nowrap; }
+  .upcoming-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+  .upcoming-row:last-child { border-bottom: none; }
+  .upcoming-row .d { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); width: 44px; flex: none; }
+  .upcoming-row .who { flex: 1; font-weight: 600; }
+  .upcoming-row .val { font-family: var(--font-mono); font-weight: 600; }
+  .upcoming-total { display: flex; justify-content: space-between; padding-top: 12px; margin-top: 4px; border-top: 1px solid var(--line-strong); font-size: 13px; font-weight: 700; }
   .fin-table-head, .fin-row { display: grid; grid-template-columns: 2fr 1.3fr 1fr 1fr 1fr; gap: 12px; align-items: center; padding: 12px 4px; }
   .fin-table-head { font-size: 10.5px; color: var(--ink-faint); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--line); }
   .fin-row { border-bottom: 1px solid var(--line); font-size: 13.5px; }
@@ -33,17 +49,27 @@
       <div class="page-head">
         <div>
           <p class="eyebrow">Financeiro</p>
-          <h1>Financeiro</h1>
-          <p>Visão geral da receita — não é um sistema de contabilidade.</p>
+          <h1>Como está meu negócio?</h1>
         </div>
       </div>
 
-      <div class="stat-row" id="stat-row" style="margin-bottom:28px;"></div>
+      <div class="fin-hero" id="fin-hero"></div>
+      <div class="fin-sub-row" id="fin-sub-stats"></div>
+
+      <div id="alert-bar-host"></div>
 
       <div class="section-label">Receita — últimos meses</div>
       <div class="card card-pad" style="margin-bottom:28px;" id="chart-card"></div>
 
-      <div class="section-label">Clientes</div>
+      <div class="section-label">Próximas entradas</div>
+      <div class="card card-pad" style="margin-bottom:28px;" id="upcoming-card"></div>
+
+      <div class="stat-chip-row" id="extra-metrics" style="display:flex;gap:36px;flex-wrap:wrap;margin-bottom:30px;"></div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div class="section-label" style="margin-bottom:0;">Recebimentos</div>
+        <div class="filter-bar" id="fin-filters" style="margin-bottom:0;"></div>
+      </div>
       <div class="card card-pad">
         <div class="fin-table-head"><div>Cliente</div><div>Plano</div><div>Valor</div><div>Vencimento</div><div>Status</div></div>
         <div id="fin-body"></div>
@@ -69,28 +95,50 @@
   var clients = Trackly.CLIENTS.filter(function (c) { return c.plan; });
   var now = Trackly.ANCHOR;
 
-  var receitaMes = 0, mrr = 0, aReceber = 0, atrasado = 0;
+  var receitaMes = 0, receitaMesAnterior = 0, mrr = 0, aReceber = 0, atrasado = 0, ticketSum = 0;
   var monthBuckets = {};
+  var prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
   clients.forEach(function (c) {
     mrr += Math.round(c.plan.priceCents / periodMonths[c.plan.period]);
+    ticketSum += c.plan.priceCents;
     c.paymentsHistory.forEach(function (p) {
       if (p.status === "paid" && p.paidDate) {
         var key = p.paidDate.getFullYear() + "-" + p.paidDate.getMonth();
         monthBuckets[key] = (monthBuckets[key] || 0) + p.amountCents;
         if (p.paidDate.getFullYear() === now.getFullYear() && p.paidDate.getMonth() === now.getMonth()) receitaMes += p.amountCents;
+        if (p.paidDate.getFullYear() === prevMonthDate.getFullYear() && p.paidDate.getMonth() === prevMonthDate.getMonth()) receitaMesAnterior += p.amountCents;
       }
       if (p.status === "pending") aReceber += p.amountCents;
       if (p.status === "overdue") atrasado += p.amountCents;
     });
   });
+  var ticketMedio = clients.length ? Math.round(ticketSum / clients.length) : 0;
+  var receitaDeltaPct = receitaMesAnterior ? Math.round(100 * (receitaMes - receitaMesAnterior) / receitaMesAnterior) : null;
 
-  document.getElementById("stat-row").innerHTML = [
-    ["Receita do mês", fmtMoney(receitaMes)],
+  // ---- hero: receita é protagonista, o resto vem depois em hierarquia menor (brief §43) ----
+  document.getElementById("fin-hero").innerHTML =
+    '<div class="label">Receita este mês</div>' +
+    '<div class="value">' + fmtMoney(receitaMes) + '</div>' +
+    (receitaDeltaPct != null ? '<div class="delta" style="color:' + (receitaDeltaPct >= 0 ? "var(--brand)" : "var(--coral)") + ';">' + (receitaDeltaPct >= 0 ? "+" : "") + receitaDeltaPct + '% vs. mês anterior</div>' : '');
+
+  document.getElementById("fin-sub-stats").innerHTML = [
     ["MRR", fmtMoney(mrr)],
     ["A receber", fmtMoney(aReceber)],
-    ["Atrasado", fmtMoney(atrasado)]
-  ].map(function (s) { return '<div class="stat"><div class="label">' + s[0] + '</div><div class="value">' + s[1] + '</div></div>'; }).join("");
+    ["Em atraso", fmtMoney(atrasado)]
+  ].map(function (s) { return '<div class="hero-stat sm"><div class="value">' + s[1] + '</div><div class="label">' + s[0] + '</div></div>'; }).join("");
+
+  // ---- alerta só quando existe problema de verdade (brief §45) ----
+  var overdueClients = clients.filter(function (c) { return Trackly.currentPayment(c).status === "overdue"; });
+  if (overdueClients.length) {
+    document.getElementById("alert-bar-host").innerHTML =
+      '<div class="alert-bar">' + ICONS.warn + '<span>' + overdueClients.length + ' pagamento' + (overdueClients.length === 1 ? "" : "s") + ' atrasado' + (overdueClients.length === 1 ? "" : "s") + '.</span><a href="#recebimentos" id="ver-pendencias">Ver pendências</a></div>';
+    document.getElementById("ver-pendencias").addEventListener("click", function (e) {
+      e.preventDefault();
+      document.querySelector('[data-filter="overdue"]').click();
+      document.getElementById("fin-body").scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
 
   var monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
   var chartData = [];
@@ -101,18 +149,62 @@
   }
   document.getElementById("chart-card").innerHTML = Charts.barChart({ data: chartData, height: 200 });
 
-  document.getElementById("fin-body").innerHTML = clients.map(function (c) {
-    var pay = Trackly.currentPayment(c);
-    return (
-      '<div class="fin-row">' +
-        '<div class="who"><span class="avatar" style="width:26px;height:26px;font-size:10.5px;background:' + TracklyNav.colorFor(c) + '">' + c.initials + '</span><strong>' + c.name + '</strong></div>' +
-        '<div>' + c.plan.name + '</div>' +
-        '<div class="val">' + fmtMoney(pay.amountCents) + '</div>' +
-        '<div>' + Trackly.fmtShort(pay.dueDate) + '</div>' +
-        '<div><span class="pill ' + statusPill[pay.status] + '"><span class="dot"></span>' + statusLabel[pay.status] + '</span></div>' +
-      '</div>'
-    );
+  // ---- próximas entradas — responde "quanto devo receber nos próximos dias?" (brief §44) ----
+  var upcoming = clients
+    .map(function (c) { return { c: c, pay: Trackly.currentPayment(c) }; })
+    .filter(function (x) { return x.pay.status === "pending"; })
+    .sort(function (a, b) { return a.pay.dueDate - b.pay.dueDate; });
+  if (!upcoming.length) {
+    document.getElementById("upcoming-card").innerHTML = '<p style="margin:0;font-size:13px;color:var(--ink-faint);">Nenhuma entrada prevista no momento.</p>';
+  } else {
+    var totalPrevisto = upcoming.reduce(function (s, x) { return s + x.pay.amountCents; }, 0);
+    document.getElementById("upcoming-card").innerHTML =
+      upcoming.map(function (x) {
+        return '<div class="upcoming-row"><span class="d">' + Trackly.fmtShort(x.pay.dueDate) + '</span><span class="who">' + x.c.name + '</span><span class="val">' + fmtMoney(x.pay.amountCents) + '</span></div>';
+      }).join("") +
+      '<div class="upcoming-total"><span>Total previsto</span><span>' + fmtMoney(totalPrevisto) + '</span></div>';
+  }
+
+  // ---- métricas adicionais — só o que dá pra calcular honestamente a partir do dado real (brief §48-49) ----
+  var novos = clients.filter(function (c) { var days = (now - c.startDate) / 86400000; return days <= 30; }).length;
+  var cancelados = clients.filter(function (c) { return Trackly.currentPayment(c).status === "cancelled"; }).length;
+  document.getElementById("extra-metrics").innerHTML = [
+    ["Clientes ativos", clients.length],
+    ["Novos no período", novos],
+    ["Cancelados", cancelados],
+    ["Ticket médio", fmtMoney(ticketMedio)]
+  ].map(function (s) { return '<div class="hero-stat sm"><div class="value">' + s[1] + '</div><div class="label">' + s[0] + '</div></div>'; }).join("");
+
+  // ---- recebimentos — lista filtrável (brief §46) ----
+  var finState = { filter: "all" };
+  var filters = [["all", "Todos"], ["paid", "Pago"], ["pending", "Pendente"], ["overdue", "Atrasado"]];
+  document.getElementById("fin-filters").innerHTML = filters.map(function (f) {
+    return '<button class="chip-filter' + (finState.filter === f[0] ? " active" : "") + '" data-filter="' + f[0] + '">' + f[1] + '</button>';
   }).join("");
+  function renderFinBody() {
+    var rows = clients.filter(function (c) { return finState.filter === "all" || Trackly.currentPayment(c).status === finState.filter; });
+    document.getElementById("fin-body").innerHTML = rows.map(function (c) {
+      var pay = Trackly.currentPayment(c);
+      return (
+        '<div class="fin-row">' +
+          '<div class="who"><span class="avatar" style="width:26px;height:26px;font-size:10.5px;background:' + TracklyNav.colorFor(c) + '">' + c.initials + '</span><strong>' + c.name + '</strong></div>' +
+          '<div>' + c.plan.name + '</div>' +
+          '<div class="val">' + fmtMoney(pay.amountCents) + '</div>' +
+          '<div>' + Trackly.fmtShort(pay.dueDate) + '</div>' +
+          '<div><span class="pill ' + statusPill[pay.status] + '"><span class="dot"></span>' + statusLabel[pay.status] + '</span></div>' +
+        '</div>'
+      );
+    }).join("") || '<p style="margin:12px 4px;font-size:13px;color:var(--ink-faint);">Nenhum recebimento nesse status.</p>';
+  }
+  document.querySelectorAll("#fin-filters .chip-filter").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      document.querySelectorAll("#fin-filters .chip-filter").forEach(function (b) { b.classList.remove("active"); });
+      btn.classList.add("active");
+      finState.filter = btn.getAttribute("data-filter");
+      renderFinBody();
+    });
+  });
+  renderFinBody();
 })();
 </script>
 </body>
