@@ -537,6 +537,71 @@
   CLIENTS.forEach(function (c) { c.nutritionPlan = NUTRITION_PLANS[c.id] || null; });
   function todaysMeals(client) { return client.nutritionPlan ? client.nutritionPlan.meals : []; }
 
+  // ================================================================
+  // V11 — Pagamentos: abstração de provedor (nunca chamado de verdade — só
+  // documenta o encaixe pra Mercado Pago/Asaas/Stripe quando integrar).
+  // ================================================================
+  var paymentProvider = {
+    name: "simulado",
+    note: "abstração — trocar por Mercado Pago/Asaas/Stripe quando integrar de verdade",
+    charge: function (clientId, method) { return { ok: true, method: method, simulated: true }; }
+  };
+
+  var PLANS = {
+    joao: { name: "Plano Mensal", priceCents: 24900, period: "monthly" },
+    maria: { name: "Plano Trimestral", priceCents: 64900, period: "quarterly" },
+    pedro: { name: "Plano Mensal", priceCents: 24900, period: "monthly" },
+    ana: { name: "Plano Semestral", priceCents: 119900, period: "semiannual" }
+  };
+  function paymentHistoryFor(clientId, currentStatus) {
+    var price = PLANS[clientId].priceCents;
+    var hist = [
+      { id: clientId + "-p3", dueDate: addDays(ANCHOR, -60), paidDate: addDays(ANCHOR, -61), amountCents: price, status: "paid", method: "pix" },
+      { id: clientId + "-p2", dueDate: addDays(ANCHOR, -30), paidDate: addDays(ANCHOR, -30), amountCents: price, status: "paid", method: "cartao" }
+    ];
+    if (currentStatus === "paid") {
+      hist.push({ id: clientId + "-p1", dueDate: addDays(ANCHOR, -1), paidDate: addDays(ANCHOR, -1), amountCents: price, status: "paid", method: "pix" });
+    } else if (currentStatus === "pending") {
+      hist.push({ id: clientId + "-p1", dueDate: addDays(ANCHOR, 4), paidDate: null, amountCents: price, status: "pending", method: null });
+    } else if (currentStatus === "overdue") {
+      hist.push({ id: clientId + "-p1", dueDate: addDays(ANCHOR, -6), paidDate: null, amountCents: price, status: "overdue", method: null });
+    }
+    return hist;
+  }
+  var PAYMENT_STATE = { joao: "paid", maria: "pending", pedro: "overdue", ana: "paid" };
+  CLIENTS.forEach(function (c) {
+    c.plan = PLANS[c.id];
+    c.paymentsHistory = paymentHistoryFor(c.id, PAYMENT_STATE[c.id]);
+  });
+  function currentPayment(client) {
+    var h = client.paymentsHistory;
+    return h.length ? h[h.length - 1] : null;
+  }
+  // "Cobrar pagamento" pelo WhatsApp — mesmo padrão do checkinNudgeMessage (V9): mensagem
+  // contextual, nunca genérica, nunca soa como cobrança de robô.
+  function overduePaymentMessage(client) {
+    var first = client.name.split(" ")[0];
+    var pay = currentPayment(client);
+    var value = pay ? (pay.amountCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "";
+    return "Oi, " + first + "! Tudo bem? Vi aqui que o pagamento do seu plano (" + value + ") está em atraso. Quando puder, regulariza pelo app — qualquer dúvida me chama 😊";
+  }
+  // registra o pagamento simulado — mesmo padrão de mutate-then-patch do submitCheckin.
+  function simulatePayment(clientId, method) {
+    var client = getClient(clientId);
+    var pay = currentPayment(client);
+    if (!pay || pay.status === "paid") return;
+    var now = new Date();
+    pay.status = "paid";
+    pay.paidDate = now;
+    pay.method = method || "pix";
+    paymentProvider.charge(clientId, method);
+    if (global.TracklyStore) {
+      TracklyStore.patchClient(clientId, {
+        paymentSettled: { paymentId: pay.id, paidDate: now.toISOString(), method: pay.method }
+      });
+    }
+  }
+
   // ---------------- helpers derivados ----------------
 
   function getClient(id) { return CLIENTS.filter(function (c) { return c.id === id; })[0] || CLIENTS[0]; }
@@ -1175,6 +1240,14 @@
         });
       }
       if (patch.weekWorkoutsDone != null) c._weekWorkoutsDone = patch.weekWorkoutsDone;
+      if (patch.paymentSettled) {
+        var pay = c.paymentsHistory.filter(function (p) { return p.id === patch.paymentSettled.paymentId; })[0];
+        if (pay && pay.status !== "paid") {
+          pay.status = "paid";
+          pay.paidDate = new Date(patch.paymentSettled.paidDate);
+          pay.method = patch.paymentSettled.method;
+        }
+      }
     });
     (s.manualClients || []).forEach(function (m) {
       if (CLIENTS.some(function (c) { return c.id === m.id; })) return;
@@ -1214,6 +1287,8 @@
     createClient: createClient, sendInvite: sendInvite, acceptInvite: acceptInvite,
     EXERCISE_LIBRARY: EXERCISE_LIBRARY, getExercise: getExercise,
     logWorkoutSession: logWorkoutSession, todaysWorkoutDay: todaysWorkoutDay,
-    todaysMeals: todaysMeals
+    todaysMeals: todaysMeals,
+    paymentProvider: paymentProvider, currentPayment: currentPayment,
+    overduePaymentMessage: overduePaymentMessage, simulatePayment: simulatePayment
   };
 })(window);
