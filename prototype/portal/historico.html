@@ -7,7 +7,18 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../assets/css/base.css">
+<link rel="stylesheet" href="../assets/css/base.css?v=12">
+<style>
+  .hist-row { display: flex; align-items: center; gap: 14px; padding: 15px 4px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .hist-row:last-child { border-bottom: none; }
+  .hist-row:hover { background: var(--surface-sunken); }
+  .hist-row .d { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-faint); width: 44px; flex: none; }
+  .hist-row .body { flex: 1; min-width: 0; }
+  .hist-row .body .wk { font-size: 14px; font-weight: 700; }
+  .hist-row .body .status { font-size: 12px; color: var(--ink-faint); margin-top: 2px; }
+  .hist-row .body .status.ok { color: var(--brand); }
+  .hist-row .chev { color: var(--ink-faint); flex: none; }
+</style>
 </head>
 <body data-root="../">
 <div id="shell-demo"></div>
@@ -22,11 +33,11 @@
   <div id="shell-bottom-nav"></div>
 </div>
 
-<script src="../assets/js/storage.js?v=11"></script>
-<script src="../assets/js/data.js?v=11"></script>
-<script src="../assets/js/icons.js?v=11"></script>
-<script src="../assets/js/charts.js?v=11"></script>
-<script src="../assets/js/nav.js?v=11"></script>
+<script src="../assets/js/storage.js?v=12"></script>
+<script src="../assets/js/data.js?v=12"></script>
+<script src="../assets/js/icons.js?v=12"></script>
+<script src="../assets/js/charts.js?v=12"></script>
+<script src="../assets/js/nav.js?v=12"></script>
 <script>
 (function () {
   var params = new URLSearchParams(location.search);
@@ -34,56 +45,62 @@
   TracklyNav.mountPortalNav("historico", client.id);
 
   var weeks = client.weeks.slice().reverse();
-  document.getElementById("weeks").innerHTML = weeks.map(function (w, i) {
+
+  function drawerBody(w) {
     var submitted = w.checkin.status === "submitted";
-
-    var body = "";
-    if (submitted) {
-      var checklist = [
-        { done: true, label: "Check-in enviado" },
-        { done: !!w.orientation, label: "Coach revisou" },
-        { done: !!w.orientation, label: "Orientação recebida" }
-      ];
-      body += '<div class="status-list compact" style="margin-bottom:18px;">' + checklist.map(function (s) {
-        return '<div class="row' + (s.done ? "" : " pending-row") + '"><span class="mark ' + (s.done ? "done" : "pending") + '">' + (s.done ? ICONS.check : "") + '</span><span>' + s.label + '</span></div>';
-      }).join("") + '</div>';
-
-      var stripItems = [
-        Trackly.isTracked(client, "weight") ? '<div class="item"><div class="label">Peso</div><div class="value">' + w.metrics.weight + '<span class="unit">kg</span></div></div>' : "",
-        Trackly.isTracked(client, "adherence") ? '<div class="item"><div class="label">Dieta</div><div class="value">' + Math.round(w.metrics.adherence / 10) + '<span class="unit">/10</span></div></div>' : "",
-        Trackly.isTracked(client, "workouts") ? '<div class="item"><div class="label">Treinos</div><div class="value">' + w.metrics.workouts + '<span class="unit">/' + w.metrics.workoutsGoal + '</span></div></div>' : ""
-      ].join("");
-      body += '<div class="wc-block"><div class="wc-label">Seu check-in</div><div class="resumo-strip">' + stripItems + '</div></div>';
-
-      body += '<div class="wc-block"><div class="wc-label">Orientação do coach</div>' +
-        (w.orientation ? '<div class="wc-orientation">' + w.orientation + '</div>' : '<div class="wc-orientation" style="color:var(--ink-faint);">Aguardando revisão do coach.</div>') +
-        '</div>';
-
-      var goalsRow = Trackly.trackedGoals(w, client).filter(function (g) { return g.key !== "adherence"; }).map(function (g) {
-        var color2 = g.status === "success" ? "var(--brand)" : g.status === "partial" ? "var(--gold)" : "var(--coral)";
-        var ic = g.status === "success" ? ICONS.check : g.status === "partial" ? ICONS.warn : ICONS.dash;
-        return '<span class="wc-goal"><span style="color:' + color2 + ';">' + ic + '</span>' + g.label + ': ' + g.actual + (g.unit === "%" ? "%" : "") + ' / ' + g.target + '</span>';
-      }).join("");
-      body += '<div class="wc-block"><div class="wc-label">Metas &amp; resultado</div><div class="wc-goals">' + goalsRow + '</div></div>';
-    } else {
-      body += '<div class="wc-block"><p style="font-size:13.5px;color:var(--ink-faint);margin:0;">Check-in ainda não enviado — previsto para ' + Trackly.fmtShort(w.end) + '.</p></div>';
+    if (!submitted) {
+      return '<div class="drawer-title">Semana ' + w.weekNumber + '</div><div class="drawer-sub">' + Trackly.fmtShort(w.end) + '</div>' +
+        '<p style="font-size:13.5px;color:var(--ink-faint);margin:0;">Check-in ainda não enviado — previsto para ' + Trackly.fmtShort(w.end) + '.</p>';
     }
+    var checklist = [
+      { done: true, label: "Check-in enviado" },
+      { done: !!w.orientation, label: "Coach revisou" },
+      { done: !!w.orientation, label: "Orientação recebida" }
+    ];
+    var body = '<div class="drawer-title">Semana ' + w.weekNumber + '</div><div class="drawer-sub">' + Trackly.fmtShort(w.end) + '</div>';
+    body += '<div class="status-list compact" style="margin-bottom:18px;">' + checklist.map(function (s) {
+      return '<div class="row' + (s.done ? "" : " pending-row") + '"><span class="mark ' + (s.done ? "done" : "pending") + '">' + (s.done ? ICONS.check : "") + '</span><span>' + s.label + '</span></div>';
+    }).join("") + '</div>';
 
+    var stripItems = [
+      Trackly.isTracked(client, "weight") ? '<div class="item"><div class="label">Peso</div><div class="value">' + w.metrics.weight + '<span class="unit">kg</span></div></div>' : "",
+      Trackly.isTracked(client, "adherence") ? '<div class="item"><div class="label">Dieta</div><div class="value">' + Math.round(w.metrics.adherence / 10) + '<span class="unit">/10</span></div></div>' : "",
+      Trackly.isTracked(client, "workouts") ? '<div class="item"><div class="label">Treinos</div><div class="value">' + w.metrics.workouts + '<span class="unit">/' + w.metrics.workoutsGoal + '</span></div></div>' : ""
+    ].join("");
+    body += '<div class="wc-block"><div class="wc-label">Seu check-in</div><div class="resumo-strip">' + stripItems + '</div></div>';
+
+    body += '<div class="wc-block"><div class="wc-label">Orientação do coach</div>' +
+      (w.orientation ? '<div class="wc-orientation">' + w.orientation + '</div>' : '<div class="wc-orientation" style="color:var(--ink-faint);">Aguardando revisão do coach.</div>') +
+      '</div>';
+
+    var goalsRow = Trackly.trackedGoals(w, client).filter(function (g) { return g.key !== "adherence"; }).map(function (g) {
+      var color2 = g.status === "success" ? "var(--brand)" : g.status === "partial" ? "var(--gold)" : "var(--coral)";
+      var ic = g.status === "success" ? ICONS.check : g.status === "partial" ? ICONS.warn : ICONS.dash;
+      return '<span class="wc-goal"><span style="color:' + color2 + ';">' + ic + '</span>' + g.label + ': ' + g.actual + (g.unit === "%" ? "%" : "") + ' / ' + g.target + '</span>';
+    }).join("");
+    body += '<div class="wc-block"><div class="wc-label">Metas &amp; resultado</div><div class="wc-goals">' + goalsRow + '</div></div>';
+    return body;
+  }
+
+  document.getElementById("weeks").innerHTML = weeks.map(function (w) {
+    var submitted = w.checkin.status === "submitted";
+    var statusLabel = submitted ? (w.orientation ? "✓ Acompanhamento concluído" : "✓ Check-in enviado") : "Pendente";
     return (
-      '<div class="week-cycle' + (i === 0 ? " open" : "") + '">' +
-      '<div class="wc-head">' +
-        '<span class="wk">S' + w.weekNumber + '</span>' +
-        '<span class="wt">' + Trackly.fmtShort(w.end) + '</span>' +
-        '<span class="wc-status" style="color:' + (submitted ? "var(--brand)" : "var(--ink-faint)") + ';">' + (submitted ? (w.orientation ? "✓ Acompanhamento concluído" : "✓ Check-in enviado") : "Pendente") + '</span>' +
+      '<div class="hist-row" data-week="' + w.weekNumber + '" tabindex="0" role="button">' +
+        '<span class="d">' + Trackly.fmtShort(w.end) + '</span>' +
+        '<div class="body"><div class="wk">Semana ' + w.weekNumber + '</div><div class="status' + (submitted ? " ok" : "") + '">' + statusLabel + '</div></div>' +
         '<span class="chev">' + ICONS.chevronR + '</span>' +
-      '</div>' +
-      '<div class="wc-body">' + body + '</div>' +
       '</div>'
     );
   }).join("");
 
-  document.querySelectorAll(".wc-head").forEach(function (h) {
-    h.addEventListener("click", function () { h.closest(".week-cycle").classList.toggle("open"); });
+  document.querySelectorAll(".hist-row").forEach(function (row) {
+    function open() {
+      var w = client.weeks[parseInt(row.getAttribute("data-week"), 10) - 1];
+      TracklyNav.openDrawer(drawerBody(w));
+    }
+    row.addEventListener("click", open);
+    row.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
   });
 })();
 </script>

@@ -83,5 +83,59 @@
     document.getElementById("shell-bottom-nav").innerHTML = '<nav class="bottom-nav">' + nav + "</nav>";
   }
 
-  global.TracklyNav = { mountCoachShell: mountCoachShell, mountPortalNav: mountPortalNav, colorFor: colorFor };
+  // ---------------- drawer — lista compacta + detalhe sob demanda (V12 §28) ----------------
+  function ensureDrawer() {
+    var host = document.getElementById("trackly-drawer-host");
+    if (host) return host;
+    host = document.createElement("div");
+    host.id = "trackly-drawer-host";
+    host.innerHTML =
+      '<div class="drawer-backdrop" id="trackly-drawer-backdrop"></div>' +
+      '<div class="drawer-panel" id="trackly-drawer-panel" role="dialog" aria-modal="true">' +
+        '<button class="drawer-close" id="trackly-drawer-close" aria-label="Fechar">' + (I.close || "&times;") + '</button>' +
+        '<div id="trackly-drawer-content"></div>' +
+      '</div>';
+    document.body.appendChild(host);
+    document.getElementById("trackly-drawer-backdrop").addEventListener("click", closeDrawer);
+    document.getElementById("trackly-drawer-close").addEventListener("click", closeDrawer);
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeDrawer(); });
+    return host;
+  }
+  function openDrawer(contentHtml) {
+    ensureDrawer();
+    document.getElementById("trackly-drawer-content").innerHTML = contentHtml;
+    document.getElementById("trackly-drawer-backdrop").classList.add("open");
+    document.getElementById("trackly-drawer-panel").classList.add("open");
+  }
+  function closeDrawer() {
+    var backdrop = document.getElementById("trackly-drawer-backdrop");
+    var panel = document.getElementById("trackly-drawer-panel");
+    if (backdrop) backdrop.classList.remove("open");
+    if (panel) panel.classList.remove("open");
+  }
+
+  // ---------------- toast — feedback discreto (V12 §79) ----------------
+  function toast(message) {
+    var host = document.getElementById("trackly-toast-host");
+    if (!host) {
+      host = document.createElement("div");
+      host.id = "trackly-toast-host";
+      host.className = "toast-host";
+      document.body.appendChild(host);
+    }
+    var el = document.createElement("div");
+    el.className = "toast";
+    el.innerHTML = (I.check || "✓") + "<span>" + message + "</span>";
+    host.appendChild(el);
+    requestAnimationFrame(function () { el.classList.add("show"); });
+    setTimeout(function () {
+      el.classList.remove("show");
+      setTimeout(function () { el.remove(); }, 220);
+    }, 2200);
+  }
+
+  global.TracklyNav = {
+    mountCoachShell: mountCoachShell, mountPortalNav: mountPortalNav, colorFor: colorFor,
+    openDrawer: openDrawer, closeDrawer: closeDrawer, toast: toast
+  };
 })(window);
