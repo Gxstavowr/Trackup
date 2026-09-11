@@ -471,6 +471,111 @@
     };
   }
 
+  // ---------------- V7 — memória do acompanhamento: DADO -> HISTÓRICO -> PADRÃO -> CONTEXTO ----------------
+  // Regra de dados mínimos (brief V7 §42): <3 semanas = nada; 3-5 = comparação simples;
+  // 6+ = consistência; 8+ = também a faixa de estabilidade do peso. Tudo em um só lugar
+  // pra que qualquer tela que chame isto herde a mesma régua.
+  function buildCoachMemory(client) {
+    var weeks = client.weeks.filter(function (w) { return w.metrics.adherence != null; });
+    if (weeks.length < 3) return null;
+
+    var first = weeks[0].metrics, last = weeks[weeks.length - 1].metrics;
+    var weightDelta = isTracked(client, "weight") ? round1(last.weight - first.weight) : null;
+    var adherenceAvg = isTracked(client, "adherence") ? Math.round(avg(weeks.map(function (w) { return w.metrics.adherence; }))) : null;
+
+    var scorable = weeks.filter(function (w) { return trackedGoals(w, client).filter(function (g) { return g.key !== "adherence"; }).length > 0; });
+    var weeksWithinGoal = scorable.filter(function (w) {
+      return trackedGoals(w, client).filter(function (g) { return g.key !== "adherence"; }).every(function (g) { return g.status === "success"; });
+    }).length;
+
+    var strengths = [], attentionPoints = [];
+
+    // treino: taxa de acerto nas últimas 6 (ou todas, se houver menos) — só com 6+ semanas de dado
+    if (weeks.length >= 6 && isTracked(client, "workouts")) {
+      var last6 = weeks.slice(-6);
+      var hits = last6.filter(function (w) {
+        var g = trackedGoals(w, client).filter(function (x) { return x.key === "workouts"; })[0];
+        return g && g.status === "success";
+      }).length;
+      if (hits >= last6.length - 1 && hits >= 4) strengths.push("Meta de treino atingida em " + hits + " das últimas " + last6.length + " semanas.");
+    }
+
+    // aderência consistentemente alta — só com 6+ semanas
+    if (weeks.length >= 6 && isTracked(client, "adherence")) {
+      var last6a = weeks.slice(-6);
+      var highCount = last6a.filter(function (w) { return w.metrics.adherence >= 90; }).length;
+      if (highCount >= 4) strengths.push("Aderência acima de 90% em " + highCount + " das últimas " + last6a.length + " semanas.");
+    }
+
+    // sono abaixo da meta nas últimas 2 — funciona a partir de 3 semanas
+    if (isTracked(client, "sleep")) {
+      var last2 = weeks.slice(-2);
+      if (last2.length === 2 && last2.every(function (w) { return w.metrics.sleep < w.metrics.sleepGoal; })) {
+        attentionPoints.push("Sono abaixo da meta nas últimas 2 semanas.");
+      }
+    }
+
+    // aderência caindo nas últimas semanas vs. o resto do período — a partir de 3 semanas
+    if (weeks.length >= 3 && isTracked(client, "adherence")) {
+      var half = Math.floor(weeks.length / 2) || 1;
+      var recentAvg = avg(weeks.slice(-half).map(function (w) { return w.metrics.adherence; }));
+      var priorAvg = avg(weeks.slice(0, weeks.length - half).map(function (w) { return w.metrics.adherence; }));
+      if (priorAvg != null && recentAvg != null && (priorAvg - recentAvg) >= 8) {
+        attentionPoints.push("Aderência caiu nas últimas semanas em relação ao início do período.");
+      }
+    }
+
+    // faixa de estabilidade do peso — só com 8+ semanas (brief §42: "preparar memória longitudinal")
+    var milestoneNote = null;
+    if (weeks.length >= 8 && isTracked(client, "weight")) {
+      var last8 = weeks.slice(-8).map(function (w) { return w.metrics.weight; });
+      var range = round1(Math.max.apply(null, last8) - Math.min.apply(null, last8));
+      if (range <= 0.6) milestoneNote = "Peso permaneceu dentro de uma faixa de " + range + "kg nas últimas 8 semanas.";
+    }
+    if (!milestoneNote && isTracked(client, "weight") && weightDelta != null) {
+      var allWeights = client.weeks.map(function (w) { return w.metrics.weight; });
+      var isLowest = last.weight === Math.min.apply(null, allWeights) && isGoodWeightDelta(client, -1);
+      if (isLowest && weeks.length >= 4) milestoneNote = "Novo menor peso do acompanhamento.";
+    }
+
+    return {
+      weeksTracked: weeks.length,
+      weightDelta: weightDelta,
+      adherenceAvg: adherenceAvg,
+      weeksWithinGoal: weeksWithinGoal,
+      totalScoredWeeks: scorable.length,
+      strengths: strengths,
+      attentionPoints: attentionPoints,
+      milestoneNote: milestoneNote
+    };
+  }
+
+  // frase única de tendência (brief V7 §24) — nunca um bloco de análise, só uma linha cautelosa
+  function trendLine(client) {
+    var weeks = client.weeks.filter(function (w) { return w.metrics.adherence != null; });
+    if (weeks.length < 3) return null;
+    var n = Math.min(weeks.length, 8);
+    var recent = weeks.slice(-n);
+    var first = recent[0].metrics, last = recent[recent.length - 1].metrics;
+
+    if (isTracked(client, "weight")) {
+      var wd = round1(last.weight - first.weight);
+      if (Math.abs(wd) >= 0.5) {
+        var verb = wd < 0 ? "caiu" : "subiu";
+        return "Peso " + verb + " " + Math.abs(wd) + "kg nas últimas " + n + " semanas.";
+      }
+    }
+    if (isTracked(client, "adherence")) {
+      var ad = last.adherence - first.adherence;
+      if (Math.abs(ad) >= 6) {
+        return ad > 0
+          ? "Aderência subiu de " + first.adherence + "% para " + last.adherence + "% nas últimas " + n + " semanas."
+          : "Aderência caiu de " + first.adherence + "% para " + last.adherence + "% nas últimas " + n + " semanas.";
+      }
+    }
+    return "Indicadores estáveis nas últimas " + n + " semanas.";
+  }
+
   function daysSince(date) { return Math.round((ANCHOR - date) / 86400000); }
 
   // ---------------- "o que mudou" — regras simples de observação (sem IA, sem causalidade) ----------------
@@ -629,28 +734,28 @@
 
   // ---------------- template do check-in (estrutura pronta pra futura configuração por coach) ----------------
   var CHECKIN_TEMPLATE = [
-    { key: "dieta", label: "Como foi a dieta?", type: "scale+text", step: 1, active: true, required: true, tracks: "adherence" },
-    { key: "refeicaoLivre", label: "Fez a refeição livre? Se sim, qual dia e o que comeu?", type: "text", step: 1, active: true, required: false, tracks: "adherence" },
-    { key: "beliscos", label: "Houve beliscos de comida fora do plano?", type: "text", step: 1, active: true, required: false, tracks: "adherence" },
-    { key: "treinos", label: "Treinos realizados", type: "stepper", step: 2, active: true, required: true, tracks: "workouts" },
-    { key: "performanceTreino", label: "Como foi sua performance nos treinos?", type: "text", step: 2, active: true, required: false, tracks: "workouts" },
-    { key: "cardio", label: "Sessões de cardio", type: "stepper", step: 2, active: true, required: true, tracks: "cardio" },
-    { key: "cardioDetalhe", label: "Como foi o cardio? Tempo, dias e tipo.", type: "text", step: 2, active: true, required: false, tracks: "cardio" },
-    { key: "periodoMenstrual", label: "Está no período menstrual?", type: "yesno", step: 3, active: true, required: false, genderOnly: "f" },
-    { key: "agua", label: "Quantos litros de água você tomou por dia, em média?", type: "number", step: 3, active: true, required: true, tracks: "water" },
-    { key: "sono", label: "Como foi seu sono?", type: "number+text", step: 3, active: true, required: true, tracks: "sleep" },
-    { key: "digestao", label: "Como foi sua digestão? Idas ao banheiro e estufamento.", type: "text", step: 3, active: true, required: false, tracks: "digestion" },
-    { key: "emocional", label: "Como está seu emocional?", type: "text", step: 3, active: true, required: false, tracks: "emotional" },
-    { key: "substancias", label: "Uso de substâncias/medicamentos, quando aplicável.", type: "text", step: 3, active: true, required: false },
-    { key: "exame", label: "Último exame enviado, quando aplicável.", type: "text", step: 3, active: false, required: false },
-    { key: "peso", label: "Peso atual", type: "number", step: 4, active: true, required: true, tracks: "weight" },
-    { key: "fotos", label: "Fotos de evolução", type: "photos", step: 4, active: true, required: false, tracks: "photos" }
+    { key: "peso", label: "Peso atual", type: "number", step: 1, active: true, required: true, tracks: "weight" },
+    { key: "fotos", label: "Fotos de evolução", type: "photos", step: 1, active: true, required: false, tracks: "photos" },
+    { key: "dieta", label: "Como foi a dieta?", type: "scale+text", step: 2, active: true, required: true, tracks: "adherence" },
+    { key: "refeicaoLivre", label: "Fez a refeição livre? Se sim, qual dia e o que comeu?", type: "text", step: 2, active: true, required: false, tracks: "adherence" },
+    { key: "beliscos", label: "Houve beliscos de comida fora do plano?", type: "text", step: 2, active: true, required: false, tracks: "adherence" },
+    { key: "treinos", label: "Treinos realizados", type: "stepper", step: 3, active: true, required: true, tracks: "workouts" },
+    { key: "performanceTreino", label: "Como foi sua performance nos treinos?", type: "text", step: 3, active: true, required: false, tracks: "workouts" },
+    { key: "cardio", label: "Sessões de cardio", type: "stepper", step: 3, active: true, required: true, tracks: "cardio" },
+    { key: "cardioDetalhe", label: "Como foi o cardio? Tempo, dias e tipo.", type: "text", step: 3, active: true, required: false, tracks: "cardio" },
+    { key: "periodoMenstrual", label: "Está no período menstrual?", type: "yesno", step: 4, active: true, required: false, genderOnly: "f" },
+    { key: "agua", label: "Quantos litros de água você tomou por dia, em média?", type: "number", step: 4, active: true, required: true, tracks: "water" },
+    { key: "sono", label: "Como foi seu sono?", type: "number+text", step: 4, active: true, required: true, tracks: "sleep" },
+    { key: "digestao", label: "Como foi sua digestão? Idas ao banheiro e estufamento.", type: "text", step: 4, active: true, required: false, tracks: "digestion" },
+    { key: "emocional", label: "Como está seu emocional?", type: "text", step: 4, active: true, required: false, tracks: "emotional" },
+    { key: "substancias", label: "Uso de substâncias/medicamentos, quando aplicável.", type: "text", step: 4, active: true, required: false },
+    { key: "exame", label: "Último exame enviado, quando aplicável.", type: "text", step: 4, active: false, required: false }
   ];
   var CHECKIN_STEPS = [
-    { n: 1, label: "Alimentação" },
-    { n: 2, label: "Treino" },
-    { n: 3, label: "Bem-estar" },
-    { n: 4, label: "Peso e fotos" }
+    { n: 1, label: "Peso e fotos" },
+    { n: 2, label: "Alimentação" },
+    { n: 3, label: "Treino" },
+    { n: 4, label: "Bem-estar" }
   ];
   // perguntas do template que fazem sentido pra este aluno — filtra por `tracks` (quando a
   // pergunta pertence a uma métrica) e por gênero (periodoMenstrual).
@@ -815,6 +920,7 @@
     currentWeek: currentWeek, needsReview: needsReview, isLate: isLate, suggestOrientation: suggestOrientation,
     computeStatus: computeStatus, computeKPIs: computeKPIs, isGoodWeightDelta: isGoodWeightDelta,
     weeksInRange: weeksInRange, buildPeriodSummary: buildPeriodSummary, recentWeeksTable: recentWeeksTable,
+    buildCoachMemory: buildCoachMemory, trendLine: trendLine,
     getCheckinWindowStatus: getCheckinWindowStatus, nextOpenDate: nextOpenDate,
     checkInInsights: checkInInsights, focusLabel: focusLabel, focusLabelFromOrientation: focusLabelFromOrientation, focusIntro: focusIntro,
     studentUpdate: studentUpdate, buildWeeklySnapshot: buildWeeklySnapshot, clientStage: clientStage,
