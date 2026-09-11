@@ -249,7 +249,12 @@
       '<div class="confirm-wrap"><div class="ring">' + ICONS.check + '</div>' +
       '<h2>Orientação enviada</h2>' +
       '<p>' + client.name.split(" ")[0] + ' vai ver o foco da semana e sua mensagem assim que abrir o app. ✓ Atualizado hoje às ' + Trackly.fmtTime(new Date()) + '.</p>' +
-      '<a href="dashboard.html" class="btn btn-primary">Voltar ao dashboard</a></div>';
+      '<button class="btn btn-ghost" id="notify-whatsapp-coach" style="margin-bottom:16px;">Enviar também pelo WhatsApp</button>' +
+      '<br><a href="dashboard.html" class="btn btn-primary">Voltar ao dashboard</a></div>';
+    document.getElementById("notify-whatsapp-coach").addEventListener("click", function () {
+      this.textContent = "✓ Enviado no WhatsApp";
+      this.disabled = true;
+    });
   });
 })();
 </script>
