@@ -79,7 +79,6 @@
     return;
   }
   var qa = cur.qa || {};
-  var insights = Trackly.checkInInsights(client);
   var suggestedFocus = Trackly.focusLabel(client);
 
   var qaKeyTracks = { cardioDetalhe: "cardio", performanceTreino: "workouts", digestao: "digestion", emocional: "emotional" };
@@ -116,6 +115,25 @@
     var wdGood = Trackly.isGoodWeightDelta(client, wd);
     weightDeltaForHero = '<div class="delta" style="color:' + (wd === 0 ? "var(--ink-faint)" : (wdGood ? "var(--brand)" : "var(--coral)")) + ';">' + (wd === 0 ? "" : (wd < 0 ? "↓ " : "↑ ")) + Math.abs(wd) + 'kg</div>';
   }
+
+  // "O que mudou" — pares antes->depois compactos (brief V7 §14), não mais frases soltas
+  var whatChangedRows = (function () {
+    if (!prevSubmitted) return [];
+    var rows = [];
+    if (Trackly.isTracked(client, "weight")) {
+      var wd2 = Trackly.round1(cur.metrics.weight - prevSubmitted.metrics.weight);
+      if (Math.abs(wd2) >= 0.1) rows.push({ label: "Peso", from: prevSubmitted.metrics.weight + "kg", to: cur.metrics.weight + "kg", arrow: wd2 < 0 ? "↓" : "↑", good: Trackly.isGoodWeightDelta(client, wd2) });
+    }
+    if (Trackly.isTracked(client, "adherence")) {
+      var adDelta = cur.metrics.adherence - prevSubmitted.metrics.adherence;
+      if (Math.abs(adDelta) >= 2) rows.push({ label: "Aderência", from: prevSubmitted.metrics.adherence + "%", to: cur.metrics.adherence + "%", arrow: adDelta > 0 ? "↑" : "↓", good: adDelta > 0, extra: Math.abs(adDelta) + " pts" });
+    }
+    if (Trackly.isTracked(client, "sleep")) {
+      var slDelta = Trackly.round1(cur.metrics.sleep - prevSubmitted.metrics.sleep);
+      if (Math.abs(slDelta) >= 0.4) rows.push({ label: "Sono", from: prevSubmitted.metrics.sleep + "h", to: cur.metrics.sleep + "h", arrow: slDelta < 0 ? "↓" : "↑", good: slDelta >= 0 });
+    }
+    return rows;
+  })();
 
   // Últimas semanas — contexto de tendência antes de decidir
   var recent = Trackly.recentWeeksTable(client, 3);
@@ -164,10 +182,12 @@
       (Trackly.isTracked(client, "sleep") ? '<div class="hero-stat"><div class="value">' + cur.metrics.sleep + '<span class="unit">h</span></div><div class="label">sono</div></div>' : "") +
     '</div>' +
 
-    (insights.length ? (
+    (whatChangedRows.length ? (
     '<div style="margin-bottom:26px;">' +
       '<p class="section-label">O que mudou</p>' +
-      '<div class="insight-list">' + insights.map(function (t) { return '<div class="row"><span class="dot"></span>' + t + '</div>'; }).join("") + '</div>' +
+      '<div class="stack" style="gap:10px;">' + whatChangedRows.map(function (r) {
+        return '<div style="display:flex;align-items:baseline;justify-content:space-between;font-size:13.5px;"><span style="color:var(--ink-muted);">' + r.label + '</span><span>' + r.from + ' → ' + r.to + ' <strong style="color:' + (r.good ? "var(--brand)" : "var(--coral)") + ';">' + r.arrow + (r.extra ? " " + r.extra : "") + '</strong></span></div>';
+      }).join("") + '</div>' +
     '</div>'
     ) : "") +
 
