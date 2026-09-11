@@ -44,6 +44,7 @@
 
       <div class="tabs" style="margin-top:22px;">
         <button class="tab-btn active" data-tab="resumo">Visão geral</button>
+        <button class="tab-btn" id="tab-avaliacao-link" type="button">Avaliação</button>
         <button class="tab-btn" data-tab="evolucao">Evolução</button>
         <button class="tab-btn" data-tab="fotos">Fotos</button>
         <button class="tab-btn" data-tab="historico">Histórico</button>
@@ -395,16 +396,18 @@
 
   var renderers = { resumo: renderResumo, evolucao: renderEvolucao, fotos: renderFotos, historico: renderHistorico };
   var rendered = {};
-  document.querySelectorAll(".tab-btn").forEach(function (btn) {
+  document.querySelectorAll(".tab-btn[data-tab]").forEach(function (btn) {
     btn.addEventListener("click", function () {
       var tab = btn.getAttribute("data-tab");
-      document.querySelectorAll(".tab-btn").forEach(function (b) { b.classList.remove("active"); });
+      document.querySelectorAll(".tab-btn[data-tab]").forEach(function (b) { b.classList.remove("active"); });
       document.querySelectorAll(".tab-panel").forEach(function (p) { p.classList.remove("active"); });
       btn.classList.add("active");
       document.getElementById("tab-" + tab).classList.add("active");
       if (!rendered[tab]) { renderers[tab](); rendered[tab] = true; }
     });
   });
+  var avalLink = document.getElementById("tab-avaliacao-link");
+  if (avalLink) avalLink.addEventListener("click", function () { location.href = "revisar.html?id=" + client.id; });
   renderResumo(); rendered.resumo = true;
 })();
 </script>
