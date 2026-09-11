@@ -386,6 +386,12 @@ button { font: inherit; }
 .compare-slider .cs-tag.after { right: 12px; }
 .compare-slider .cs-handle { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(242,244,239,.85); cursor: ew-resize; }
 .compare-slider .cs-handle:focus-visible::after { outline: 2px solid var(--brand); outline-offset: 2px; }
+.compare-slider.lg { max-width: 640px; }
+
+/* angle-tabs — Frente/Costas/Lateral, mesma linguagem visual do range-sel */
+.angle-tabs { display: inline-flex; background: var(--surface-sunken); border-radius: 999px; padding: 3px; gap: 2px; }
+.angle-tabs button { padding: 6px 14px; border-radius: 999px; border: none; background: none; font-size: 12.5px; font-weight: 600; color: var(--ink-muted); cursor: pointer; }
+.angle-tabs button.active { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 .compare-slider .cs-handle::after { content: ""; position: absolute; top: 50%; left: 50%; width: 40px; height: 40px; border-radius: 50%; background: var(--ink); transform: translate(-50%, -50%); box-shadow: 0 4px 14px rgba(0,0,0,.4); }
 .compare-slider .cs-handle::before { content: "◂▸"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 11px; color: var(--on-accent); letter-spacing: 2px; z-index: 1; }
 .compare-meta { display: flex; justify-content: space-between; gap: var(--space-4); margin-top: var(--space-4); flex-wrap: wrap; }

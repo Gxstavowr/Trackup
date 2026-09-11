@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Revisar check-in — Trackly</title>
+<title>Avaliação — Trackly</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -35,11 +35,6 @@
   .recent-table th.now, .recent-table td.now { color: var(--brand); }
   .recent-table td { text-align: right; font-family: var(--font-mono); font-size: 13px; padding: 7px 0 7px 10px; border-top: 1px solid var(--line); }
   .recent-table td.metric-label { font-family: var(--font-body); color: var(--ink-muted); font-size: 12.5px; }
-  .visual-evo { display: flex; align-items: center; gap: 16px; }
-  .visual-evo .vs-photos { display: flex; gap: 6px; flex: none; }
-  .visual-evo .vs-photo { width: 40px; height: 54px; border-radius: 6px; }
-  .visual-evo .vs-arrow { color: var(--ink-faint); flex: none; }
-  .visual-evo .vs-label { font-size: 11px; color: var(--ink-faint); text-align: center; margin-top: 4px; }
 </style>
 </head>
 <body data-root="../">
@@ -152,35 +147,52 @@
     '</div>'
   );
 
-  // Evolução visual — só uma prévia; a comparação completa fica no perfil
-  var submittedWeeks = client.weeks.filter(function (w) { return w.checkin.status === "submitted"; });
-  var visualEvoHtml = (!Trackly.isTracked(client, "photos") || submittedWeeks.length < 2) ? "" : (function () {
-    var prevW = submittedWeeks[submittedWeeks.length - 2];
-    function ph(i) { return '<div class="vs-photo" style="background:hsl(' + hue + ',' + (26 + i * 4) + '%,' + (30 + i * 8) + '%);"></div>'; }
+  // "Evolução desta semana" — peso + a mesma foto grande de comparação usada nas abas Fotos,
+  // aqui sempre fixa em semana-anterior vs semana-atual (é a decisão que o coach está tomando agora)
+  var angleState = { angle: "front" };
+  function photoBg(i, angle) {
+    var angleShift = angle === "back" ? 40 : angle === "side" ? 80 : 0;
+    return "hsl(" + (hue + angleShift) + "," + (26 + i * 6) + "%," + (30 + i * 10) + "%)";
+  }
+  var evoWeekModuleHtml = (function () {
+    var hasPhotoPair = Trackly.isTracked(client, "photos") && prevSubmitted;
+    var sliderHtml = !hasPhotoPair ? "" : (
+      '<div class="angle-tabs" id="angle-tabs" style="margin-bottom:14px;">' +
+        ["front", "back", "side"].map(function (a) {
+          var names = { front: "Frente", back: "Costas", side: "Lateral" };
+          return '<button data-angle="' + a + '" class="' + (angleState.angle === a ? "active" : "") + '">' + names[a] + '</button>';
+        }).join("") +
+      '</div>' +
+      '<div class="compare-slider" id="cs-photo">' +
+        '<div class="cs-after" style="background:' + photoBg(1, angleState.angle) + ';"><span class="cs-tag after">Agora · S' + cur.weekNumber + '</span></div>' +
+        '<div class="cs-before" id="cs-before-clip" style="width:50%;"><div style="background:' + photoBg(0, angleState.angle) + ';"><span class="cs-tag before">Antes · S' + prevSubmitted.weekNumber + '</span></div></div>' +
+        '<div class="cs-handle" id="cs-handle" tabindex="0" role="slider" aria-label="Comparar antes e depois" aria-valuemin="4" aria-valuemax="96" aria-valuenow="50" style="left:50%;"></div>' +
+      '</div>'
+    );
+    if (!sliderHtml && !Trackly.isTracked(client, "weight")) return "";
     return (
-      '<div style="margin-bottom:26px;">' +
-        '<p class="section-label">Evolução visual</p>' +
-        '<div class="visual-evo">' +
-          '<div><div class="vs-photos">' + ph(0) + ph(1) + '</div><div class="vs-label">Semana ' + prevW.weekNumber + '</div></div>' +
-          '<span class="vs-arrow">' + ICONS.chevronR + '</span>' +
-          '<div><div class="vs-photos">' + ph(2) + ph(3) + '</div><div class="vs-label">Semana ' + cur.weekNumber + ' (atual)</div></div>' +
-          '<a href="cliente.html?id=' + client.id + '" style="margin-left:auto;font-size:12.5px;color:var(--brand);font-weight:600;white-space:nowrap;">Ver comparação</a>' +
-        '</div>' +
+      '<div style="margin-bottom:28px;">' +
+        '<p class="section-label">Evolução desta semana</p>' +
+        (Trackly.isTracked(client, "weight") ? '<div class="hero-stat" style="margin-bottom:16px;"><div class="value">' + cur.metrics.weight + '<span class="unit">kg</span></div>' + weightDeltaForHero + '<div class="label">peso' + (prevSubmitted ? " · semana " + prevSubmitted.weekNumber + " → " + cur.weekNumber : "") + '</div></div>' : "") +
+        sliderHtml +
       '</div>'
     );
   })();
 
   document.getElementById("review-body").innerHTML =
     '<div class="review-head">' +
+      '<p class="eyebrow">Avaliação</p>' +
       '<div class="who"><span class="avatar" style="background:' + color + '">' + client.initials + '</span><h1>' + client.name + '</h1></div>' +
-      '<div class="wk">Check-in — Semana ' + cur.weekNumber + ' &nbsp;·&nbsp; recebido ' + Trackly.relativeLabel(cur.checkin.submittedAt) + '</div>' +
+      '<div class="wk">Semana ' + cur.weekNumber + ' &nbsp;·&nbsp; recebido ' + Trackly.relativeLabel(cur.checkin.submittedAt) + '</div>' +
     '</div>' +
 
     '<div style="display:flex;gap:32px;flex-wrap:wrap;margin-bottom:28px;">' +
       (Trackly.isTracked(client, "weight") ? '<div class="hero-stat"><div class="value">' + cur.metrics.weight + '<span class="unit">kg</span></div>' + weightDeltaForHero + '<div class="label">peso</div></div>' : "") +
       (Trackly.isTracked(client, "adherence") ? '<div class="hero-stat"><div class="value">' + cur.metrics.adherence + '<span class="unit">%</span></div><div class="label">aderência</div></div>' : "") +
-      (Trackly.isTracked(client, "sleep") ? '<div class="hero-stat"><div class="value">' + cur.metrics.sleep + '<span class="unit">h</span></div><div class="label">sono</div></div>' : "") +
+      (Trackly.isTracked(client, "workouts") ? '<div class="hero-stat"><div class="value">' + cur.metrics.workouts + '<span class="unit">/' + cur.metrics.workoutsGoal + '</span></div><div class="label">treinos</div></div>' : "") +
     '</div>' +
+
+    evoWeekModuleHtml +
 
     (whatChangedRows.length ? (
     '<div style="margin-bottom:26px;">' +
@@ -204,7 +216,10 @@
       '</div>' +
     '</div>' +
 
-    visualEvoHtml +
+    '<div style="margin-bottom:26px;">' +
+      '<p class="section-label">Notas do coach</p>' +
+      '<textarea id="coach-note-input" rows="2" placeholder="Algo que não cabe nos números? (opcional, só você vê)" style="width:100%;border:1px solid var(--line-strong);border-radius:var(--radius-sm);padding:10px 13px;font-family:var(--font-body);font-size:13.5px;background:var(--surface);color:var(--ink);resize:vertical;">' + (cur.coachReview && cur.coachReview.note ? cur.coachReview.note : "") + '</textarea>' +
+    '</div>' +
 
     '<div class="card card-pad" style="margin-bottom:18px;">' +
       '<p class="card-title" style="margin-bottom:4px;">O que você quer orientar esta semana?</p>' +
@@ -231,6 +246,45 @@
     this.querySelector("span").textContent = this.classList.contains("open") ? "Ocultar respostas" : "Ver o que ele respondeu";
   });
 
+  if (document.getElementById("cs-photo")) wireCompareInteraction();
+  var angleTabsEl = document.getElementById("angle-tabs");
+  if (angleTabsEl) angleTabsEl.querySelectorAll("button").forEach(function (b) {
+    b.addEventListener("click", function () { angleState.angle = b.getAttribute("data-angle"); rerenderEvoModule(); });
+  });
+
+  function wireCompareInteraction() {
+    var wrap = document.getElementById("cs-photo");
+    var handle = document.getElementById("cs-handle");
+    var clip = document.getElementById("cs-before-clip");
+    var fullWidth = wrap.getBoundingClientRect().width;
+    clip.firstElementChild.style.width = fullWidth + "px";
+    var dragging = false;
+    function setPct(pct) {
+      pct = Math.max(4, Math.min(96, pct));
+      clip.style.width = pct + "%";
+      handle.style.left = pct + "%";
+      handle.setAttribute("aria-valuenow", Math.round(pct));
+    }
+    function setPctFromX(clientX) { var rect = wrap.getBoundingClientRect(); setPct(((clientX - rect.left) / rect.width) * 100); }
+    handle.addEventListener("pointerdown", function (e) { dragging = true; handle.setPointerCapture(e.pointerId); });
+    handle.addEventListener("pointermove", function (e) { if (dragging) setPctFromX(e.clientX); });
+    handle.addEventListener("pointerup", function () { dragging = false; });
+    handle.addEventListener("keydown", function (e) {
+      var curPct = parseFloat(handle.style.left) || 50;
+      if (e.key === "ArrowLeft") { e.preventDefault(); setPct(curPct - 5); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); setPct(curPct + 5); }
+    });
+    wrap.addEventListener("click", function (e) { if (e.target === wrap || e.target.classList.contains("cs-after")) setPctFromX(e.clientX); });
+  }
+
+  function rerenderEvoModule() {
+    var wrap = document.getElementById("cs-photo");
+    if (!wrap) return;
+    wrap.querySelector(".cs-after").style.background = photoBg(1, angleState.angle);
+    wrap.querySelector(".cs-before > div").style.background = photoBg(0, angleState.angle);
+    angleTabsEl.querySelectorAll("button").forEach(function (b) { b.classList.toggle("active", b.getAttribute("data-angle") === angleState.angle); });
+  }
+
   document.getElementById("send-orientation").addEventListener("click", function () {
     var goals = {};
     document.querySelectorAll("#metas-editor input[data-key]").forEach(function (input) {
@@ -239,6 +293,7 @@
     Trackly.completeOrientation(client.id, {
       focus: document.getElementById("focus-input").value.trim(),
       orientation: document.getElementById("orientation-input").value.trim(),
+      note: document.getElementById("coach-note-input").value.trim(),
       goals: goals
     });
 
