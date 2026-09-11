@@ -237,9 +237,13 @@
 
   // ---------------- FOTOS — Evolução visual: a comparação antes/depois é a protagonista ----------------
   var hue = client.colorVar === "--c1" ? 155 : client.colorVar === "--c2" ? 32 : client.colorVar === "--c3" ? 265 : 205;
-  function photoBg(i) { return "hsl(" + hue + "," + (26 + i * 6) + "%," + (30 + i * 10) + "%)"; }
+  function photoBg(i, angle) {
+    var angleShift = angle === "back" ? 40 : angle === "side" ? 80 : 0;
+    return "hsl(" + (hue + angleShift) + "," + (26 + i * 6) + "%," + (30 + i * 10) + "%)";
+  }
 
   var compareState = {};
+  var photoAngleState = { angle: "front" };
   function renderFotos() {
     var submittedWeeks = client.weeks.filter(function (w) { return w.checkin.status === "submitted"; });
     if (submittedWeeks.length < 2) {
@@ -267,9 +271,15 @@
         '<select class="compare-select" data-side="a">' + optHtml(compareState.a) + '</select>' +
         '<select class="compare-select" data-side="b">' + optHtml(compareState.b) + '</select>' +
       '</div>' +
-      '<div class="compare-slider" id="cs-photo">' +
-        '<div class="cs-after" style="background:' + photoBg(1) + ';"><span class="cs-tag after">Agora · S' + compareState.b + '</span></div>' +
-        '<div class="cs-before" id="cs-before-clip" style="width:50%;"><div style="background:' + photoBg(0) + ';"><span class="cs-tag before">Antes · S' + compareState.a + '</span></div></div>' +
+      '<div class="angle-tabs" id="angle-tabs" style="margin-bottom:14px;">' +
+        ["front", "back", "side"].map(function (a) {
+          var names = { front: "Frente", back: "Costas", side: "Lateral" };
+          return '<button data-angle="' + a + '" class="' + (photoAngleState.angle === a ? "active" : "") + '">' + names[a] + '</button>';
+        }).join("") +
+      '</div>' +
+      '<div class="compare-slider lg" id="cs-photo">' +
+        '<div class="cs-after" style="background:' + photoBg(1, photoAngleState.angle) + ';"><span class="cs-tag after">Agora · S' + compareState.b + '</span></div>' +
+        '<div class="cs-before" id="cs-before-clip" style="width:50%;"><div style="background:' + photoBg(0, photoAngleState.angle) + ';"><span class="cs-tag before">Antes · S' + compareState.a + '</span></div></div>' +
         '<div class="cs-handle" id="cs-handle" tabindex="0" role="slider" aria-label="Comparar antes e depois" aria-valuemin="4" aria-valuemax="96" aria-valuenow="50" style="left:50%;"></div>' +
       '</div>' +
       '<div class="compare-meta">' + metaItems.map(function (m) {
@@ -280,6 +290,14 @@
     wireCompareInteraction();
     document.querySelectorAll(".compare-select").forEach(function (sel) {
       sel.addEventListener("change", function () { compareState[sel.getAttribute("data-side")] = parseInt(sel.value, 10); renderFotos(); });
+    });
+    document.getElementById("angle-tabs").querySelectorAll("button").forEach(function (b) {
+      b.addEventListener("click", function () {
+        photoAngleState.angle = b.getAttribute("data-angle");
+        document.getElementById("cs-photo").querySelector(".cs-after").style.background = photoBg(1, photoAngleState.angle);
+        document.getElementById("cs-photo").querySelector(".cs-before > div").style.background = photoBg(0, photoAngleState.angle);
+        document.querySelectorAll("#angle-tabs button").forEach(function (btn) { btn.classList.toggle("active", btn === b); });
+      });
     });
   }
 
