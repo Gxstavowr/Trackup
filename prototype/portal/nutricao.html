@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nutrição — Trackly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  .nt-head { padding: 2px 0 4px; }
+  .nt-head h1 { font-family: var(--font-display); font-size: 24px; margin: 6px 0 6px; font-weight: 600; }
+  .nt-head .meta { font-size: 13px; color: var(--ink-muted); }
+  .meal-item { border: 1px solid var(--line); border-radius: var(--radius-md); margin-bottom: 12px; overflow: hidden; background: var(--surface); }
+  .meal-item-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; }
+  .meal-item-head .time { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); width: 46px; flex: none; }
+  .meal-item-head .n { flex: 1; font-size: 14.5px; font-weight: 700; }
+  .meal-item-head .kcal { font-size: 12px; color: var(--ink-faint); }
+  .meal-item-head .chev { color: var(--ink-faint); transition: transform .16s; flex: none; margin-left: 4px; }
+  .meal-item.open .chev { transform: rotate(90deg); }
+  .meal-item-body { display: none; padding: 0 16px 18px; }
+  .meal-item.open .meal-item-body { display: block; animation: fadein .18s ease; }
+  .mi-block { margin-bottom: 14px; }
+  .mi-block:last-child { margin-bottom: 0; }
+  .mi-label { font-size: 10.5px; color: var(--ink-faint); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; }
+  .mi-item-row { display: flex; justify-content: space-between; font-size: 13.5px; padding: 5px 0; }
+  .mi-item-row .q { color: var(--ink-faint); font-family: var(--font-mono); font-size: 12px; }
+  .mi-sub-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-muted); padding: 5px 0; }
+  .mi-sub-row .arrow { color: var(--ink-faint); flex: none; }
+  .mi-macros { display: flex; gap: 20px; flex-wrap: wrap; }
+  .mi-macros .item .l { font-size: 10.5px; color: var(--ink-faint); font-weight: 600; margin-bottom: 3px; }
+  .mi-macros .item .v { font-family: var(--font-mono); font-size: 14px; font-weight: 600; }
+</style>
+</head>
+<body data-root="../">
+<div id="shell-demo"></div>
+<div class="portal">
+  <div class="portal-top" id="shell-portal-top"></div>
+  <div class="portal-inner">
+    <div class="nt-head">
+      <p class="eyebrow">Nutrição de hoje</p>
+      <h1 id="plan-name"></h1>
+      <p class="meta" id="plan-meta"></p>
+    </div>
+    <div id="meals-list"></div>
+  </div>
+  <div id="shell-bottom-nav"></div>
+</div>
+
+<script src="../assets/js/storage.js?v=11"></script>
+<script src="../assets/js/data.js?v=11"></script>
+<script src="../assets/js/icons.js?v=11"></script>
+<script src="../assets/js/charts.js?v=11"></script>
+<script src="../assets/js/nav.js?v=11"></script>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var client = Trackly.getClient(params.get("client") || "joao");
+  TracklyNav.mountPortalNav("nutricao", client.id);
+
+  if (!client.nutritionPlan) {
+    document.querySelector(".portal-inner").innerHTML = '<div class="empty-state" style="margin-top:40px;"><h3>Nenhum plano alimentar ainda</h3><p>Seu coach ainda não montou seu plano. Assim que estiver pronto, aparece aqui.</p></div>';
+    return;
+  }
+
+  var meals = Trackly.todaysMeals(client);
+  var totalKcal = meals.reduce(function (s, m) { return s + m.macros.kcal; }, 0);
+  document.getElementById("plan-name").textContent = client.nutritionPlan.planName;
+  document.getElementById("plan-meta").textContent = meals.length + " refeições · ~" + totalKcal + " kcal no dia";
+
+  document.getElementById("meals-list").innerHTML = meals.map(function (meal, i) {
+    var itemsHtml = meal.items.map(function (item) {
+      return '<div class="mi-item-row"><span>' + item.food + '</span><span class="q">' + item.qty + '</span></div>';
+    }).join("");
+    var subsHtml = meal.substitutes.length ? (
+      '<div class="mi-block"><div class="mi-label">Substituições equivalentes</div>' +
+      meal.substitutes.map(function (pair) {
+        return '<div class="mi-sub-row"><span>' + pair[0] + '</span><span class="arrow">' + ICONS.chevronR + '</span><span>' + pair[1] + '</span></div>';
+      }).join("") + '</div>'
+    ) : "";
+    return (
+      '<div class="meal-item' + (i === 0 ? " open" : "") + '" data-meal-item="' + i + '">' +
+        '<div class="meal-item-head">' +
+          '<span class="time">' + meal.time + '</span>' +
+          '<span class="n">' + meal.name + '</span>' +
+          '<span class="kcal">' + meal.macros.kcal + ' kcal</span>' +
+          '<span class="chev">' + ICONS.chevronR + '</span>' +
+        '</div>' +
+        '<div class="meal-item-body">' +
+          '<div class="mi-block"><div class="mi-label">Itens</div>' + itemsHtml + '</div>' +
+          subsHtml +
+          '<div class="mi-block"><div class="mi-label">Macros</div><div class="mi-macros">' +
+            '<div class="item"><div class="l">Proteína</div><div class="v">' + meal.macros.protein + 'g</div></div>' +
+            '<div class="item"><div class="l">Carbo</div><div class="v">' + meal.macros.carbs + 'g</div></div>' +
+            '<div class="item"><div class="l">Gordura</div><div class="v">' + meal.macros.fat + 'g</div></div>' +
+            '<div class="item"><div class="l">Kcal</div><div class="v">' + meal.macros.kcal + '</div></div>' +
+          '</div></div>' +
+        '</div>' +
+      '</div>'
+    );
+  }).join("");
+
+  document.querySelectorAll(".meal-item-head").forEach(function (h) {
+    h.addEventListener("click", function () { h.closest(".meal-item").classList.toggle("open"); });
+  });
+})();
+</script>
+</body>
+</html>
