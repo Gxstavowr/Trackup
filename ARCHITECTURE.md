@@ -332,3 +332,48 @@ resolvida desde V6–V8. O trabalho novo real desta versão:
 
 Passagem de verificação responsiva em 375/390/430 (aluno) e 768/1280+ (coach) não
 encontrou regressões — nenhuma correção de CSS foi necessária.
+
+## V10 — coach workspace: estados inequívocos, comparação unificada
+
+Objetivo: eliminar a ambiguidade em torno do que "Revisar" significava e tornar o
+lado do coach mais claramente uma ferramenta de trabalho.
+
+1. **`cur.reviewOpenedAt`** (`assets/js/data.js`) — grava que o coach abriu (mas
+   ainda não enviou) uma avaliação, persistido como qualquer outra mutação por
+   semana. `computeStatus()` ganhou o código `"progress"` ("Em avaliação"), que
+   convive com os cinco códigos já existentes (`late`/`review`/`warn`/`ok`/`invite`)
+   sem quebrar nenhum call site anterior. É a mesma régua usada em
+   `coach/dashboard.html`, `coach/clientes.html` e no próprio badge de
+   `coach/revisar.html` — nunca reimplementada por tela.
+   **Simplificação deliberada**: o brief pede 5 estados (incluindo "orientação em
+   preparação" separado de "em avaliação"); sem um autosave de rascunho real, essa
+   distinção seria fabricada — os dois colapsam em `"progress"`.
+2. **Navegação renomeada** — "Dashboard" → "Acompanhamento", "Clientes" → "Alunos"
+   (`assets/js/nav.js`). CTAs por linha agora leem "Avaliar agora" / "Continuar
+   avaliação" / "✓ Avaliação concluída" em vez de um "Revisar" genérico.
+3. **Filtros de Alunos consolidados**: de 5 chips para 4
+   (Todos/Avaliação/Atenção/Em dia) — "Avaliação" agrupa `late`+`review`+`progress`
+   (qualquer coisa que ainda precisa acontecer, do aluno ou do coach), distinto de
+   "Atenção" (`warn` — um padrão que vale observar, não uma pendência).
+4. **Comparação da Avaliação, unificada**: o módulo "Evolução desta semana" (que na
+   V9 só movia o peso ao trocar "Comparar com") agora move peso, cintura e
+   aderência juntos, numa função `buildCompareMeta()` única reusada tanto no
+   primeiro render quanto no handler de troca — nunca duas fontes de verdade que
+   possam divergir. O seletor também passou a existir mesmo para clientes sem
+   `photos` habilitado (antes ficava preso atrás do slider de fotos).
+5. **Tela de conclusão da Avaliação** reescrita como checklist ("Peso analisado /
+   Fotos comparadas / Orientação enviada") em vez de uma frase única.
+6. **Aba "Avaliação" no perfil do aluno** — implementada como link direto pra
+   `revisar.html`, não como painel duplicado (a página dedicada já resolve isso;
+   um painel novo violaria o próprio princípio do brief de "não criar tela que não
+   responde uma pergunta diferente").
+
+**Deliberadamente não implementado**: uma área "Carteira" (visão agregada da
+carteira de alunos). O brief só autoriza construí-la "se possuir finalidade clara"
+e não descreve nenhuma tela além de um exemplo hipotético de uma linha — abrir um
+terceiro item de navegação pra isso teria violado a mesma regra que a própria
+seção pede pra seguir.
+
+Nada de novo em `localStorage` além de `reviewOpenedAt` (mesmo padrão de patch por
+cliente de sempre). Verificado com o fluxo completo aguardando-avaliação →
+em-avaliação → concluído sobrevivendo a reload em cada etapa, numa aba limpa.
