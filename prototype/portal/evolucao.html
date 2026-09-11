@@ -22,6 +22,7 @@
   .period-narrative { font-size: 13.5px; line-height: 1.6; color: var(--ink); border-top: 1px solid var(--brand-tint-strong); padding-top: 14px; margin: 0; }
   .period-narrative strong { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--brand); margin-bottom: 6px; font-weight: 700; }
   .compare-select { width: 100%; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font-size: 12.5px; font-family: var(--font-body); }
+  .stat-chip-row { display: flex; flex-wrap: wrap; gap: 30px; margin-bottom: 30px; }
 </style>
 </head>
 <body data-root="../">
@@ -37,38 +38,15 @@
 
     <div class="range-sel" id="range-sel" style="margin-bottom:16px;"></div>
 
-    <div style="margin-bottom:28px;" id="weight-chart-card">
+    <div style="margin-bottom:8px;" id="weight-chart-card">
       <div id="weight-hero" style="margin-bottom:16px;"></div>
       <div id="chart-weight"></div>
     </div>
-    <div style="margin-bottom:22px;" id="waist-card"></div>
-    <div style="margin-bottom:22px;">
-      <p class="section-label">Aderência</p>
-      <div id="chart-adherence"></div>
-    </div>
+
+    <div class="stat-chip-row" id="stat-chips"></div>
 
     <div class="section-h"><h2>Evolução visual</h2></div>
     <div id="compare-card" style="margin-bottom:16px;"></div>
-
-    <button class="disclosure-btn" id="more-toggle" style="margin:18px 0 0;"></button>
-    <div class="disclosure-panel" id="more-panel" style="margin-top:14px;">
-      <div style="margin-bottom:22px;" id="sleep-chart-card">
-        <p class="section-label">Sono (h)</p>
-        <div id="chart-sleep"></div>
-      </div>
-      <div style="margin-bottom:22px;" id="water-chart-card">
-        <p class="section-label">Água (L)</p>
-        <div id="chart-water"></div>
-      </div>
-      <div style="margin-bottom:22px;">
-        <p class="section-label">Treinos realizados vs. meta</p>
-        <div id="chart-workouts"></div>
-      </div>
-      <div id="cardio-chart-card">
-        <p class="section-label">Cardio realizado vs. meta</p>
-        <div id="chart-cardio"></div>
-      </div>
-    </div>
 
     <div class="section-h"><h2>Resumo do período</h2></div>
     <div id="period-summary"></div>
@@ -125,45 +103,37 @@
       height: 260, color: color, unit: "kg", maxXLabels: 6
     });
 
-    if (client.weeks[0].metrics.waist != null) {
-      document.getElementById("waist-card").style.display = "block";
-      document.getElementById("waist-card").innerHTML =
-        '<p class="section-label">Cintura</p>' +
-        Charts.lineChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.waist }; }), height: 190, color: "var(--c3)", unit: "cm", maxXLabels: 5 });
-    } else {
-      document.getElementById("waist-card").style.display = "none";
+    // Outros indicadores — sem gráfico próprio, só o essencial (valor + variação), pra não
+    // "criar vários gráficos apenas pra preencher espaço" (brief V12 §25-26).
+    function fmtHM(h) { var hh = Math.floor(h), mm = Math.round((h - hh) * 60); return hh + "h" + (mm ? String(mm).padStart(2, "0") : ""); }
+    var chips = [];
+    if (Trackly.isTracked(client, "adherence")) {
+      var adD = lastW.metrics.adherence - (prevW ? prevW.metrics.adherence : lastW.metrics.adherence);
+      chips.push({ value: lastW.metrics.adherence, unit: "%", label: "aderência", delta: prevW && Math.abs(adD) >= 1 ? (adD > 0 ? "↑ " : "↓ ") + Math.abs(Math.round(adD)) + " pts" : null, good: adD >= 0 });
     }
-
-    document.getElementById("chart-adherence").innerHTML = Charts.lineChart({
-      data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.adherence }; }),
-      height: 190, color: "var(--gold)", unit: "%", min: 0, max: 100
-    });
-
-    document.getElementById("sleep-chart-card").style.display = Trackly.isTracked(client, "sleep") ? "block" : "none";
-    if (Trackly.isTracked(client, "sleep")) {
-      document.getElementById("chart-sleep").innerHTML = Charts.lineChart({
-        data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.sleep }; }),
-        height: 170, color: "var(--c4)", unit: "h"
-      });
+    if (Trackly.isTracked(client, "measurements") && lastW.metrics.waist != null) {
+      var waD = prevW && prevW.metrics.waist != null ? Trackly.round1(lastW.metrics.waist - prevW.metrics.waist) : null;
+      chips.push({ value: lastW.metrics.waist, unit: "cm", label: "cintura", delta: waD != null && Math.abs(waD) >= 0.1 ? (waD > 0 ? "↑ " : "↓ ") + Math.abs(waD) + "cm" : null, good: waD == null || waD <= 0 });
     }
-    document.getElementById("water-chart-card").style.display = Trackly.isTracked(client, "water") ? "block" : "none";
-    if (Trackly.isTracked(client, "water")) {
-      document.getElementById("chart-water").innerHTML = Charts.lineChart({
-        data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.water }; }),
-        height: 170, color: "var(--c4)", unit: "L"
-      });
+    if (Trackly.isTracked(client, "workouts")) {
+      chips.push({ value: lastW.metrics.workouts, unit: "/" + lastW.metrics.workoutsGoal, label: "treinos", delta: lastW.metrics.workouts >= lastW.metrics.workoutsGoal ? "meta atingida" : null, good: true });
     }
-    document.getElementById("chart-workouts").innerHTML = Charts.barChart({
-      data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.workouts, goal: w.metrics.workoutsGoal }; }),
-      height: 170
-    });
-    document.getElementById("cardio-chart-card").style.display = Trackly.isTracked(client, "cardio") ? "block" : "none";
     if (Trackly.isTracked(client, "cardio")) {
-      document.getElementById("chart-cardio").innerHTML = Charts.barChart({
-        data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.cardio, goal: w.metrics.cardioGoal }; }),
-        height: 170
-      });
+      chips.push({ value: lastW.metrics.cardio, unit: "/" + lastW.metrics.cardioGoal, label: "cardio", delta: lastW.metrics.cardio >= lastW.metrics.cardioGoal ? "meta atingida" : null, good: true });
     }
+    if (Trackly.isTracked(client, "sleep")) {
+      var slD = prevW ? Math.round((lastW.metrics.sleep - prevW.metrics.sleep) * 60) : null;
+      chips.push({ value: fmtHM(lastW.metrics.sleep), unit: "", label: "sono", delta: slD != null && Math.abs(slD) >= 5 ? (slD > 0 ? "↑ +" : "↓ ") + Math.abs(slD) + "min" : null, good: slD == null || slD >= 0 });
+    }
+    if (Trackly.isTracked(client, "water")) {
+      var waterD = prevW ? Trackly.round1(lastW.metrics.water - prevW.metrics.water) : null;
+      chips.push({ value: lastW.metrics.water, unit: "L", label: "água", delta: waterD != null && Math.abs(waterD) >= 0.1 ? (waterD > 0 ? "↑ +" : "↓ ") + Math.abs(waterD) + "L" : null, good: waterD == null || waterD >= 0 });
+    }
+    document.getElementById("stat-chips").innerHTML = chips.map(function (c) {
+      return '<div class="hero-stat sm"><div class="value">' + c.value + '<span class="unit">' + c.unit + '</span></div>' +
+        (c.delta ? '<div class="delta" style="color:' + (c.good ? "var(--brand)" : "var(--coral)") + ';">' + c.delta + '</div>' : '') +
+        '<div class="label">' + c.label + '</div></div>';
+    }).join("");
 
     // resumo do período — mesmo período selecionado acima, nunca uma janela fixa própria (brief V8 §9-11)
     var period = Trackly.buildPeriodSummary(client, state.range);
@@ -183,13 +153,6 @@
       );
   }
   render();
-
-  document.getElementById("more-toggle").innerHTML = ICONS.chevronR + "<span>Ver mais métricas</span>";
-  document.getElementById("more-toggle").addEventListener("click", function () {
-    this.classList.toggle("open");
-    document.getElementById("more-panel").classList.toggle("open");
-    this.querySelector("span").textContent = this.classList.contains("open") ? "Ocultar métricas" : "Ver mais métricas";
-  });
 
   var hue = client.colorVar === "--c1" ? 155 : client.colorVar === "--c2" ? 32 : client.colorVar === "--c3" ? 265 : 205;
   function photoBg(i, angle) {
