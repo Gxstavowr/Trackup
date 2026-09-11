@@ -37,6 +37,29 @@
     return d;
   }
 
+  // ---------------- V9 — WhatsApp: canal complementar, nunca o centro do produto ----------------
+  function whatsappUrl(phone, message) {
+    return "https://wa.me/" + phone + "?text=" + encodeURIComponent(message);
+  }
+
+  // mensagem de cobrança varia por dia (brief V9 §43-46) — nunca "check-in atrasado"
+  function checkinNudgeMessage(client) {
+    var first = client.name.split(" ")[0];
+    var day = APP_DATE.getDay(); // 0=dom..6=sáb
+    if (day === 5) return "Oi, " + first + "! Tudo bem? Seu check-in semanal está disponível no app. Quando puder, envia sua atualização 😊";
+    if (day === 6) return "Oi, " + first + "! Ainda não recebemos sua atualização desta semana. Seu check-in fica disponível até amanhã. Quando puder, passa lá no app 😊";
+    if (day === 0) return "Oi, " + first + "! Seu check-in termina hoje. Quando conseguir, envia sua atualização pelo app 😊";
+    return "Oi, " + first + "! Tudo bem por aí? Não recebemos sua atualização nesta semana e queria saber se está tudo certo com o plano. Quando puder, me atualiza 😊";
+  }
+
+  function checkinReceivedMessageForCoach(client) {
+    return client.name.split(" ")[0] + " enviou o check-in semanal pelo app.";
+  }
+
+  function orientationReadyMessageForStudent(client) {
+    return "Oi, " + client.name.split(" ")[0] + "! Sua atualização já foi revisada. Sua nova orientação está disponível no app 😊";
+  }
+
   function addDays(date, n) { var d = new Date(date); d.setDate(d.getDate() + n); return d; }
   function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
   function round1(n) { return Math.round(n * 10) / 10; }
@@ -292,21 +315,25 @@
   var CLIENTS = [
     {
       id: "joao", name: "João Silva", initials: "JS", colorVar: "--c1", gender: "m",
+      age: 32, heightCm: 178, phone: "5511987654321",
       objective: "Emagrecimento", startDate: joaoWeeks[0].start, weeks: joaoWeeks,
       clientStatus: "active", tracking: tracking() // treino + cardio + água + sono (+ tudo)
     },
     {
       id: "maria", name: "Maria Oliveira", initials: "MO", colorVar: "--c2", gender: "f",
+      age: 27, heightCm: 165, phone: "5511976543210",
       objective: "Emagrecimento", startDate: mariaWeeks[0].start, weeks: mariaWeeks,
       clientStatus: "active", tracking: tracking({ cardio: false, digestion: false, emotional: false, measurements: false }) // treino + água + sono
     },
     {
       id: "pedro", name: "Pedro Santos", initials: "PS", colorVar: "--c3", gender: "m",
+      age: 24, heightCm: 181, phone: "5511965432109",
       objective: "Hipertrofia", startDate: pedroWeeks[0].start, weeks: pedroWeeks,
       clientStatus: "active", tracking: tracking({ water: false, sleep: false, digestion: false, emotional: false, measurements: false }) // treino + cardio
     },
     {
       id: "ana", name: "Ana Costa", initials: "AC", colorVar: "--c4", gender: "f",
+      age: 35, heightCm: 168, phone: "5511954321098",
       objective: "Condicionamento físico", startDate: anaWeeks[0].start, weeks: anaWeeks,
       clientStatus: "active", tracking: tracking({ cardio: false, water: false, sleep: false, digestion: false, emotional: false, measurements: false }) // treino + aderência + fotos
     }
@@ -318,7 +345,7 @@
   autoFillOrientations(CLIENTS[2], []);   // Pedro: semana atual está pendente (nem chegou pro coach)
   autoFillOrientations(CLIENTS[3], []);   // Ana: tudo revisado, inclusive a semana atual
 
-  var COACH = { name: "Renata Prado", role: "Coach de nutrição e treino", initials: "RP" };
+  var COACH = { name: "Renata Prado", role: "Coach de nutrição e treino", initials: "RP", phone: "5511988887777" };
   var COLOR_CYCLE = ["--c1", "--c2", "--c3", "--c4"];
 
   // ---------------- helpers derivados ----------------
@@ -967,6 +994,8 @@
     weeksInRange: weeksInRange, buildPeriodSummary: buildPeriodSummary, recentWeeksTable: recentWeeksTable,
     buildCoachMemory: buildCoachMemory, trendLine: trendLine,
     getCheckinWindowStatus: getCheckinWindowStatus, nextOpenDate: nextOpenDate,
+    whatsappUrl: whatsappUrl, checkinNudgeMessage: checkinNudgeMessage,
+    checkinReceivedMessageForCoach: checkinReceivedMessageForCoach, orientationReadyMessageForStudent: orientationReadyMessageForStudent,
     checkInInsights: checkInInsights, focusLabel: focusLabel, focusLabelFromOrientation: focusLabelFromOrientation, focusIntro: focusIntro,
     studentUpdate: studentUpdate, buildWeeklySnapshot: buildWeeklySnapshot, clientStage: clientStage,
     isTracked: isTracked, trackedGoals: trackedGoals, effectiveGoals: effectiveGoals,
