@@ -301,3 +301,34 @@ anteriores sem serem notadas:
 Nada de novo em `localStorage`/schema além de `coachReview.note` e `checkinSubmitted`
 (ambos dentro do patch existente por cliente) — `WeeklyCycle`, convite, métricas e metas
 individuais permanecem exatamente como antes.
+
+## V9 — coach desktop-first / aluno mobile-first como produtos complementares
+
+A maior parte do brief V9 (desktop-first pro coach, mobile-first pro aluno, minimalismo,
+período unificado, comparação grande de fotos, memória do acompanhamento) já estava
+resolvida desde V6–V8. O trabalho novo real desta versão:
+
+1. **Links reais de WhatsApp** — `Trackly.whatsappUrl(phone, message)` +
+   três construtores de mensagem (`checkinNudgeMessage` varia por dia da semana —
+   sexta/sábado/domingo/dia útil, nunca diz "atrasado"; `checkinReceivedMessageForCoach`;
+   `orientationReadyMessageForStudent`) substituíram os botões que antes só trocavam o
+   próprio texto sem fazer nada. "Cobrar check-in" (dashboard), "Avisar coach no
+   WhatsApp" (check-in do aluno) e "Avisar [Nome] no WhatsApp" (orientação do coach)
+   agora abrem `https://wa.me/<telefone>?text=<mensagem>` de verdade. Números de telefone
+   fictícios foram adicionados a `COACH` e aos quatro clientes fictícios
+   (`assets/js/data.js`) — clientes manuais sem telefone caem de volta no botão antigo,
+   sem link quebrado.
+2. **Idade + altura** (`client.age`, `client.heightCm`) — texto simples ao lado do nome
+   no perfil e na Avaliação, nunca um card; ausente quando não informado (nenhum dado
+   inventado para clientes criados por convite).
+3. **"Comparar com"** — seletor local dentro do módulo "Evolução desta semana" da
+   Avaliação, deixa o coach escolher qualquer semana anterior enviada pra comparar as
+   fotos/peso, sem nunca alterar o Resumo da Semana no topo da mesma página (esse
+   continua sempre comparando com a semana imediatamente anterior).
+4. **Nota do coach no Histórico** (lado do coach) — o brief lista isso como um dos
+   itens do detalhe expandido; adicionado só em `coach/cliente.html` porque a nota é
+   privada ("só você vê" no próprio placeholder) — nunca aparece no Histórico do
+   próprio aluno.
+
+Passagem de verificação responsiva em 375/390/430 (aluno) e 768/1280+ (coach) não
+encontrou regressões — nenhuma correção de CSS foi necessária.
