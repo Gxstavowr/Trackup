@@ -377,3 +377,81 @@ seção pede pra seguir.
 Nada de novo em `localStorage` além de `reviewOpenedAt` (mesmo padrão de patch por
 cliente de sempre). Verificado com o fluxo completo aguardando-avaliação →
 em-avaliação → concluído sobrevivendo a reload em cada etapa, numa aba limpa.
+
+## V11 — expansão de ecossistema: Treino, Nutrição, Pagamentos, Financeiro
+
+A maior versão até aqui: quatro subsistemas novos como parte do mesmo produto, não
+"quatro sistemas grudados" — cada um reusa o design system existente
+(`.hero-stat`/`.list-row`/`.card-pad`/`.disclosure-btn`/motor de gráficos) e alimenta o
+ciclo de acompanhamento já existente em vez de duplicá-lo.
+
+1. **Dados novos em `assets/js/data.js`**:
+   - `EXERCISE_LIBRARY` (24 exercícios, 7 categorias) + `client.workout` (protocolo:
+     nome + dias + exercícios com sets/reps/descanso/RIR/observações) + `client.workoutHistory`
+     (última carga/reps por exercício) + `client._weekWorkoutsDone`. `logWorkoutSession()`
+     grava uma sessão executada pelo aluno (mesmo padrão mutate-then-`patchClient` do
+     `submitCheckin`); `saveWorkoutProtocol()` persiste o builder do coach.
+   - `client.nutritionPlan` (refeições com horário/itens/substituições equivalentes/macros).
+     `saveNutritionPlan()` no mesmo padrão.
+   - `client.plan` + `client.paymentsHistory` (status: pending|paid|overdue|cancelled|
+     refunded) + `paymentProvider` — objeto stub (`{name:"simulado", charge, note}`) que só
+     documenta o encaixe futuro pra Mercado Pago/Asaas/Stripe, nunca chamado de verdade.
+     `simulatePayment()` e `overduePaymentMessage()` (mesmo padrão de mensagem contextual do
+     `checkinNudgeMessage`, V9).
+   - `applyStoredOverrides()` ganhou os quatro ramos correspondentes
+     (`workoutHistory`/`weekWorkoutsDone`/`workoutProtocol`/`nutritionPlan`/`paymentSettled`) —
+     testado com as quatro mutações aplicadas juntas a um mesmo cliente e sobrevivendo a um
+     reload sem se atropelarem (o merge é raso por chave de topo em `TracklyStore.patchClient`,
+     então cada patch tem sua própria chave).
+
+2. **Navegação restruturada** (`assets/js/nav.js`): sidebar do coach passa a ter exatamente
+   `Acompanhamento/Alunos/Financeiro` — sem itens globais de Treinos/Dietas/Check-ins, que
+   vivem dentro do workspace do aluno. Barra inferior do aluno passa a
+   `Início/Treino/Nutrição/Progresso` (Check-in deixou de ser item de nav — vira CTA
+   contextual na Home; Histórico e Pagamentos saem da nav mas continuam acessíveis por link).
+   Avatar do portal vira link pra `portal/conta.html`.
+
+3. **Coach — dois builders novos** (`coach/treino.html`, `coach/nutricao.html`): CRUD
+   completo (adicionar/duplicar/remover/reordenar via ↑↓, sem drag-and-drop — versão mais
+   simples que o brief permite) com autosave debounced (350ms) e indicador "✓ Salvo".
+   `coach/financeiro.html`: receita do mês, MRR (soma do equivalente mensal de cada plano,
+   convertendo trimestral/semestral/anual), a receber, atrasado, um gráfico de barras de
+   receita por mês, e uma lista de clientes com status — deliberadamente sem DRE,
+   contabilidade, centro de custo ou despesas detalhadas.
+
+4. **Aluno — três telas novas** (`portal/treino.html`, `portal/nutricao.html`,
+   `portal/pagamento.html` + `portal/conta.html`): treino do dia (escolhido por
+   `(semana-1) % dias.length`, sem calendário) com modo execução mostrando "última vez X →
+   hoje Y" por exercício; nutrição do dia com toque-pra-expandir mostrando itens/macros/
+   substituições; pagamento com histórico e um `[Pagar agora]` simulado (PIX/Cartão/Boleto)
+   que só aparece quando pendente/atrasado.
+
+5. **Cross-wiring — sem duplicar entrada de dado**: o passo "Treinos realizados" do
+   check-in (`portal/checkin.html`) deixa de ser um stepper manual e passa a ler
+   `client._weekWorkoutsDone` (preenchido pelos treinos concluídos na aba Treino) — só volta
+   ao stepper manual se o cliente não tiver protocolo. A Home do aluno
+   (`portal/dashboard.html`) ganhou um par de mini-cards "Treino de hoje"/"Próxima refeição"
+   logo abaixo do CTA de check-in. `portal/evolucao.html` foi relabeled pra "Progresso" e
+   ganhou um link "Ver histórico completo" (Histórico saiu da nav mas a página continua
+   existindo). `coach/clientes.html` ganhou uma pill de status de pagamento por linha +
+   "Cobrar no WhatsApp" quando atrasado (reusa `whatsappUrl`/`overduePaymentMessage`).
+   `coach/cliente.html` ganhou Treino/Nutrição como abas-link (mesmo padrão da aba Avaliação
+   da V10 — redirecionam pros builders dedicados) e Pagamentos como aba real inline (leve o
+   bastante pra não precisar de página própria).
+
+**Deliberadamente não implementado** (lista explícita do brief): chatbot/"AI Coach",
+geração automática de treino ou dieta, diagnóstico médico, comunidade, ranking, desafios,
+feed social, marketplace/loja, ERP, contabilidade/DRE completa, agenda completa, CRM
+completo. Biblioteca de exercícios ficou em 24 itens ("boa base", não uma biblioteca
+gigante) — todos com instrução curta em texto, nenhum vídeo real hospedado (mesma honestidade
+de placeholder que as fotos de evolução já praticavam desde V1).
+
+**Preparado para versões futuras, não implementado agora**: integração real de gateway de
+pagamento (a abstração `paymentProvider` já isola esse ponto — trocar `simulado` por um
+provedor real não deve tocar em nenhuma tela); vídeo real de exercício (hoje só nome +
+categoria + instrução); notificações push reais (hoje só `wa.me` e as simulações de UI já
+existentes desde V7).
+
+Responsivo verificado em 375/390/430 (aluno, incluindo os fluxos de execução de treino e
+pagamento) e 768/1280+ (coach, incluindo os dois builders e o Financeiro) — os builders
+degradam a coluna única de campos abaixo de 860px sem quebrar layout.
