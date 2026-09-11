@@ -100,6 +100,9 @@
     document.getElementById("empty").style.display = rows.length ? "none" : "block";
     document.getElementById("roster-card").style.display = rows.length ? "block" : "none";
 
+    var payStatusLabel = { paid: "Pago", pending: "Pendente", overdue: "Atrasado", cancelled: "Cancelado", refunded: "Estornado" };
+    var payStatusPill = { paid: "pill-ok", pending: "pill-warn", overdue: "pill-late", cancelled: "pill", refunded: "pill" };
+
     document.getElementById("roster-body").innerHTML = rows.map(function (x) {
       var c = x.c, cur = c.weeks.length ? Trackly.currentWeek(c) : null;
       var pillClass = x.s.code === "ok" ? "pill-ok" : x.s.code === "late" ? "pill-late" : "pill-warn";
@@ -115,12 +118,18 @@
         var action = nextAction[x.s.code];
         actionHtml = action[1] ? '<a href="' + action[1] + c.id + '" onclick="event.stopPropagation();" style="color:var(--brand);font-weight:600;font-size:13px;">' + action[0] + '</a>' : '<span style="color:var(--ink-faint);font-size:13px;">' + action[0] + '</span>';
       }
+      var pay = c.paymentsHistory && c.paymentsHistory.length ? Trackly.currentPayment(c) : null;
+      var payPill = pay ? '<span class="pill ' + payStatusPill[pay.status] + '"><span class="dot"></span>' + payStatusLabel[pay.status] + '</span>' : "";
+      var cobrarHtml = pay && pay.status === "overdue"
+        ? '<a href="' + Trackly.whatsappUrl(c.phone, Trackly.overduePaymentMessage(c)) + '" target="_blank" onclick="event.stopPropagation();" style="color:var(--coral);font-weight:600;font-size:12.5px;">Cobrar no WhatsApp</a>'
+        : "";
       return (
         '<div class="list-row"' + (clickable ? ' tabindex="0" role="button" style="cursor:pointer;" onclick="location.href=\'cliente.html?id=' + c.id + '\'" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();location.href=\'cliente.html?id=' + c.id + '\';}"' : '') + '>' +
           '<span class="avatar lr-lead" style="background:' + TracklyNav.colorFor(c) + '">' + c.initials + '</span>' +
           '<div class="lr-body"><strong>' + c.name + '</strong><span class="lr-meta">' + c.objective + (cur && cur.checkin.status === "submitted" ? " · último check-in " + Trackly.fmtShort(cur.end) : "") + '</span></div>' +
           '<span class="pill ' + pillClass + '"><span class="dot"></span>' + x.s.label + '</span>' +
-          '<div class="lr-actions">' + actionHtml + '</div>' +
+          payPill +
+          '<div class="lr-actions" style="flex-direction:column;align-items:flex-end;gap:4px;">' + actionHtml + cobrarHtml + '</div>' +
         '</div>'
       );
     }).join("");
