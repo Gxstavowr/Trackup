@@ -147,16 +147,35 @@
     '</div>'
   );
 
-  // "Evolução desta semana" — peso + a mesma foto grande de comparação usada nas abas Fotos,
-  // aqui sempre fixa em semana-anterior vs semana-atual (é a decisão que o coach está tomando agora)
+  // "Evolução desta semana" — peso + a mesma foto grande de comparação usada nas abas Fotos.
+  // O peso/aderência do topo (Resumo da Semana) sempre compara com a semana imediatamente
+  // anterior; "Comparar com" é local a este módulo e nunca muda esse valor global (brief V9 §18).
   var angleState = { angle: "front" };
+  var compareWeekState = { weekNumber: prevSubmitted ? prevSubmitted.weekNumber : null };
   function photoBg(i, angle) {
     var angleShift = angle === "back" ? 40 : angle === "side" ? 80 : 0;
     return "hsl(" + (hue + angleShift) + "," + (26 + i * 6) + "%," + (30 + i * 10) + "%)";
   }
+  function moduleDeltaHtml(compareWeek) {
+    if (!compareWeek || !Trackly.isTracked(client, "weight")) return "";
+    var d = Trackly.round1(cur.metrics.weight - compareWeek.metrics.weight);
+    var good = Trackly.isGoodWeightDelta(client, d);
+    return '<div class="delta" style="color:' + (d === 0 ? "var(--ink-faint)" : (good ? "var(--brand)" : "var(--coral)")) + ';">' + (d === 0 ? "" : (d < 0 ? "↓ " : "↑ ")) + Math.abs(d) + 'kg</div>';
+  }
   var evoWeekModuleHtml = (function () {
-    var hasPhotoPair = Trackly.isTracked(client, "photos") && prevSubmitted;
+    var compareWeek = compareWeekState.weekNumber ? client.weeks[compareWeekState.weekNumber - 1] : null;
+    var hasPhotoPair = Trackly.isTracked(client, "photos") && compareWeek;
+    var priorSubmittedWeeks = weeksSoFar.slice(0, -1); // todas as semanas enviadas antes da atual — opções do seletor
+    var pickerHtml = priorSubmittedWeeks.length > 1 ? (
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:12.5px;color:var(--ink-faint);">' +
+        '<span>Comparar com</span>' +
+        '<select id="compare-week-select" style="border:1px solid var(--line-strong);border-radius:var(--radius-sm);padding:6px 10px;background:var(--surface);color:var(--ink);font-size:12.5px;font-family:var(--font-body);">' +
+          priorSubmittedWeeks.map(function (w) { return '<option value="' + w.weekNumber + '"' + (w.weekNumber === compareWeekState.weekNumber ? " selected" : "") + '>Semana ' + w.weekNumber + '</option>'; }).join("") +
+        '</select>' +
+      '</div>'
+    ) : "";
     var sliderHtml = !hasPhotoPair ? "" : (
+      pickerHtml +
       '<div class="angle-tabs" id="angle-tabs" style="margin-bottom:14px;">' +
         ["front", "back", "side"].map(function (a) {
           var names = { front: "Frente", back: "Costas", side: "Lateral" };
@@ -165,7 +184,7 @@
       '</div>' +
       '<div class="compare-slider" id="cs-photo">' +
         '<div class="cs-after" style="background:' + photoBg(1, angleState.angle) + ';"><span class="cs-tag after">Agora · S' + cur.weekNumber + '</span></div>' +
-        '<div class="cs-before" id="cs-before-clip" style="width:50%;"><div style="background:' + photoBg(0, angleState.angle) + ';"><span class="cs-tag before">Antes · S' + prevSubmitted.weekNumber + '</span></div></div>' +
+        '<div class="cs-before" id="cs-before-clip" style="width:50%;"><div style="background:' + photoBg(0, angleState.angle) + ';"><span class="cs-tag before" id="cs-before-tag">Antes · S' + compareWeek.weekNumber + '</span></div></div>' +
         '<div class="cs-handle" id="cs-handle" tabindex="0" role="slider" aria-label="Comparar antes e depois" aria-valuemin="4" aria-valuemax="96" aria-valuenow="50" style="left:50%;"></div>' +
       '</div>'
     );
@@ -173,7 +192,7 @@
     return (
       '<div style="margin-bottom:28px;">' +
         '<p class="section-label">Evolução desta semana</p>' +
-        (Trackly.isTracked(client, "weight") ? '<div class="hero-stat" style="margin-bottom:16px;"><div class="value">' + cur.metrics.weight + '<span class="unit">kg</span></div>' + weightDeltaForHero + '<div class="label">peso' + (prevSubmitted ? " · semana " + prevSubmitted.weekNumber + " → " + cur.weekNumber : "") + '</div></div>' : "") +
+        (Trackly.isTracked(client, "weight") ? '<div class="hero-stat" style="margin-bottom:16px;" id="evo-week-hero"><div class="value">' + cur.metrics.weight + '<span class="unit">kg</span></div><div id="evo-week-delta">' + moduleDeltaHtml(compareWeek) + '</div><div class="label" id="evo-week-label">peso' + (compareWeek ? " · semana " + compareWeek.weekNumber + " → " + cur.weekNumber : "") + '</div></div>' : "") +
         sliderHtml +
       '</div>'
     );
@@ -252,6 +271,14 @@
   var angleTabsEl = document.getElementById("angle-tabs");
   if (angleTabsEl) angleTabsEl.querySelectorAll("button").forEach(function (b) {
     b.addEventListener("click", function () { angleState.angle = b.getAttribute("data-angle"); rerenderEvoModule(); });
+  });
+  var compareWeekSelectEl = document.getElementById("compare-week-select");
+  if (compareWeekSelectEl) compareWeekSelectEl.addEventListener("change", function () {
+    compareWeekState.weekNumber = parseInt(compareWeekSelectEl.value, 10);
+    var compareWeek = client.weeks[compareWeekState.weekNumber - 1];
+    document.getElementById("cs-before-tag").textContent = "Antes · S" + compareWeek.weekNumber;
+    document.getElementById("evo-week-delta").innerHTML = moduleDeltaHtml(compareWeek);
+    document.getElementById("evo-week-label").textContent = "peso · semana " + compareWeek.weekNumber + " → " + cur.weekNumber;
   });
 
   function wireCompareInteraction() {
