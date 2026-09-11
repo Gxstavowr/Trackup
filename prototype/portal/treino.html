@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Treino — Trackly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  .wt-head { padding: 2px 0 4px; }
+  .wt-head h1 { font-family: var(--font-display); font-size: 24px; margin: 6px 0 6px; font-weight: 600; }
+  .wt-head .meta { font-size: 13px; color: var(--ink-muted); }
+  .ex-preview-row { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--line); }
+  .ex-preview-row:last-child { border-bottom: none; }
+  .ex-preview-row .n { font-size: 14px; font-weight: 600; flex: 1; }
+  .ex-preview-row .t { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); }
+  .ex-card { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 16px 16px 18px; margin-bottom: 12px; background: var(--surface); }
+  .ex-card .n { font-size: 15px; font-weight: 700; margin-bottom: 3px; }
+  .ex-card .target { font-size: 12.5px; color: var(--ink-muted); margin-bottom: 10px; }
+  .ex-card .last { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-faint); background: var(--surface-sunken); border-radius: 999px; padding: 4px 10px; margin-bottom: 12px; }
+  .ex-card .last b { color: var(--ink-muted); font-weight: 600; }
+  .ex-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .ex-inputs .field { margin-bottom: 0; }
+  .ex-inputs label { font-size: 11.5px; }
+  .ex-card .obs { font-size: 12.5px; color: var(--ink-faint); margin-top: 10px; font-style: italic; }
+  .ex-card.done { border-color: var(--brand-tint-strong); background: var(--brand-tint); }
+  .done-banner { text-align: center; padding: 36px 10px 20px; }
+  .done-banner .icon { width: 56px; height: 56px; border-radius: 50%; background: var(--brand-tint); color: var(--brand); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+  .done-banner h2 { font-family: var(--font-display); font-size: 21px; margin: 0 0 6px; }
+  .done-banner p { font-size: 13.5px; color: var(--ink-muted); margin: 0; }
+</style>
+</head>
+<body data-root="../">
+<div id="shell-demo"></div>
+<div class="portal">
+  <div class="portal-top" id="shell-portal-top"></div>
+  <div class="portal-inner">
+    <div class="wt-head">
+      <p class="eyebrow">Treino de hoje</p>
+      <h1 id="day-name"></h1>
+      <p class="meta" id="day-meta"></p>
+    </div>
+
+    <div id="preview-block"></div>
+    <div id="exec-block" style="display:none;"></div>
+    <div id="done-block" style="display:none;"></div>
+
+    <div style="margin-top:26px;" id="program-disclosure"></div>
+  </div>
+  <div id="shell-bottom-nav"></div>
+</div>
+
+<script src="../assets/js/storage.js?v=11"></script>
+<script src="../assets/js/data.js?v=11"></script>
+<script src="../assets/js/icons.js?v=11"></script>
+<script src="../assets/js/charts.js?v=11"></script>
+<script src="../assets/js/nav.js?v=11"></script>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var client = Trackly.getClient(params.get("client") || "joao");
+  TracklyNav.mountPortalNav("treino", client.id);
+
+  if (!client.workout || !client.workout.days.length) {
+    document.querySelector(".portal-inner").innerHTML = '<div class="empty-state" style="margin-top:40px;"><h3>Nenhum protocolo de treino ainda</h3><p>Seu coach ainda não montou seu treino. Assim que estiver pronto, aparece aqui.</p></div>';
+    return;
+  }
+
+  var day = Trackly.todaysWorkoutDay(client);
+  document.getElementById("day-name").textContent = day.name;
+  document.getElementById("day-meta").textContent = client.workout.protocolName + " · ~" + day.durationMin + " min · " + day.exercises.length + " exercícios";
+
+  var entries = {};
+  day.exercises.forEach(function (ex) { entries[ex.exerciseId] = { load: null, reps: null }; });
+
+  function lastFor(exerciseId) { return (client.workoutHistory || {})[exerciseId] || null; }
+
+  function renderPreview() {
+    document.getElementById("preview-block").innerHTML =
+      '<div class="card card-pad" style="margin-bottom:18px;">' +
+        day.exercises.map(function (ex) {
+          var meta = Trackly.getExercise(ex.exerciseId);
+          return '<div class="ex-preview-row"><span class="n">' + meta.name + '</span><span class="t">' + ex.sets + '×' + ex.reps + (ex.rir != null ? ' · RIR ' + ex.rir : '') + '</span></div>';
+        }).join("") +
+      '</div>' +
+      '<button class="btn btn-primary btn-block btn-lg" id="start-btn">Começar treino</button>';
+    document.getElementById("start-btn").addEventListener("click", function () {
+      document.getElementById("preview-block").style.display = "none";
+      document.getElementById("exec-block").style.display = "block";
+      renderExec();
+    });
+  }
+
+  function renderExec() {
+    document.getElementById("exec-block").innerHTML =
+      day.exercises.map(function (ex, i) {
+        var meta = Trackly.getExercise(ex.exerciseId);
+        var last = lastFor(ex.exerciseId);
+        return (
+          '<div class="ex-card" data-ex-card="' + i + '">' +
+            '<div class="n">' + meta.name + '</div>' +
+            '<div class="target">' + ex.sets + ' séries × ' + ex.reps + ' reps' + (ex.rir != null ? ' · RIR ' + ex.rir : '') + ' · ' + ex.restSec + 's descanso</div>' +
+            (last ? '<div class="last">' + ICONS.trend + '<span>última vez: <b>' + last.lastLoad + 'kg × ' + last.lastReps + '</b></span></div>' : '<div class="last">Sem registro anterior</div>') +
+            '<div class="ex-inputs">' +
+              '<div class="field"><label>Carga hoje (kg)</label><input type="number" min="0" step="0.5" data-load="' + i + '" placeholder="' + (last ? last.lastLoad : "0") + '"></div>' +
+              '<div class="field"><label>Reps hoje</label><input type="number" min="0" data-reps="' + i + '" placeholder="' + (last ? last.lastReps : ex.reps) + '"></div>' +
+            '</div>' +
+            (ex.notes ? '<p class="obs">' + ex.notes + '</p>' : '') +
+          '</div>'
+        );
+      }).join("") +
+      '<button class="btn btn-primary btn-block btn-lg" id="finish-btn" style="margin-top:6px;">Concluir treino</button>';
+
+    day.exercises.forEach(function (ex, i) {
+      var loadEl = document.querySelector('[data-load="' + i + '"]');
+      var repsEl = document.querySelector('[data-reps="' + i + '"]');
+      loadEl.addEventListener("input", function () { entries[ex.exerciseId].load = loadEl.value === "" ? null : parseFloat(loadEl.value); markDone(i); });
+      repsEl.addEventListener("input", function () { entries[ex.exerciseId].reps = repsEl.value === "" ? null : parseInt(repsEl.value, 10); markDone(i); });
+    });
+    function markDone(i) {
+      var card = document.querySelector('[data-ex-card="' + i + '"]');
+      var ex = day.exercises[i];
+      card.classList.toggle("done", entries[ex.exerciseId].load != null && entries[ex.exerciseId].reps != null);
+    }
+
+    document.getElementById("finish-btn").addEventListener("click", function () {
+      var payload = day.exercises.map(function (ex) {
+        return { exerciseId: ex.exerciseId, load: entries[ex.exerciseId].load, reps: entries[ex.exerciseId].reps };
+      });
+      Trackly.logWorkoutSession(client.id, day.id, payload);
+      document.getElementById("exec-block").style.display = "none";
+      document.getElementById("done-block").style.display = "block";
+      document.getElementById("done-block").innerHTML =
+        '<div class="done-banner">' +
+          '<div class="icon">' + ICONS.check + '</div>' +
+          '<h2>Treino registrado!</h2>' +
+          '<p>Seu progresso foi salvo e já entra na sua semana de acompanhamento.</p>' +
+        '</div>';
+    });
+  }
+
+  var otherDays = client.workout.days.filter(function (d) { return d.id !== day.id; });
+  if (otherDays.length) {
+    document.getElementById("program-disclosure").innerHTML =
+      '<button class="disclosure-btn" id="prog-toggle">' + ICONS.chevronR + '<span>Ver programa completo (' + client.workout.days.length + ' dias)</span></button>' +
+      '<div class="disclosure-panel" id="prog-panel"><div class="card card-pad" style="margin-top:10px;">' +
+        client.workout.days.map(function (d) {
+          return '<div class="ex-preview-row"><span class="n">' + d.name + (d.id === day.id ? ' <span style="color:var(--brand);font-weight:600;">· hoje</span>' : '') + '</span><span class="t">' + d.exercises.length + ' ex · ~' + d.durationMin + 'min</span></div>';
+        }).join("") +
+      '</div></div>';
+    document.getElementById("prog-toggle").addEventListener("click", function () {
+      this.classList.toggle("open");
+      document.getElementById("prog-panel").classList.toggle("open");
+    });
+  }
+
+  renderPreview();
+})();
+</script>
+</body>
+</html>
