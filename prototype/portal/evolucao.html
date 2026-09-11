@@ -115,7 +115,8 @@
     document.getElementById("weight-hero").innerHTML =
       '<div class="hero-stat"><div class="value">' + lastW.metrics.weight + '<span class="unit">kg</span></div>' +
       (prevW ? '<div class="delta" style="color:' + (Trackly.isGoodWeightDelta(client, wkDelta) ? "var(--brand)" : "var(--coral)") + ';">' + (wkDelta <= 0 ? "↓" : "↑") + ' ' + Math.abs(wkDelta) + 'kg esta semana</div>' : '') +
-      '</div>';
+      '</div>' +
+      (function () { var t = Trackly.trendLine(client); return t ? '<p style="font-size:13px;color:var(--ink-muted);margin:8px 0 0;">' + t + '</p>' : ""; })();
     document.getElementById("chart-weight").innerHTML = Charts.lineChart({
       data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.weight }; }),
       height: 260, color: color, unit: "kg", maxXLabels: 6

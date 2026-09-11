@@ -207,6 +207,7 @@
       (Trackly.isTracked(client, "weight") ? (
       '<div style="margin-bottom:28px;">' +
         '<div class="hero-stat" style="margin-bottom:16px;"><div class="value">' + lastW.metrics.weight + '<span class="unit">kg</span></div>' + (wDelta != null ? deltaHtml(wDelta, "kg") : '') + '<div class="label">peso</div></div>' +
+        (function () { var t = Trackly.trendLine(client); return t ? '<p style="font-size:13px;color:var(--ink-muted);margin:0 0 16px;">' + t + '</p>' : ""; })() +
         Charts.lineChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.weight }; }), height: 260, color: color, unit: "kg" }) +
       '</div>') : "") +
       '<div class="stack">' + blocks.join("") + '</div>';
