@@ -85,36 +85,36 @@
   var state = { treinos: 0, cardio: 0 };
 
   var stepPanels = {
-    1: '<div class="field"><label>Como foi a dieta?</label>' +
-      '<div class="range-wrap"><div class="rv" id="dieta-val">8</div><input type="range" min="0" max="10" step="1" value="8" id="f-dieta">' +
-      '<div class="range-labels"><span>0 — nada</span><span>10 — perfeito</span></div></div>' +
-      '<textarea id="f-dieta-txt" rows="2" placeholder="Em uma frase, como foi seguir o plano essa semana?"></textarea></div>' +
-      '<div class="field"><label>Fez a refeição livre? Se sim, qual dia e o que comeu?</label><textarea id="f-refeicao" rows="2" placeholder="Ex.: sim, sábado à noite — pizza."></textarea></div>' +
-      '<div class="field" style="margin-bottom:0;"><label>Houve beliscos de comida fora do plano?</label><textarea id="f-beliscos" rows="2" placeholder="Ex.: não / sim, doce à tarde em dois dias."></textarea></div>',
-
-    2: '<div class="field"><div class="stepper-row"><label style="margin:0;">Treinos realizados</label><div class="stepper" style="flex:none;"><button type="button" data-step="treinos" data-d="-1">−</button><div class="sv" id="treinos-val" style="width:34px;">0</div><button type="button" data-step="treinos" data-d="1">+</button></div></div></div>' +
-      '<div class="field"><label>Como foi sua performance nos treinos?</label><textarea id="f-performance" rows="2" placeholder="Força, disposição, evolução de carga..."></textarea></div>' +
-      (Trackly.isTracked(client, "cardio") ? (
-      '<div class="field"><div class="stepper-row"><label style="margin:0;">Sessões de cardio</label><div class="stepper" style="flex:none;"><button type="button" data-step="cardio" data-d="-1">−</button><div class="sv" id="cardio-val" style="width:34px;">0</div><button type="button" data-step="cardio" data-d="1">+</button></div></div></div>' +
-      '<div class="field" style="margin-bottom:0;"><label>Como foi o cardio? Tempo, dias e tipo.</label><textarea id="f-cardio-txt" rows="2" placeholder="Ex.: 3x, 30min, esteira."></textarea></div>'
-      ) : ""),
-
-    3: (client.gender === "f" ? '<div class="field"><label>Está no período menstrual?</label><div class="yn-row" id="f-periodo"><div class="yn-opt" data-v="sim">Sim</div><div class="yn-opt sel" data-v="nao">Não</div></div></div>' : "") +
-      (Trackly.isTracked(client, "water") ? '<div class="field"><label>Quantos litros de água você tomou por dia, em média?</label><input type="number" step="0.1" id="f-agua" placeholder="ex.: 2.8" inputmode="decimal"></div>' : "") +
-      (Trackly.isTracked(client, "sleep") ? '<div class="field"><label>Como foi seu sono?</label><input type="number" step="0.1" id="f-sono" placeholder="média de horas por noite, ex.: 7.2" inputmode="decimal" style="margin-bottom:8px;"><textarea id="f-sono-txt" rows="2" placeholder="Regular? Alguma noite mal dormida?"></textarea></div>' : "") +
-      (Trackly.isTracked(client, "digestion") ? '<div class="field"><label>Como foi sua digestão? Idas ao banheiro e estufamento.</label><textarea id="f-digestao" rows="2"></textarea></div>' : "") +
-      (Trackly.isTracked(client, "emotional") ? '<div class="field"><label>Como está seu emocional?</label><textarea id="f-emocional" rows="2"></textarea></div>' : "") +
-      '<div class="field"><label>Uso de substâncias/medicamentos <span style="font-weight:400;color:var(--ink-faint);">(quando aplicável)</span></label><textarea id="f-substancias" rows="2"></textarea></div>' +
-      '<div class="field" style="margin-bottom:0;"><label>Último exame enviado <span style="font-weight:400;color:var(--ink-faint);">(quando aplicável)</span></label><input type="text" id="f-exame" placeholder="Ex.: exame de sangue, semana 12"></div>',
-
-    4: '<div class="field"><label>Peso atual</label><input type="number" step="0.1" id="f-peso" placeholder="ex.: 81.5" inputmode="decimal"><p class="hint">em quilos, medido em jejum se possível</p></div>' +
+    1: '<div class="field"><label>Peso atual</label><input type="number" step="0.1" id="f-peso" placeholder="ex.: 81.5" inputmode="decimal"><p class="hint">em quilos, medido em jejum se possível</p></div>' +
       (Trackly.isTracked(client, "photos") ? (
       '<div class="field" style="margin-bottom:0;"><label>Fotos de evolução</label><div class="upload-grid-3">' +
       ["front", "back", "side"].map(function (a) {
         var names = { front: "Frente", back: "Costas", side: "Lateral" };
         return '<label class="upload-slot" data-angle="' + a + '">' + ICONS.camera + '<span>' + names[a] + '</span><input type="file" accept="image/*" style="display:none;" data-angle-input="' + a + '"></label>';
       }).join("") + '</div><p class="hint">Use sempre o mesmo local e roupa — facilita comparar sua evolução.</p></div>'
-      ) : "")
+      ) : ""),
+
+    2: '<div class="field"><label>Como foi a dieta?</label>' +
+      '<div class="range-wrap"><div class="rv" id="dieta-val">8</div><input type="range" min="0" max="10" step="1" value="8" id="f-dieta">' +
+      '<div class="range-labels"><span>0 — nada</span><span>10 — perfeito</span></div></div>' +
+      '<textarea id="f-dieta-txt" rows="2" placeholder="Em uma frase, como foi seguir o plano essa semana?"></textarea></div>' +
+      '<div class="field"><label>Fez a refeição livre? Se sim, qual dia e o que comeu?</label><textarea id="f-refeicao" rows="2" placeholder="Ex.: sim, sábado à noite — pizza."></textarea></div>' +
+      '<div class="field" style="margin-bottom:0;"><label>Houve beliscos de comida fora do plano?</label><textarea id="f-beliscos" rows="2" placeholder="Ex.: não / sim, doce à tarde em dois dias."></textarea></div>',
+
+    3: '<div class="field"><div class="stepper-row"><label style="margin:0;">Treinos realizados</label><div class="stepper" style="flex:none;"><button type="button" data-step="treinos" data-d="-1">−</button><div class="sv" id="treinos-val" style="width:34px;">0</div><button type="button" data-step="treinos" data-d="1">+</button></div></div></div>' +
+      '<div class="field"><label>Como foi sua performance nos treinos?</label><textarea id="f-performance" rows="2" placeholder="Força, disposição, evolução de carga..."></textarea></div>' +
+      (Trackly.isTracked(client, "cardio") ? (
+      '<div class="field"><div class="stepper-row"><label style="margin:0;">Sessões de cardio</label><div class="stepper" style="flex:none;"><button type="button" data-step="cardio" data-d="-1">−</button><div class="sv" id="cardio-val" style="width:34px;">0</div><button type="button" data-step="cardio" data-d="1">+</button></div></div></div>' +
+      '<div class="field" style="margin-bottom:0;"><label>Como foi o cardio? Tempo, dias e tipo.</label><textarea id="f-cardio-txt" rows="2" placeholder="Ex.: 3x, 30min, esteira."></textarea></div>'
+      ) : ""),
+
+    4: (client.gender === "f" ? '<div class="field"><label>Está no período menstrual?</label><div class="yn-row" id="f-periodo"><div class="yn-opt" data-v="sim">Sim</div><div class="yn-opt sel" data-v="nao">Não</div></div></div>' : "") +
+      (Trackly.isTracked(client, "water") ? '<div class="field"><label>Quantos litros de água você tomou por dia, em média?</label><input type="number" step="0.1" id="f-agua" placeholder="ex.: 2.8" inputmode="decimal"></div>' : "") +
+      (Trackly.isTracked(client, "sleep") ? '<div class="field"><label>Como foi seu sono?</label><input type="number" step="0.1" id="f-sono" placeholder="média de horas por noite, ex.: 7.2" inputmode="decimal" style="margin-bottom:8px;"><textarea id="f-sono-txt" rows="2" placeholder="Regular? Alguma noite mal dormida?"></textarea></div>' : "") +
+      (Trackly.isTracked(client, "digestion") ? '<div class="field"><label>Como foi sua digestão? Idas ao banheiro e estufamento.</label><textarea id="f-digestao" rows="2"></textarea></div>' : "") +
+      (Trackly.isTracked(client, "emotional") ? '<div class="field"><label>Como está seu emocional?</label><textarea id="f-emocional" rows="2"></textarea></div>' : "") +
+      '<div class="field"><label>Uso de substâncias/medicamentos <span style="font-weight:400;color:var(--ink-faint);">(quando aplicável)</span></label><textarea id="f-substancias" rows="2"></textarea></div>' +
+      '<div class="field" style="margin-bottom:0;"><label>Último exame enviado <span style="font-weight:400;color:var(--ink-faint);">(quando aplicável)</span></label><input type="text" id="f-exame" placeholder="Ex.: exame de sangue, semana 12"></div>'
   };
 
   document.getElementById("ci-form").innerHTML =
@@ -183,7 +183,21 @@
       '<div class="confirm-wrap"><div class="ring">' + ICONS.check + '</div>' +
       '<h2>Check-in enviado!</h2>' +
       '<p>Seu coach vai revisar suas respostas e enviar a orientação da próxima semana em breve.</p>' +
+      '<div style="display:flex;flex-direction:column;gap:10px;max-width:260px;margin:0 auto 20px;">' +
+        '<button class="btn btn-secondary" id="notify-coach">Avisar coach</button>' +
+        '<button class="btn btn-ghost" id="notify-whatsapp">Avisar no WhatsApp</button>' +
+      '</div>' +
       '<a href="dashboard.html?client=' + client.id + '" class="btn btn-primary">Voltar ao início</a></div>';
+
+    function simulateNotify(btnId, sentLabel) {
+      var btn = document.getElementById(btnId);
+      btn.addEventListener("click", function () {
+        btn.textContent = "✓ " + sentLabel;
+        btn.disabled = true;
+      });
+    }
+    simulateNotify("notify-coach", "Coach avisada");
+    simulateNotify("notify-whatsapp", "Enviado no WhatsApp");
   }
 })();
 </script>
