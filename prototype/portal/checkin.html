@@ -18,9 +18,6 @@
   .step-indicator .row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
   .step-indicator .count { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-faint); }
   .step-indicator .label { font-size: 14px; font-weight: 700; }
-  .step-bar { display: flex; gap: 5px; }
-  .step-bar .seg { flex: 1; height: 3px; border-radius: 2px; background: var(--line-strong); }
-  .step-bar .seg.done { background: var(--brand); }
 
   .step-panel { display: none; }
   .step-panel.active { display: block; animation: fadein .18s ease; }
@@ -75,10 +72,10 @@
     var nextOpen = Trackly.nextOpenDate();
     var nextOpenLabel = nextOpen.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
     document.getElementById("ci-form").innerHTML =
-      '<div class="ci-head" style="text-align:center;padding-top:40px;">' +
-      (win === "reminder"
-        ? '<h1>Seu próximo check-in</h1><p>Seu check-in estará disponível amanhã. Reserve alguns minutos para registrar sua semana.</p>'
-        : '<h1>Check-in encerrado</h1><p>O período de atualização desta semana terminou.<br>Próximo check-in: ' + nextOpenLabel + '.</p>') +
+      '<div style="text-align:center;padding:70px 24px 20px;">' +
+      '<p class="eyebrow" style="justify-content:center;display:flex;">' + (win === "reminder" ? "Em breve" : "Check-in indisponível") + '</p>' +
+      '<h1 style="font-family:var(--font-display);font-size:23px;margin:0 0 10px;">' + (win === "reminder" ? "Seu check-in abre amanhã" : "Seu próximo check-in abre " + nextOpenLabel) + '</h1>' +
+      '<p style="font-size:13.5px;color:var(--ink-muted);max-width:280px;margin:0 auto;">' + (win === "reminder" ? "Reserve alguns minutos amanhã para registrar sua semana." : "O período desta semana já terminou — volte então.") + '</p>' +
       '</div><a href="dashboard.html?client=' + client.id + '" class="btn btn-secondary btn-block" style="margin-top:20px;">Voltar ao início</a>';
     return;
   }
@@ -133,7 +130,7 @@
   function renderNav() {
     document.getElementById("step-count").textContent = current + " de " + steps.length;
     document.getElementById("step-label").textContent = steps[current - 1].label;
-    document.getElementById("step-bar").innerHTML = steps.map(function (s) { return '<div class="seg' + (s.n <= current ? " done" : "") + '"></div>'; }).join("");
+    document.getElementById("step-bar").innerHTML = '<div class="step-dots">' + steps.map(function (s) { return '<div class="sd' + (s.n <= current ? " done" : "") + '"></div>'; }).join("") + '</div>';
     document.querySelectorAll(".step-panel").forEach(function (p) { p.classList.toggle("active", parseInt(p.getAttribute("data-step"), 10) === current); });
     document.getElementById("wizard-nav").innerHTML =
       (current > 1 ? '<button class="btn btn-secondary" id="btn-back">Voltar</button>' : "") +
