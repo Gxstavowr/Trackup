@@ -127,7 +127,7 @@
   function renderCompletedSection(completed) {
     if (!completed.length) return "";
     return (
-      '<div class="list-row" id="completed-toggle" style="cursor:pointer;">' +
+      '<div class="list-row" id="completed-toggle" tabindex="0" role="button" aria-expanded="false" style="cursor:pointer;">' +
         '<div class="lr-lead" style="color:var(--brand);">' + ICONS.check + '</div>' +
         '<div class="lr-body"><strong>' + completed.length + ' concluído' + (completed.length === 1 ? "" : "s") + '</strong><span class="lr-meta">Revisados esta semana</span></div>' +
         '<div class="lr-actions"><span style="font-size:12.5px;color:var(--brand);font-weight:600;">Ver concluídos</span></div>' +
@@ -144,12 +144,15 @@
   function wireCompletedToggle() {
     var ct = document.getElementById("completed-toggle");
     if (!ct) return;
-    ct.addEventListener("click", function () {
+    function toggle() {
       var list = document.getElementById("completed-list");
       var open = list.style.display !== "none";
       list.style.display = open ? "none" : "block";
+      ct.setAttribute("aria-expanded", String(!open));
       ct.querySelector(".lr-actions span").textContent = open ? "Ver concluídos" : "Ocultar";
-    });
+    }
+    ct.addEventListener("click", toggle);
+    ct.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
   }
 
   render();

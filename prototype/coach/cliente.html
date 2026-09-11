@@ -230,7 +230,7 @@
       '<div class="compare-slider" id="cs-photo">' +
         '<div class="cs-after" style="background:' + photoBg(1) + ';"><span class="cs-tag after">Agora · S' + compareState.b + '</span></div>' +
         '<div class="cs-before" id="cs-before-clip" style="width:50%;"><div style="background:' + photoBg(0) + ';"><span class="cs-tag before">Antes · S' + compareState.a + '</span></div></div>' +
-        '<div class="cs-handle" id="cs-handle" style="left:50%;"></div>' +
+        '<div class="cs-handle" id="cs-handle" tabindex="0" role="slider" aria-label="Comparar antes e depois" aria-valuemin="4" aria-valuemax="96" aria-valuenow="50" style="left:50%;"></div>' +
       '</div>' +
       '<div class="compare-meta">' + metaItems.map(function (m) {
         return '<div class="cm-item"><div class="l">' + m.l + '</div><div class="v">' + m.from + ' → ' + m.to + '</div><div style="color:' + (m.pct <= 0 ? "var(--brand)" : "var(--coral)") + ';font-weight:600;">' + (m.pct > 0 ? "+" : "") + m.pct + '%</div></div>';
@@ -250,16 +250,25 @@
     var fullWidth = wrap.getBoundingClientRect().width;
     clip.firstElementChild.style.width = fullWidth + "px";
     var dragging = false;
-    function setPct(clientX) {
-      var rect = wrap.getBoundingClientRect();
-      var pct = Math.max(4, Math.min(96, ((clientX - rect.left) / rect.width) * 100));
+    function setPct(pct) {
+      pct = Math.max(4, Math.min(96, pct));
       clip.style.width = pct + "%";
       handle.style.left = pct + "%";
+      handle.setAttribute("aria-valuenow", Math.round(pct));
+    }
+    function setPctFromX(clientX) {
+      var rect = wrap.getBoundingClientRect();
+      setPct(((clientX - rect.left) / rect.width) * 100);
     }
     handle.addEventListener("pointerdown", function (e) { dragging = true; handle.setPointerCapture(e.pointerId); });
-    handle.addEventListener("pointermove", function (e) { if (dragging) setPct(e.clientX); });
+    handle.addEventListener("pointermove", function (e) { if (dragging) setPctFromX(e.clientX); });
     handle.addEventListener("pointerup", function () { dragging = false; });
-    wrap.addEventListener("click", function (e) { if (e.target === wrap || e.target.classList.contains("cs-after")) setPct(e.clientX); });
+    handle.addEventListener("keydown", function (e) {
+      var cur = parseFloat(handle.style.left) || 50;
+      if (e.key === "ArrowLeft") { e.preventDefault(); setPct(cur - 5); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); setPct(cur + 5); }
+    });
+    wrap.addEventListener("click", function (e) { if (e.target === wrap || e.target.classList.contains("cs-after")) setPctFromX(e.clientX); });
   }
 
   // ---------------- HISTÓRICO — cada semana é o ciclo completo: ----------------
