@@ -368,6 +368,9 @@
           return '<span class="wc-goal"><span style="color:' + color2 + ';">' + ic + '</span>' + g.label + ': ' + g.actual + (g.unit === "%" ? "%" : "") + ' / ' + g.target + '</span>';
         }).join("");
         body += '<div class="wc-block"><div class="wc-label">Metas &amp; resultado</div><div class="wc-goals">' + goalsRow + '</div></div>';
+        if (w.coachReview && w.coachReview.note) {
+          body += '<div class="wc-block"><div class="wc-label">Nota do coach</div><div class="wc-orientation" style="font-style:italic;">' + w.coachReview.note + '</div></div>';
+        }
       } else {
         body += '<div class="wc-block"><p style="font-size:13.5px;color:var(--ink-faint);margin:0;">Check-in ainda não enviado — previsto para ' + Trackly.fmtShort(w.end) + '.</p></div>';
       }
