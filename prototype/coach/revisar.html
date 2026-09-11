@@ -182,7 +182,9 @@
   document.getElementById("review-body").innerHTML =
     '<div class="review-head">' +
       '<p class="eyebrow">Avaliação</p>' +
-      '<div class="who"><span class="avatar" style="background:' + color + '">' + client.initials + '</span><h1>' + client.name + '</h1></div>' +
+      '<div class="who"><span class="avatar" style="background:' + color + '">' + client.initials + '</span><div><h1>' + client.name + '</h1>' +
+        (client.age && client.heightCm ? '<p style="font-size:12.5px;color:var(--ink-faint);margin:2px 0 0;">' + client.age + ' anos · ' + (client.heightCm / 100).toFixed(2).replace(".", ",") + ' m</p>' : '') +
+      '</div></div>' +
       '<div class="wk">Semana ' + cur.weekNumber + ' &nbsp;·&nbsp; recebido ' + Trackly.relativeLabel(cur.checkin.submittedAt) + '</div>' +
     '</div>' +
 

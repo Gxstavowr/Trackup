@@ -93,6 +93,7 @@
     return cur0;
   })();
   document.getElementById("p-meta").innerHTML =
+    (client.age && client.heightCm ? '<span>' + client.age + ' anos · ' + (client.heightCm / 100).toFixed(2).replace(".", ",") + ' m</span><span>·</span>' : '') +
     '<span>' + client.objective + '</span><span>·</span><span>Foco: ' + Trackly.focusLabelFromOrientation(client, refWeek0) + '</span>';
   var pillClass = status.code === "ok" ? "pill-ok" : status.code === "late" ? "pill-late" : "pill-warn";
   document.getElementById("p-status").className = "pill " + pillClass;
