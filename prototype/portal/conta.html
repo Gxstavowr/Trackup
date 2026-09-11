@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conta — Trackly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  .acct-head { display: flex; align-items: center; gap: 14px; padding: 6px 0 22px; }
+  .acct-head .avatar { width: 52px; height: 52px; font-size: 19px; }
+  .acct-head h1 { font-family: var(--font-display); font-size: 20px; margin: 0 0 3px; font-weight: 600; }
+  .acct-head p { font-size: 12.5px; color: var(--ink-faint); margin: 0; }
+  .plan-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .plan-row .name { font-size: 15px; font-weight: 700; }
+  .plan-row .price { font-family: var(--font-mono); font-size: 13px; color: var(--ink-muted); }
+  .acct-link-row { display: flex; align-items: center; gap: 12px; padding: 14px 2px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .acct-link-row:last-child { border-bottom: none; }
+  .acct-link-row .ic { width: 32px; height: 32px; border-radius: 9px; background: var(--surface-sunken); color: var(--ink-muted); display: flex; align-items: center; justify-content: center; flex: none; }
+  .acct-link-row .lbl { flex: 1; font-size: 14px; font-weight: 600; }
+  .acct-link-row .chev { color: var(--ink-faint); }
+</style>
+</head>
+<body data-root="../">
+<div id="shell-demo"></div>
+<div class="portal">
+  <div class="portal-top" id="shell-portal-top"></div>
+  <div class="portal-inner">
+    <p class="eyebrow">Conta</p>
+    <div class="acct-head" id="acct-head"></div>
+
+    <div class="section-label">Assinatura</div>
+    <div class="card card-pad" style="margin-bottom:24px;" id="plan-card"></div>
+
+    <div class="section-label">Sua conta</div>
+    <div class="card card-pad" style="margin-bottom:24px;">
+      <div class="acct-link-row" id="link-pagamentos">
+        <span class="ic"></span>
+        <span class="lbl">Pagamentos</span>
+        <span class="chev"></span>
+      </div>
+      <div class="acct-link-row" id="link-progresso">
+        <span class="ic"></span>
+        <span class="lbl">Progresso e histórico</span>
+        <span class="chev"></span>
+      </div>
+    </div>
+
+    <a href="dashboard.html" id="link-back" class="btn btn-ghost btn-block">&larr; Voltar ao início</a>
+  </div>
+  <div id="shell-bottom-nav"></div>
+</div>
+
+<script src="../assets/js/storage.js?v=11"></script>
+<script src="../assets/js/data.js?v=11"></script>
+<script src="../assets/js/icons.js?v=11"></script>
+<script src="../assets/js/charts.js?v=11"></script>
+<script src="../assets/js/nav.js?v=11"></script>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var client = Trackly.getClient(params.get("client") || "joao");
+  TracklyNav.mountPortalNav("conta", client.id);
+  var color = TracklyNav.colorFor(client);
+
+  document.getElementById("link-back").href = "dashboard.html?client=" + client.id;
+  document.getElementById("link-pagamentos").addEventListener("click", function () { location.href = "pagamento.html?client=" + client.id; });
+  document.getElementById("link-progresso").addEventListener("click", function () { location.href = "evolucao.html?client=" + client.id; });
+
+  document.getElementById("acct-head").innerHTML =
+    '<span class="avatar" style="background:' + color + ';">' + client.initials + '</span>' +
+    '<div><h1>' + client.name + '</h1><p>' + client.objective + '</p></div>';
+
+  var pay = Trackly.currentPayment(client);
+  var statusLabel = { paid: "Pago", pending: "Pendente", overdue: "Atrasado", cancelled: "Cancelado", refunded: "Estornado" };
+  var statusPill = { paid: "pill-ok", pending: "pill-warn", overdue: "pill-late", cancelled: "pill", refunded: "pill" };
+  var priceFmt = (client.plan.priceCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+  document.getElementById("plan-card").innerHTML =
+    '<div class="plan-row"><span class="name">' + client.plan.name + '</span><span class="pill ' + statusPill[pay.status] + '"><span class="dot"></span>' + statusLabel[pay.status] + '</span></div>' +
+    '<div class="price">' + priceFmt + ' · próxima cobrança ' + Trackly.fmtShort(pay.dueDate) + '</div>';
+
+  document.getElementById("link-pagamentos").querySelector(".ic").innerHTML = ICONS.wallet;
+  document.getElementById("link-progresso").querySelector(".ic").innerHTML = ICONS.trend;
+  document.querySelectorAll(".acct-link-row .chev").forEach(function (el) { el.innerHTML = ICONS.chevronR; });
+})();
+</script>
+</body>
+</html>
