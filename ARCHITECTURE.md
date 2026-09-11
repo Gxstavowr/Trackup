@@ -455,3 +455,70 @@ existentes desde V7).
 Responsivo verificado em 375/390/430 (aluno, incluindo os fluxos de execução de treino e
 pagamento) e 768/1280+ (coach, incluindo os dois builders e o Financeiro) — os builders
 degradam a coluna única de campos abaixo de 860px sem quebrar layout.
+
+## V12 — reformulação de produto: uma experiência única, não módulos colados
+
+Não é uma versão de recursos novos — V11 já cobriu Treino/Nutrição/Pagamentos/Financeiro.
+É uma passada de refinamento sobre o produto inteiro pra ele se ler como uma única
+experiência coerente. **Constatação ao reler o código antes de mexer**: boa parte do que o
+brief pedia (fila do Acompanhamento agrupada em Para fazer/Aguardando aluno/Concluídos,
+contador "X de Y · N restantes", módulo peso+fotos unificado na Avaliação, pares "O que
+mudou", tabela "Últimas semanas", nota do coach, bloco de decisão) já existia desde V4-V10 —
+essas telas convergiram organicamente pro formato que o brief descreve. Por isso o escopo
+real desta versão é mais estreito do que o tamanho do brief sugere; sem re-fetch dos 7 sites
+de benchmark (já feito na V11 desta mesma sessão, mesmas conclusões).
+
+1. **Alunos** (`coach/clientes.html`) — linha ganhou idade/altura (spec explícita do brief),
+   "último check-in" virou "última atualização".
+
+2. **Avaliação → Histórico** (`coach/revisar.html`) — a tabela "Últimas semanas" ganhou um
+   link "Ver histórico" pra `cliente.html#historico`; `cliente.html` passou a suportar
+   deep-link por hash na troca de aba (cai em Visão geral quando ausente).
+
+3. **Drawer component novo** (`assets/css/base.css` + `assets/js/nav.js`,
+   `TracklyNav.openDrawer/closeDrawer`) — painel lateral no desktop, folha inferior no
+   mobile, backdrop + Esc + botão fechar. Substitui o padrão de accordion-expande-no-lugar
+   (`.week-cycle`/`.wc-body`) do Histórico tanto em `portal/historico.html` quanto na aba
+   Histórico de `coach/cliente.html`: agora é uma lista compacta (`.hist-row`, também movido
+   pra `base.css` como componente único, não duplicado por arquivo) que abre o detalhe sob
+   demanda. Achado real ao testar: **`base.css` nunca tinha cache-busting em nenhuma versão
+   anterior** — só os `<script>` compartilhados tinham `?v=N`. O navegador servia uma cópia
+   antiga do CSS mesmo depois do JS já ter o componente novo. Corrigido adicionando `?v=12`
+   ao `<link>` em todos os arquivos, junto do bump normal de versão.
+
+4. **Evolução do aluno** (`portal/evolucao.html`) — a maior violação real do brief
+   ("não criar vários gráficos só pra preencher espaço"): a página tinha 5-6 gráficos
+   cheios empilhados (peso, cintura, aderência, + sono/água/treinos/cardio atrás de um
+   disclosure). Reduzido a **um gráfico principal** (peso, protagonista) e uma fileira
+   compacta de stat-chips (`.hero-stat.sm`, componente já existente, nenhum novo) pros
+   demais indicadores — bate quase literalmente nos exemplos do brief ("92% ↑2pts",
+   "4/4 meta atingida", "7h18 +30min"). O seletor de período continua controlando o
+   gráfico e os chips juntos, mesma fonte de verdade de sempre.
+
+5. **Financeiro** (`coach/financeiro.html`) — de quatro células iguais pra hierarquia
+   explícita: receita do mês como protagonista (valor grande + variação % vs. mês
+   anterior, calculada de `paymentsHistory`, nunca inventada), MRR/a receber/atrasado como
+   sub-stats. Adicionado: barra de alerta que só aparece quando existe atraso de verdade
+   (nunca ocupa espaço com zero problemas); "Próximas entradas" — pendentes ordenados por
+   vencimento com total previsto; chips de filtro (Todos/Pago/Pendente/Atrasado) na lista
+   de recebimentos, reusando `.chip-filter` já existente; métricas adicionais honestas
+   (clientes ativos, novos no período via `startDate`, cancelados via status de pagamento,
+   ticket médio) — nunca um valor fabricado; se o dado fictício não sustenta uma métrica
+   (cancelados, hoje 0), ela aparece como 0, não como número inventado.
+
+6. **Toast component novo** (`assets/css/base.css` + `TracklyNav.toast()`) — usado só onde
+   havia uma lacuna real de feedback: enviar lembrete de check-in e enviar convite, as duas
+   únicas ações importantes do produto que antes só re-renderizavam a lista sem confirmação
+   explícita. Toda outra ação relevante (orientação enviada, treino registrado, pagamento
+   confirmado, check-in enviado) já tinha sua própria tela de confirmação dedicada — mais
+   rica que um toast genérico — então o componente não foi forçado nesses lugares.
+
+**Auto-crítica (brief §110)**: os dois pontos que mais pareciam "dashboard genérico" eram
+exatamente o Financeiro (4 cards iguais sem hierarquia) e a Evolução (excesso de gráficos) —
+ambos corrigidos nesta versão. Nenhuma tela nova foi criada; tudo foi reformulação de
+composição sobre telas existentes, como o brief pediu.
+
+Regressão de persistência verificada num fluxo combinado (enviar orientação → contador do
+Acompanhamento atualiza instantaneamente → sobrevive a reload) e responsivo conferido em
+375px (drawer como folha inferior) e 1100px+ (drawer como painel lateral, Financeiro com
+sidebar).
