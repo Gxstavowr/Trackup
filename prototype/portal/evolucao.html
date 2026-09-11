@@ -30,7 +30,7 @@
   <div class="portal-top" id="shell-portal-top"></div>
   <div class="portal-inner">
     <div class="page-head" style="margin-bottom:6px;">
-      <div><p class="eyebrow">Evolução</p><h1 style="font-size:22px;">Sua jornada até aqui</h1></div>
+      <div><p class="eyebrow">Progresso</p><h1 style="font-size:22px;">Sua jornada até aqui</h1></div>
     </div>
 
     <div class="journey-card" id="journey"></div>
@@ -72,6 +72,8 @@
 
     <div class="section-h"><h2>Resumo do período</h2></div>
     <div id="period-summary"></div>
+
+    <a href="historico.html" id="link-historico" class="btn btn-ghost btn-block" style="margin-top:22px;">Ver histórico completo</a>
   </div>
   <div id="shell-bottom-nav"></div>
 </div>
@@ -87,6 +89,7 @@
   var client = Trackly.getClient(params.get("client") || "joao");
   TracklyNav.mountPortalNav("evolucao", client.id);
   var color = TracklyNav.colorFor(client);
+  document.getElementById("link-historico").href = "historico.html?client=" + client.id;
   var state = { range: "12" };
 
   var kpi = Trackly.computeKPIs(client);
