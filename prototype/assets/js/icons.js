@@ -29,6 +29,9 @@
     chevronR: svg('<path d="M9 5.5 15.5 12 9 18.5"/>'),
     arrowDown: svg('<path d="M12 4v14.5M6 13l6 6 6-6"/>'),
     bell: svg('<path d="M6 10a6 6 0 1 1 12 0c0 4 1.4 5.5 1.4 5.5H4.6S6 14 6 10Z"/><path d="M10 18.5a2 2 0 0 0 4 0"/>'),
-    logout: svg('<path d="M9 4.5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h3M15 16l4-4-4-4M19 12H9"/>')
+    logout: svg('<path d="M9 4.5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h3M15 16l4-4-4-4M19 12H9"/>'),
+    apple: svg('<path d="M12 8.5c-3-2.5-7-1-7 3.5 0 4 3 8 5.5 8 1 0 1.5-.5 2 -.5s1 .5 2 .5c2.2 0 5.5-3.6 5.5-7.5 0-3.5-3-5.3-5.5-3.5"/><path d="M12 8.5V5s.5-2 2.5-2.5"/>'),
+    wallet: svg('<rect x="3.5" y="6.5" width="17" height="12" rx="2.2"/><path d="M3.5 10h17"/><circle cx="16.5" cy="14" r="1.1" fill="currentColor" stroke="none"/>'),
+    coin: svg('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v9M9.3 9.7c0-1.5 1.2-2.2 2.7-2.2s2.6.8 2.6 2c0 2.7-5.3 1.4-5.3 4 0 1.3 1.1 2.2 2.7 2.2s2.9-.8 2.9-2.3"/>')
   };
 })(window);

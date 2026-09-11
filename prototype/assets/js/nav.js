@@ -25,7 +25,8 @@
   function coachShell(root, active, client) {
     var items = [
       { key: "dashboard", label: "Acompanhamento", href: root + "coach/dashboard.html", icon: I.grid },
-      { key: "clientes", label: "Alunos", href: root + "coach/clientes.html", icon: I.users }
+      { key: "clientes", label: "Alunos", href: root + "coach/clientes.html", icon: I.users },
+      { key: "financeiro", label: "Financeiro", href: root + "coach/financeiro.html", icon: I.wallet }
     ];
     var nav = items.map(function (it) {
       return '<a href="' + it.href + '" class="nav-item' + (it.key === active ? " active" : "") + '">' + it.icon + "<span>" + it.label + "</span></a>";
@@ -63,9 +64,9 @@
     document.getElementById("shell-demo").innerHTML = demoBar(root, "portal");
     var items = [
       { key: "dashboard", label: "Início", href: "dashboard.html", icon: I.home },
-      { key: "checkin", label: "Check-in", href: "checkin.html", icon: I.clipboard },
-      { key: "evolucao", label: "Evolução", href: "evolucao.html", icon: I.trend },
-      { key: "historico", label: "Histórico", href: "historico.html", icon: I.clock }
+      { key: "treino", label: "Treino", href: "treino.html", icon: I.dumbbell },
+      { key: "nutricao", label: "Nutrição", href: "nutricao.html", icon: I.apple },
+      { key: "evolucao", label: "Progresso", href: "evolucao.html", icon: I.trend }
     ];
     var qs = "?client=" + client.id;
     var nav = items.map(function (it) {
@@ -77,7 +78,7 @@
         '<div class="brand" style="font-size:16px;">' +
         '<svg width="20" height="20" viewBox="0 0 26 26" fill="none"><path d="M3 17l5.5-6.5L13 15l8.5-10.5" stroke="var(--brand)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/><circle cx="21.5" cy="4.8" r="2.1" fill="var(--brand)"/></svg>' +
         "<span>Trackly</span></div>" +
-        '<span class="avatar" style="background:' + colorFor(client) + '">' + client.initials + "</span>";
+        '<a href="conta.html' + qs + '" class="avatar" style="background:' + colorFor(client) + '">' + client.initials + "</a>";
     }
     document.getElementById("shell-bottom-nav").innerHTML = '<nav class="bottom-nav">' + nav + "</nav>";
   }
