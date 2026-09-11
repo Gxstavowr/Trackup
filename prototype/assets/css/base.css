@@ -240,8 +240,8 @@ button { font: inherit; }
 }
 .bn-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; color: var(--ink-faint); font-size: 10.5px; font-weight: 600; border-radius: 10px; }
 .bn-item.active { color: var(--brand); }
-.bn-item svg { opacity: .8; }
-.bn-item.active svg { opacity: 1; }
+.bn-item svg { opacity: .8; transition: transform .15s ease, opacity .15s ease; }
+.bn-item.active svg { opacity: 1; transform: translateY(-1px); }
 
 .hero-progress { text-align: center; padding: 22px 10px 8px; }
 .hero-progress .weeks { font-size: 12.5px; color: var(--ink-faint); font-weight: 600; letter-spacing: .03em; }
