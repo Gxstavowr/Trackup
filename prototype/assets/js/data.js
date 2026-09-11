@@ -348,6 +348,114 @@
   var COACH = { name: "Renata Prado", role: "Coach de nutrição e treino", initials: "RP", phone: "5511988887777" };
   var COLOR_CYCLE = ["--c1", "--c2", "--c3", "--c4"];
 
+  // ================================================================
+  // V11 — Treino: biblioteca base + protocolo por aluno. Nada de vídeo real
+  // (mesma honestidade das fotos-placeholder): só nome + categoria + instrução curta.
+  // ================================================================
+  var EXERCISE_LIBRARY = [
+    { id: "supino-reto", name: "Supino reto", category: "Peito", instructions: "Barra na altura do peito, cotovelos a 45°." },
+    { id: "supino-inclinado", name: "Supino inclinado", category: "Peito", instructions: "Banco a 30-45°, foco na porção superior." },
+    { id: "crucifixo", name: "Crucifixo", category: "Peito", instructions: "Movimento em arco, cotovelos levemente flexionados." },
+    { id: "flexao", name: "Flexão de braço", category: "Peito", instructions: "Corpo alinhado, descida controlada." },
+    { id: "puxada-frente", name: "Puxada frente", category: "Costas", instructions: "Puxar até a altura do queixo, controlar a subida." },
+    { id: "remada-curvada", name: "Remada curvada", category: "Costas", instructions: "Tronco a 45°, puxar em direção ao umbigo." },
+    { id: "remada-unilateral", name: "Remada unilateral", category: "Costas", instructions: "Apoio no banco, puxar com cotovelo próximo ao corpo." },
+    { id: "pulldown", name: "Pull-down", category: "Costas", instructions: "Puxar a barra até a altura do peito." },
+    { id: "agachamento", name: "Agachamento livre", category: "Pernas", instructions: "Quadril abaixo da linha do joelho, core firme." },
+    { id: "leg-press", name: "Leg press", category: "Pernas", instructions: "Amplitude completa, sem travar o joelho." },
+    { id: "cadeira-extensora", name: "Cadeira extensora", category: "Pernas", instructions: "Extensão controlada, pausa no topo." },
+    { id: "mesa-flexora", name: "Mesa flexora", category: "Pernas", instructions: "Flexão controlada, evitar impulso." },
+    { id: "panturrilha", name: "Panturrilha em pé", category: "Pernas", instructions: "Amplitude completa, pausa no topo." },
+    { id: "desenvolvimento", name: "Desenvolvimento", category: "Ombro", instructions: "Barra ou halteres, evitar hiperextensão lombar." },
+    { id: "elevacao-lateral", name: "Elevação lateral", category: "Ombro", instructions: "Cotovelos levemente flexionados, subir até a linha do ombro." },
+    { id: "elevacao-frontal", name: "Elevação frontal", category: "Ombro", instructions: "Movimento controlado, sem balanço." },
+    { id: "rosca-direta", name: "Rosca direta", category: "Braço", instructions: "Cotovelos fixos, sem balançar o tronco." },
+    { id: "triceps-corda", name: "Tríceps corda", category: "Braço", instructions: "Extensão completa, cotovelos próximos ao corpo." },
+    { id: "rosca-martelo", name: "Rosca martelo", category: "Braço", instructions: "Pegada neutra, movimento controlado." },
+    { id: "prancha", name: "Prancha", category: "Core", instructions: "Corpo alinhado, abdômen contraído." },
+    { id: "abdominal-supra", name: "Abdominal supra", category: "Core", instructions: "Movimento curto, sem puxar o pescoço." },
+    { id: "elevacao-pernas", name: "Elevação de pernas", category: "Core", instructions: "Lombar apoiada, descida controlada." },
+    { id: "esteira", name: "Esteira", category: "Cardio", instructions: "Ritmo constante conforme orientação." },
+    { id: "bike", name: "Bike ergométrica", category: "Cardio", instructions: "Cadência constante, resistência moderada." }
+  ];
+  function getExercise(id) { return EXERCISE_LIBRARY.filter(function (e) { return e.id === id; })[0] || null; }
+
+  function ex(exerciseId, sets, reps, restSec, rir, notes) {
+    return { exerciseId: exerciseId, sets: sets, reps: reps, restSec: restSec, rir: rir || null, notes: notes || "" };
+  }
+
+  var WORKOUTS = {
+    joao: {
+      protocolName: "Emagrecimento — full body 2x",
+      days: [
+        { id: "a", name: "Treino A", durationMin: 45, exercises: [ex("agachamento", 3, 12, 60, 2), ex("supino-reto", 3, 12, 60, 2), ex("remada-curvada", 3, 12, 60, 2), ex("prancha", 3, 40, 45, null, "40s por série")] },
+        { id: "b", name: "Treino B", durationMin: 45, exercises: [ex("leg-press", 3, 15, 60, 2), ex("puxada-frente", 3, 12, 60, 2), ex("desenvolvimento", 3, 12, 60, 2), ex("esteira", 1, 20, 0, null, "20min ritmo moderado")] }
+      ]
+    },
+    maria: {
+      protocolName: "Emagrecimento — full body 3x",
+      days: [
+        { id: "a", name: "Treino A", durationMin: 40, exercises: [ex("agachamento", 3, 15, 45, 2), ex("remada-unilateral", 3, 12, 45, 2), ex("elevacao-lateral", 3, 15, 45, 1), ex("abdominal-supra", 3, 20, 30)] },
+        { id: "b", name: "Treino B", durationMin: 40, exercises: [ex("cadeira-extensora", 3, 15, 45, 2), ex("pulldown", 3, 12, 45, 2), ex("rosca-direta", 3, 12, 45, 1), ex("prancha", 3, 30, 30)] }
+      ]
+    },
+    pedro: {
+      protocolName: "Hipertrofia — push/pull/legs",
+      days: [
+        { id: "push", name: "Push", durationMin: 60, exercises: [ex("supino-reto", 4, 8, 90, 1), ex("supino-inclinado", 3, 10, 90, 2), ex("desenvolvimento", 3, 10, 75, 2), ex("triceps-corda", 3, 12, 60, 1)] },
+        { id: "pull", name: "Pull", durationMin: 60, exercises: [ex("puxada-frente", 4, 8, 90, 1), ex("remada-curvada", 3, 10, 90, 2), ex("remada-unilateral", 3, 10, 75, 2), ex("rosca-direta", 3, 12, 60, 1)] },
+        { id: "legs", name: "Legs", durationMin: 65, exercises: [ex("agachamento", 4, 8, 120, 1), ex("leg-press", 3, 12, 90, 2), ex("mesa-flexora", 3, 12, 75, 2), ex("panturrilha", 4, 15, 45)] }
+      ]
+    },
+    ana: {
+      protocolName: "Condicionamento — full body + cardio",
+      days: [
+        { id: "a", name: "Treino A", durationMin: 35, exercises: [ex("agachamento", 3, 15, 45, 2), ex("flexao", 3, 12, 45, 2), ex("prancha", 3, 40, 30), ex("bike", 1, 15, 0, null, "15min intervalado")] }
+      ]
+    }
+  };
+
+  function seedWorkoutHistory(clientId, exerciseId, load, reps, daysAgo) {
+    return { lastLoad: load, lastReps: reps, lastDate: addDays(ANCHOR, -daysAgo) };
+  }
+  var WORKOUT_HISTORY = {
+    joao: { "agachamento": seedWorkoutHistory("joao", "agachamento", 40, 12, 6), "supino-reto": seedWorkoutHistory("joao", "supino-reto", 20, 12, 6) },
+    maria: { "agachamento": seedWorkoutHistory("maria", "agachamento", 25, 15, 5) },
+    pedro: { "supino-reto": seedWorkoutHistory("pedro", "supino-reto", 60, 8, 3), "puxada-frente": seedWorkoutHistory("pedro", "puxada-frente", 55, 8, 5) },
+    ana: { "agachamento": seedWorkoutHistory("ana", "agachamento", 20, 15, 4) }
+  };
+
+  // registra uma sessão executada pelo aluno — autosave, alimenta o histórico de carga
+  // e o contador semanal que o check-in vai LER (nunca pedir pra digitar de novo, brief §26)
+  function logWorkoutSession(clientId, dayId, entries) {
+    var client = getClient(clientId);
+    if (!client.workoutHistory) client.workoutHistory = {};
+    var now = new Date();
+    entries.forEach(function (entry) {
+      if (entry.load == null && entry.reps == null) return;
+      client.workoutHistory[entry.exerciseId] = { lastLoad: entry.load, lastReps: entry.reps, lastDate: now };
+    });
+    client._weekWorkoutsDone = (client._weekWorkoutsDone || 0) + 1;
+    if (global.TracklyStore) {
+      TracklyStore.patchClient(clientId, {
+        workoutHistory: client.workoutHistory,
+        weekWorkoutsDone: client._weekWorkoutsDone
+      });
+    }
+  }
+  function todaysWorkoutDay(client) {
+    if (!client.workout || !client.workout.days.length) return null;
+    var idx = (Trackly_currentWeekNumberSafe(client) - 1) % client.workout.days.length;
+    return client.workout.days[idx];
+  }
+  function Trackly_currentWeekNumberSafe(client) { return client.weeks.length ? client.weeks[client.weeks.length - 1].weekNumber : 1; }
+
+  CLIENTS.forEach(function (c) {
+    c.workout = WORKOUTS[c.id] || null;
+    c.workoutHistory = WORKOUT_HISTORY[c.id] || {};
+    c._weekWorkoutsDone = 0;
+  });
+
   // ---------------- helpers derivados ----------------
 
   function getClient(id) { return CLIENTS.filter(function (c) { return c.id === id; })[0] || CLIENTS[0]; }
@@ -979,6 +1087,13 @@
       if (patch.reviewOpenedAt && !cur.orientation) cur.reviewOpenedAt = new Date(patch.reviewOpenedAt);
       if (patch.nextGoals) c._nextGoals = patch.nextGoals;
       if (patch.remindedAt) { c.remindedAt = new Date(patch.remindedAt); c.remindedTime = patch.remindedTime; }
+      if (patch.workoutHistory) {
+        Object.keys(patch.workoutHistory).forEach(function (exId) {
+          var h = patch.workoutHistory[exId];
+          c.workoutHistory[exId] = { lastLoad: h.lastLoad, lastReps: h.lastReps, lastDate: new Date(h.lastDate) };
+        });
+      }
+      if (patch.weekWorkoutsDone != null) c._weekWorkoutsDone = patch.weekWorkoutsDone;
     });
     (s.manualClients || []).forEach(function (m) {
       if (CLIENTS.some(function (c) { return c.id === m.id; })) return;
@@ -1015,6 +1130,8 @@
     isTracked: isTracked, trackedGoals: trackedGoals, effectiveGoals: effectiveGoals,
     CHECKIN_TEMPLATE: CHECKIN_TEMPLATE, CHECKIN_STEPS: CHECKIN_STEPS, checkinTemplateFor: checkinTemplateFor,
     completeOrientation: completeOrientation, submitCheckin: submitCheckin, sendReminder: sendReminder, markReviewOpened: markReviewOpened,
-    createClient: createClient, sendInvite: sendInvite, acceptInvite: acceptInvite
+    createClient: createClient, sendInvite: sendInvite, acceptInvite: acceptInvite,
+    EXERCISE_LIBRARY: EXERCISE_LIBRARY, getExercise: getExercise,
+    logWorkoutSession: logWorkoutSession, todaysWorkoutDay: todaysWorkoutDay
   };
 })(window);
