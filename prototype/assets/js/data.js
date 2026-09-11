@@ -773,6 +773,38 @@
   // pra tela reagir sem precisar de reload — e sobreviver ao reload quando ele acontecer.
   // ================================================================
 
+  // V8 §33 — bug de persistência corrigido: o wizard de check-in só mostrava a tela de
+  // sucesso, sem gravar nada. Agora atualiza status/metrics/qa da semana e persiste.
+  function submitCheckin(clientId, payload) {
+    var client = getClient(clientId);
+    var cur = currentWeek(client);
+    if (!cur) return;
+    var now = new Date();
+    cur.checkin.status = "submitted";
+    cur.checkin.submittedAt = now;
+    if (payload.weight != null) cur.metrics.weight = payload.weight;
+    if (payload.adherence != null) cur.metrics.adherence = payload.adherence;
+    if (payload.workouts != null) cur.metrics.workouts = payload.workouts;
+    if (payload.cardio != null) cur.metrics.cardio = payload.cardio;
+    if (payload.water != null) cur.metrics.water = payload.water;
+    if (payload.sleep != null) cur.metrics.sleep = payload.sleep;
+    var actualMap = { water: cur.metrics.water, sleep: cur.metrics.sleep, workouts: cur.metrics.workouts, cardio: cur.metrics.cardio, adherence: cur.metrics.adherence };
+    cur.goals.forEach(function (g) {
+      if (actualMap[g.key] != null) { g.actual = actualMap[g.key]; g.status = goalStatus(g.actual, g.target, g.mode); }
+    });
+    cur.qa = Object.assign({}, cur.qa, payload.qa || {});
+
+    if (global.TracklyStore) {
+      TracklyStore.patchClient(clientId, {
+        checkinSubmitted: {
+          weekNumber: cur.weekNumber, submittedAt: now.toISOString(),
+          metrics: { weight: cur.metrics.weight, adherence: cur.metrics.adherence, workouts: cur.metrics.workouts, cardio: cur.metrics.cardio, water: cur.metrics.water, sleep: cur.metrics.sleep },
+          qa: cur.qa
+        }
+      });
+    }
+  }
+
   function completeOrientation(clientId, payload) {
     var client = getClient(clientId);
     var cur = currentWeek(client);
@@ -888,6 +920,16 @@
       var patch = s.clients[c.id];
       if (!patch || !c.weeks.length) return;
       var cur = currentWeek(c);
+      if (patch.checkinSubmitted && patch.checkinSubmitted.weekNumber === cur.weekNumber && cur.checkin.status !== "submitted") {
+        cur.checkin.status = "submitted";
+        cur.checkin.submittedAt = new Date(patch.checkinSubmitted.submittedAt);
+        Object.assign(cur.metrics, patch.checkinSubmitted.metrics);
+        var actualMap = { water: cur.metrics.water, sleep: cur.metrics.sleep, workouts: cur.metrics.workouts, cardio: cur.metrics.cardio, adherence: cur.metrics.adherence };
+        cur.goals.forEach(function (g) {
+          if (actualMap[g.key] != null) { g.actual = actualMap[g.key]; g.status = goalStatus(g.actual, g.target, g.mode); }
+        });
+        cur.qa = Object.assign({}, cur.qa, patch.checkinSubmitted.qa || {});
+      }
       if (patch.orientation && !cur.orientation) {
         cur.orientation = patch.orientation;
         cur.focusOverride = patch.focus || null;
@@ -929,7 +971,7 @@
     studentUpdate: studentUpdate, buildWeeklySnapshot: buildWeeklySnapshot, clientStage: clientStage,
     isTracked: isTracked, trackedGoals: trackedGoals, effectiveGoals: effectiveGoals,
     CHECKIN_TEMPLATE: CHECKIN_TEMPLATE, CHECKIN_STEPS: CHECKIN_STEPS, checkinTemplateFor: checkinTemplateFor,
-    completeOrientation: completeOrientation, sendReminder: sendReminder,
+    completeOrientation: completeOrientation, submitCheckin: submitCheckin, sendReminder: sendReminder,
     createClient: createClient, sendInvite: sendInvite, acceptInvite: acceptInvite
   };
 })(window);

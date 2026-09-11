@@ -52,11 +52,11 @@
   <div id="shell-bottom-nav"></div>
 </div>
 
-<script src="../assets/js/storage.js?v=7"></script>
-<script src="../assets/js/data.js?v=7"></script>
-<script src="../assets/js/icons.js?v=7"></script>
-<script src="../assets/js/charts.js?v=7"></script>
-<script src="../assets/js/nav.js?v=7"></script>
+<script src="../assets/js/storage.js?v=8"></script>
+<script src="../assets/js/data.js?v=8"></script>
+<script src="../assets/js/icons.js?v=8"></script>
+<script src="../assets/js/charts.js?v=8"></script>
+<script src="../assets/js/nav.js?v=8"></script>
 <script>
 (function () {
   var params = new URLSearchParams(location.search);
@@ -124,14 +124,14 @@
       '<div class="row"><span class="count" id="step-count"></span><span class="label" id="step-label"></span></div>' +
       '<div class="step-bar" id="step-bar"></div>' +
     '</div>' +
-    steps.map(function (s) { return '<div class="step-panel" data-step="' + s.n + '">' + stepPanels[s.n] + '</div>'; }).join("") +
+    steps.map(function (s) { return '<div class="step-panel" data-step-panel="' + s.n + '">' + stepPanels[s.n] + '</div>'; }).join("") +
     '<div class="wizard-nav" id="wizard-nav"></div>';
 
   function renderNav() {
     document.getElementById("step-count").textContent = current + " de " + steps.length;
     document.getElementById("step-label").textContent = steps[current - 1].label;
     document.getElementById("step-bar").innerHTML = '<div class="step-dots">' + steps.map(function (s) { return '<div class="sd' + (s.n <= current ? " done" : "") + '"></div>'; }).join("") + '</div>';
-    document.querySelectorAll(".step-panel").forEach(function (p) { p.classList.toggle("active", parseInt(p.getAttribute("data-step"), 10) === current); });
+    document.querySelectorAll(".step-panel").forEach(function (p) { p.classList.toggle("active", parseInt(p.getAttribute("data-step-panel"), 10) === current); });
     document.getElementById("wizard-nav").innerHTML =
       (current > 1 ? '<button class="btn btn-secondary" id="btn-back">Voltar</button>' : "") +
       '<button class="btn btn-primary" id="btn-next">' + (current === steps.length ? "Enviar check-in" : "Continuar") + '</button>';
@@ -176,6 +176,37 @@
   });
 
   function submit() {
+    var qaPayload = {
+      dieta: document.getElementById("f-dieta-txt").value.trim(),
+      refeicaoLivre: document.getElementById("f-refeicao").value.trim(),
+      beliscos: document.getElementById("f-beliscos").value.trim(),
+      performanceTreino: document.getElementById("f-performance").value.trim()
+    };
+    if (Trackly.isTracked(client, "cardio")) qaPayload.cardioDetalhe = document.getElementById("f-cardio-txt").value.trim();
+    var periodoSelEl = document.getElementById("f-periodo");
+    if (periodoSelEl) qaPayload.periodoMenstrual = periodoSelEl.querySelector(".yn-opt.sel").getAttribute("data-v") === "sim" ? "Sim." : "Não.";
+    var sonoTxtEl = document.getElementById("f-sono-txt");
+    if (sonoTxtEl) qaPayload.sono = sonoTxtEl.value.trim();
+    if (Trackly.isTracked(client, "digestion")) qaPayload.digestao = document.getElementById("f-digestao").value.trim();
+    if (Trackly.isTracked(client, "emotional")) qaPayload.emocional = document.getElementById("f-emocional").value.trim();
+    qaPayload.substancias = document.getElementById("f-substancias").value.trim();
+    var exameEl = document.getElementById("f-exame");
+    if (exameEl && exameEl.value.trim()) qaPayload.exame = exameEl.value.trim();
+
+    var dietaScore = parseInt(document.getElementById("f-dieta").value, 10);
+    var pesoEl = document.getElementById("f-peso");
+    var aguaEl = document.getElementById("f-agua");
+    var sonoEl = document.getElementById("f-sono");
+    Trackly.submitCheckin(client.id, {
+      weight: Trackly.isTracked(client, "weight") ? (parseFloat(pesoEl.value) || cur.metrics.weight) : null,
+      adherence: Trackly.clamp(dietaScore * 10, 0, 100),
+      workouts: Trackly.isTracked(client, "workouts") ? state.treinos : null,
+      cardio: Trackly.isTracked(client, "cardio") ? state.cardio : null,
+      water: (aguaEl && Trackly.isTracked(client, "water")) ? (parseFloat(aguaEl.value) || cur.metrics.water) : null,
+      sleep: (sonoEl && Trackly.isTracked(client, "sleep")) ? (parseFloat(sonoEl.value) || cur.metrics.sleep) : null,
+      qa: qaPayload
+    });
+
     document.getElementById("ci-form").style.display = "none";
     var el = document.getElementById("ci-confirm");
     el.style.display = "block";

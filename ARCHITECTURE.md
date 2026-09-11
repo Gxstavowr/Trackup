@@ -254,3 +254,50 @@ coach, sem IA genérica e sem inventar métricas — só leitura regrada de `cli
 `patterns` separado de `strengths`/`attentionPoints`. Como todo padrão que esta versão
 consegue detectar honestamente já cai em uma dessas duas categorias, `patterns` foi
 propositalmente omitido em vez de existir como um array sempre vazio.
+
+## V8 — avaliação do aluno como centro do produto
+
+A missão desta versão foi tornar a revisão semanal do coach ("Avaliação", antes
+"Revisar check-in") o lugar onde peso, fotos, contexto histórico e decisão convivem —
+e corrigir duas lacunas reais de persistência que sobreviveram a todas as versões
+anteriores sem serem notadas:
+
+1. **Bug de persistência corrigido — o mais importante desta versão**: o wizard de
+   check-in do aluno (`portal/checkin.html`) nunca gravava nada. `submit()` só trocava a
+   tela pra "Check-in enviado!" — `cur.checkin.status` continuava `"pending"` depois de
+   um reload, e nenhum valor digitado (peso, treinos, respostas) chegava a
+   `client.weeks`. Isso passou despercebido em V1–V7 porque toda verificação anterior
+   testava o fluxo só até a tela de confirmação, sem de fato recarregar a página do
+   aluno depois. Corrigido com `Trackly.submitCheckin(clientId, payload)` (novo, em
+   `data.js`) que atualiza `checkin.status/submittedAt`, `metrics.*`, recalcula
+   `goals[].status` e persiste via `TracklyStore.patchClient` — reaplicado em
+   `applyStoredOverrides()` como qualquer outra mutação.
+2. **Bug de colisão de atributo corrigido**: os painéis do wizard (`.step-panel`) e os
+   botões +/− dos steppers de treino/cardio usavam o mesmo atributo `data-step` para
+   propósitos diferentes. Um clique no botão borbulhava até o painel ancestral, que
+   também tinha um listener `[data-step]` — disparando uma segunda execução do handler
+   com uma chave inexistente (`"3"`, o número do painel) e lançando
+   `Cannot set properties of null` no console a cada clique num stepper, silenciosamente,
+   desde a primeira versão. Corrigido renomeando o atributo do painel para
+   `data-step-panel`.
+3. **`Avaliação`** (renomeada de `coach/revisar.html`): Resumo da Semana simplificado
+   pra peso/aderência/treinos; "Evolução desta semana" — um módulo grande combinando o
+   hero de peso com o mesmo `.compare-slider` das abas Fotos, fixo em
+   semana-anterior→semana-atual (a decisão que o coach está tomando agora, não uma
+   comparação livre); "O que mudou" virou pares objetivos antes→depois; novo campo
+   "Notas do coach" (`cur.coachReview.note`, persistido junto da orientação).
+4. **Um período controla tudo**: `Trackly.buildPeriodSummary(client, range)` passou a
+   aceitar o mesmo token do seletor de período da UI (`"4"|"8"|"12"|"all"`) em vez de um
+   número de semanas fixo. Isso corrigiu um bug real em `portal/evolucao.html`, onde o
+   "Resumo do período" ficava sempre travado nas últimas 8 semanas independente do botão
+   clicado — e adicionou o mesmo resumo (que não existia) à aba Evolução do coach.
+5. **Fotos** — comparador maior (`.compare-slider.lg`, até 640px) e um seletor
+   Frente/Costas/Lateral funcional: ele troca qual placeholder aparece (varia o matiz),
+   nunca finge ser uma foto real — a legenda "Placeholders ilustrativos" continua em
+   todo lugar que mostra um.
+6. **Histórico**: rótulo da semana concluída passou de "✓ Orientação enviada" para
+   "✓ Acompanhamento concluído", conforme o texto literal do brief.
+
+Nada de novo em `localStorage`/schema além de `coachReview.note` e `checkinSubmitted`
+(ambos dentro do patch existente por cliente) — `WeeklyCycle`, convite, métricas e metas
+individuais permanecem exatamente como antes.
