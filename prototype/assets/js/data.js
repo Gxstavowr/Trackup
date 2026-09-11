@@ -400,7 +400,10 @@
       return { code: "late", label: "Check-in atrasado", reason: "Check-in da semana " + cur.weekNumber + " ainda não foi enviado (previsto para " + fmtShort(cur.end) + ")." };
     }
     if (needsReview(client)) {
-      return { code: "review", label: "Aguardando revisão", reason: "Check-in da semana " + cur.weekNumber + " recebido " + relativeLabel(cur.checkin.submittedAt) + " — ainda sem orientação enviada." };
+      if (cur.reviewOpenedAt) {
+        return { code: "progress", label: "Em avaliação", reason: "Avaliação de " + client.name.split(" ")[0] + " em andamento — ainda não enviada." };
+      }
+      return { code: "review", label: "Aguardando avaliação", reason: "Check-in da semana " + cur.weekNumber + " recebido " + relativeLabel(cur.checkin.submittedAt) + " — ainda sem avaliação." };
     }
     var recent = client.weeks.slice(-4).filter(function (w) { return w.metrics.adherence != null; });
     if (recent.length >= 2) {
@@ -863,6 +866,16 @@
     if (global.TracklyStore) TracklyStore.patchClient(clientId, { remindedAt: now.toISOString(), remindedTime: client.remindedTime });
   }
 
+  // V10 — registra que o coach abriu a avaliação (mas ainda não enviou), pra diferenciar
+  // "Avaliar agora" de "Continuar avaliação" em toda a interface sem inventar autosave de rascunho
+  function markReviewOpened(clientId) {
+    var client = getClient(clientId);
+    var cur = currentWeek(client);
+    if (!cur || cur.checkin.status !== "submitted" || cur.orientation || cur.reviewOpenedAt) return;
+    cur.reviewOpenedAt = new Date();
+    if (global.TracklyStore) TracklyStore.patchClient(clientId, { reviewOpenedAt: cur.reviewOpenedAt.toISOString() });
+  }
+
   function slugify(name) {
     var base = name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     var id = base, n = 1;
@@ -963,6 +976,7 @@
         if (patch.completedAt) { cur.orientationSentAt = new Date(patch.completedAt); cur.orientationSentTime = patch.completedTime || fmtTime(cur.orientationSentAt); }
         if (patch.coachNote) cur.coachReview = { note: patch.coachNote };
       }
+      if (patch.reviewOpenedAt && !cur.orientation) cur.reviewOpenedAt = new Date(patch.reviewOpenedAt);
       if (patch.nextGoals) c._nextGoals = patch.nextGoals;
       if (patch.remindedAt) { c.remindedAt = new Date(patch.remindedAt); c.remindedTime = patch.remindedTime; }
     });
@@ -1000,7 +1014,7 @@
     studentUpdate: studentUpdate, buildWeeklySnapshot: buildWeeklySnapshot, clientStage: clientStage,
     isTracked: isTracked, trackedGoals: trackedGoals, effectiveGoals: effectiveGoals,
     CHECKIN_TEMPLATE: CHECKIN_TEMPLATE, CHECKIN_STEPS: CHECKIN_STEPS, checkinTemplateFor: checkinTemplateFor,
-    completeOrientation: completeOrientation, submitCheckin: submitCheckin, sendReminder: sendReminder,
+    completeOrientation: completeOrientation, submitCheckin: submitCheckin, sendReminder: sendReminder, markReviewOpened: markReviewOpened,
     createClient: createClient, sendInvite: sendInvite, acceptInvite: acceptInvite
   };
 })(window);
