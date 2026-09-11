@@ -51,13 +51,8 @@
         <input class="search-input" id="search" type="text" placeholder="Buscar por nome...">
       </div>
 
-      <div class="card" id="roster-card" style="overflow-x:auto;">
-        <table class="roster" style="min-width:600px;">
-          <thead>
-            <tr><th>Cliente</th><th>Objetivo</th><th>Status</th><th>Último check-in</th><th>Próxima ação</th></tr>
-          </thead>
-          <tbody id="roster-body"></tbody>
-        </table>
+      <div id="roster-card">
+        <div id="roster-body"></div>
       </div>
       <div id="empty" class="empty-state" style="display:none;">
         <h3>Nenhum cliente encontrado</h3>
@@ -112,22 +107,21 @@
       var actionHtml;
       if (x.s.code === "invite") {
         if (c.inviteStatus === "pending") {
-          actionHtml = '<a href="#" data-send-invite="' + c.id + '" style="color:var(--brand);font-weight:600;font-size:13px;">Enviar convite</a>';
+          actionHtml = '<a href="#" data-send-invite="' + c.id + '" style="color:var(--brand);font-weight:600;font-size:13px;" onclick="event.stopPropagation();">Enviar convite</a>';
         } else {
-          actionHtml = '<a href="../convite.html?id=' + c.id + '" style="color:var(--brand);font-weight:600;font-size:13px;">Simular aceitação</a>';
+          actionHtml = '<a href="../convite.html?id=' + c.id + '" style="color:var(--brand);font-weight:600;font-size:13px;" onclick="event.stopPropagation();">Simular aceitação</a>';
         }
       } else {
         var action = nextAction[x.s.code];
         actionHtml = action[1] ? '<a href="' + action[1] + c.id + '" onclick="event.stopPropagation();" style="color:var(--brand);font-weight:600;font-size:13px;">' + action[0] + '</a>' : '<span style="color:var(--ink-faint);font-size:13px;">' + action[0] + '</span>';
       }
       return (
-        '<tr' + (clickable ? ' onclick="location.href=\'cliente.html?id=' + c.id + '\'"' : ' style="cursor:default;"') + '>' +
-        '<td><div class="client-cell"><span class="avatar" style="background:' + TracklyNav.colorFor(c) + '">' + c.initials + '</span><div class="name">' + c.name + '</div></div></td>' +
-        '<td>' + c.objective + '</td>' +
-        '<td><span class="pill ' + pillClass + '"><span class="dot"></span>' + x.s.label + '</span></td>' +
-        '<td class="mono">' + (cur && cur.checkin.status === "submitted" ? Trackly.fmtShort(cur.end) : "—") + '</td>' +
-        '<td>' + actionHtml + '</td>' +
-        '</tr>'
+        '<div class="list-row"' + (clickable ? ' style="cursor:pointer;" onclick="location.href=\'cliente.html?id=' + c.id + '\'"' : '') + '>' +
+          '<span class="avatar lr-lead" style="background:' + TracklyNav.colorFor(c) + '">' + c.initials + '</span>' +
+          '<div class="lr-body"><strong>' + c.name + '</strong><span class="lr-meta">' + c.objective + (cur && cur.checkin.status === "submitted" ? " · último check-in " + Trackly.fmtShort(cur.end) : "") + '</span></div>' +
+          '<span class="pill ' + pillClass + '"><span class="dot"></span>' + x.s.label + '</span>' +
+          '<div class="lr-actions">' + actionHtml + '</div>' +
+        '</div>'
       );
     }).join("");
 
