@@ -132,7 +132,32 @@
       (Trackly.isTracked(client, "weight") ? (
         '<div class="chart-head"><h3 style="font-size:12.5px;font-weight:600;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.03em;">Peso · 8 semanas</h3><a href="#" data-goto-evolucao style="font-size:12.5px;color:var(--brand);font-weight:600;">ver evolução</a></div>' +
         Charts.lineChart({ data: previewWeeks, height: 160, color: color, unit: "kg", maxXLabels: 4 })
-      ) : "");
+      ) : "") +
+      (function () {
+        var mem = Trackly.buildCoachMemory(client);
+        if (!mem) return "";
+        var rows = [];
+        if (mem.weightDelta != null) rows.push('<div class="hero-stat sm"><div class="value">' + (mem.weightDelta > 0 ? "+" : "") + mem.weightDelta + '<span class="unit">kg</span></div><div class="label">peso no período</div></div>');
+        if (mem.adherenceAvg != null) rows.push('<div class="hero-stat sm"><div class="value">' + mem.adherenceAvg + '<span class="unit">%</span></div><div class="label">aderência média</div></div>');
+        if (mem.totalScoredWeeks > 0) rows.push('<div class="hero-stat sm"><div class="value">' + mem.weeksWithinGoal + '<span class="unit">/' + mem.totalScoredWeeks + '</span></div><div class="label">semanas na meta</div></div>');
+
+        var obs = "";
+        if (mem.strengths.length || mem.attentionPoints.length) {
+          obs = '<div style="margin-top:24px;">' +
+            (mem.strengths.length ? '<div class="section-label" style="color:var(--brand);">O que está funcionando</div><div class="insight-list" style="margin-bottom:16px;">' + mem.strengths.map(function (s) { return '<div class="row"><span class="dot" style="background:var(--brand);"></span>' + s + '</div>'; }).join("") + '</div>' : "") +
+            (mem.attentionPoints.length ? '<div class="section-label" style="color:var(--gold);">Merece atenção</div><div class="insight-list">' + mem.attentionPoints.map(function (s) { return '<div class="row"><span class="dot" style="background:var(--gold);"></span>' + s + '</div>'; }).join("") + '</div>' : "") +
+          '</div>';
+        }
+        var milestone = mem.milestoneNote ? '<p style="font-size:12.5px;color:var(--ink-faint);margin:14px 0 0;">' + mem.milestoneNote + '</p>' : "";
+
+        return (
+          '<div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--line);">' +
+            '<div class="section-label">' + mem.weeksTracked + ' semanas de acompanhamento</div>' +
+            '<div style="display:flex;gap:32px;flex-wrap:wrap;margin-bottom:4px;">' + rows.join("") + '</div>' +
+            milestone + obs +
+          '</div>'
+        );
+      })();
 
     var link = document.querySelector('[data-goto-evolucao]');
     if (link) link.addEventListener("click", function (e) { e.preventDefault(); document.querySelector('[data-tab="evolucao"]').click(); });
