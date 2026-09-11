@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trackly — acompanhamento contínuo de clientes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/landing.css">
+</head>
+<body data-root="">
+<div id="shell-demo"></div>
+
+<nav class="lp-nav">
+  <a href="index.html" class="brand">
+    <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><path d="M3 17l5.5-6.5L13 15l8.5-10.5" stroke="var(--brand)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/><circle cx="21.5" cy="4.8" r="2.1" fill="var(--brand)"/></svg>
+    <span>Trackly<small>Acompanhamento contínuo</small></span>
+  </a>
+  <div class="links">
+    <a href="#loop">Como funciona</a>
+    <a href="#pessoas">Para quem é</a>
+    <a href="#comparativo">O problema</a>
+  </div>
+  <a href="coach/dashboard.html" class="btn btn-primary">Ver demonstração</a>
+</nav>
+
+<header class="lp-hero">
+  <div class="lp-hero-grid">
+    <div>
+      <span class="lp-badge"><span class="dot"></span>Feito para coaches de nutrição e treino</span>
+      <h1>O histórico do seu cliente, semana após semana, <em>até virar clareza.</em></h1>
+      <p class="sub">Trackly transforma o check-in semanal — peso, medidas, fotos, aderência, metas — num histórico estruturado. Não é mais um app de dieta. É a memória do seu acompanhamento.</p>
+      <div class="lp-cta-row">
+        <a href="coach/dashboard.html" class="btn btn-primary btn-lg">Entrar como coach</a>
+        <a href="portal/dashboard.html" class="btn btn-secondary btn-lg">Ver como cliente</a>
+      </div>
+      <p class="lp-cta-note">Ambiente de demonstração com dados fictícios — nenhum cadastro necessário.</p>
+    </div>
+    <div class="hero-card" id="hero-card"><!-- preenchido via JS com dados reais do João --></div>
+  </div>
+</header>
+
+<section class="lp-strip" id="comparativo">
+  <div class="lp-strip-inner">
+    <div>
+      <p class="eyebrow">O problema</p>
+      <h2>WhatsApp e planilha guardam mensagens. Não guardam evolução.</h2>
+      <p>Hoje o acompanhamento vive espalhado — prints de peso, fotos perdidas na galeria, anotações soltas. Toda semana o profissional recomeça quase do zero. O Trackly acumula: quanto mais tempo o cliente permanece, mais o sistema enxerga.</p>
+    </div>
+    <div class="compare-grid">
+      <div class="compare-col bad">
+        <div class="t">WhatsApp + planilha</div>
+        <ul>
+          <li>— Dado espalhado em conversas e fotos soltas</li>
+          <li>— Comparar "essa semana vs. há 2 meses" é manual</li>
+          <li>— Meta combinada de boca, fácil de esquecer</li>
+          <li>— Nenhuma visão do padrão ao longo do tempo</li>
+        </ul>
+      </div>
+      <div class="compare-col good">
+        <div class="t">Trackly</div>
+        <ul>
+          <li>✓ Cada semana vira um registro estruturado</li>
+          <li>✓ Comparação de períodos em um clique</li>
+          <li>✓ Meta definida, visível e checada na semana seguinte</li>
+          <li>✓ Histórico acumulado por cliente, sempre à mão</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="lp-section" id="loop">
+  <p class="eyebrow">O loop principal</p>
+  <h2>Um ciclo simples, repetido toda semana</h2>
+  <p class="lead">O aluno fala primeiro. O coach ouve, analisa e orienta. Esse é o coração do produto — cada volta do ciclo fica registrada.</p>
+  <div class="loop-track">
+    <div class="loop-step"><div class="num">01</div><h3>Aluno envia o check-in</h3><p>No fim da semana, o aluno responde o check-in e envia fotos de evolução — direto no celular.</p></div>
+    <div class="loop-step"><div class="num">02</div><h3>Coach analisa</h3><p>O coach abre um resumo focado: peso, dieta, treinos, tudo pronto pra decisão, sem procurar nada.</p></div>
+    <div class="loop-step"><div class="num">03</div><h3>Coach orienta</h3><p>Com base no que realmente aconteceu, o coach escreve a orientação e define as metas da semana.</p></div>
+    <div class="loop-step"><div class="num">04</div><h3>Aluno executa</h3><p>O aluno vê claramente o foco da semana e a mensagem do coach — nada mais competindo por atenção.</p></div>
+    <div class="loop-step"><div class="num">05</div><h3>Novo check-in</h3><p>No fim da semana seguinte, o ciclo recomeça — e o histórico acumulado fica mais valioso.</p></div>
+  </div>
+</section>
+
+<section class="lp-section" id="pessoas">
+  <p class="eyebrow">Para quem é</p>
+  <h2>Duas visões, um mesmo histórico</h2>
+  <div class="persona-grid">
+    <div class="persona-card">
+      <div class="who"><span class="ic"></span><h3>Para o profissional</h3></div>
+      <ul>
+        <li></li>
+        <li></li>
+        <li></li>
+        <li></li>
+      </ul>
+    </div>
+    <div class="persona-card">
+      <div class="who"><span class="ic"></span><h3>Para o cliente</h3></div>
+      <ul>
+        <li></li>
+        <li></li>
+        <li></li>
+        <li></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer class="lp-footer">
+  <span>Trackly — nome provisório. Protótipo de produto, dados fictícios.</span>
+  <span>Acompanhe. Entenda. Evolua.</span>
+</footer>
+
+<script src="assets/js/storage.js?v=5"></script>
+<script src="assets/js/data.js?v=5"></script>
+<script src="assets/js/icons.js?v=5"></script>
+<script src="assets/js/charts.js?v=5"></script>
+<script src="assets/js/nav.js?v=5"></script>
+<script>
+(function () {
+  var joao = Trackly.getClient("joao");
+  var kpi = Trackly.computeKPIs(joao);
+  var weeks = joao.weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.weight }; });
+  var hcStatus = Trackly.computeStatus(joao);
+  var hcPillClass = hcStatus.code === "ok" ? "pill-ok" : hcStatus.code === "late" ? "pill-late" : "pill-warn";
+  var hcStatusPill = '<span class="pill ' + hcPillClass + '"><span class="dot"></span>' + hcStatus.label + '</span>';
+  document.getElementById("hero-card").innerHTML =
+    '<div class="hc-top">' +
+      '<div class="hc-name"><span class="avatar" style="background:' + TracklyNav.colorFor(joao) + '">' + joao.initials + '</span><div><div class="who">' + joao.name + '</div><div class="obj">' + joao.objective + ' · semana ' + kpi.weeksElapsed + '</div></div></div>' +
+      hcStatusPill +
+    '</div>' +
+    '<div class="hc-stats">' +
+      '<div class="hc-stat"><div class="l">Peso</div><div class="v mono">' + kpi.weightNow + 'kg<span>' + kpi.weightDelta + 'kg</span></div></div>' +
+      '<div class="hc-stat"><div class="l">Cintura</div><div class="v mono">' + kpi.waistNow + 'cm<span>' + kpi.waistDelta + 'cm</span></div></div>' +
+      '<div class="hc-stat"><div class="l">Aderência</div><div class="v mono">' + kpi.adherenceAvg + '%</div></div>' +
+    '</div>' +
+    Charts.lineChart({ width: 460, height: 150, data: weeks, color: "var(--brand)", unit: "kg", maxXLabels: 5 }) +
+    '<div class="hc-foot"><span>' + kpi.weeksElapsed + ' semanas de acompanhamento</span><span>Atualizado toda semana</span></div>';
+
+  var personaCoach = ["Ver rapidamente quem está esperando uma resposta", "Revisar um check-in em uma tela focada, sem ruído", "Comparar semana atual com semanas anteriores", "Acompanhar fotos e histórico completo, sob demanda"];
+  var personaClient = ["Responder o check-in em poucos minutos", "Saber exatamente o foco da semana, sem procurar", "Ver a mensagem do coach assim que ela chega", "Acompanhar sua evolução quando quiser se aprofundar"];
+  document.querySelectorAll(".persona-card")[0].querySelector(".who .ic").innerHTML = ICONS.target;
+  document.querySelectorAll(".persona-card")[1].querySelector(".who .ic").innerHTML = ICONS.trend;
+  document.querySelectorAll(".persona-card")[0].querySelectorAll("li").forEach(function (li, i) { li.innerHTML = ICONS.check + "<span>" + personaCoach[i] + "</span>"; });
+  document.querySelectorAll(".persona-card")[1].querySelectorAll("li").forEach(function (li, i) { li.innerHTML = ICONS.check + "<span>" + personaClient[i] + "</span>"; });
+})();
+</script>
+</body>
+</html>

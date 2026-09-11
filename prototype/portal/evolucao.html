@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evolução — Trackly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  .journey-card { text-align: center; padding: 6px 0 20px; }
+  .journey-card .weeks { font-size: 12.5px; color: var(--ink-faint); font-weight: 600; letter-spacing: .03em; margin-bottom: 14px; }
+  .journey-row { display: flex; justify-content: center; gap: 28px; flex-wrap: wrap; }
+  .journey-row .item .l { font-size: 11.5px; color: var(--ink-faint); font-weight: 600; margin-bottom: 6px; }
+  .journey-row .item .v { font-family: var(--font-mono); font-size: 15px; }
+  .journey-row .item .v strong { font-family: var(--font-display); font-size: 19px; font-weight: 600; margin-left: 5px; }
+  .period-card { background: var(--brand-tint); border: 1px solid var(--brand-tint-strong); border-radius: var(--radius-lg); padding: 20px; }
+  .period-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 10px; margin: 14px 0 16px; }
+  .period-stats .item .l { font-size: 11px; color: var(--ink-faint); font-weight: 600; margin-bottom: 3px; }
+  .period-stats .item .v { font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+  .period-narrative { font-size: 13.5px; line-height: 1.6; color: var(--ink); border-top: 1px solid var(--brand-tint-strong); padding-top: 14px; margin: 0; }
+  .period-narrative strong { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--brand); margin-bottom: 6px; font-weight: 700; }
+  .compare-select { width: 100%; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font-size: 12.5px; font-family: var(--font-body); }
+</style>
+</head>
+<body data-root="../">
+<div id="shell-demo"></div>
+<div class="portal">
+  <div class="portal-top" id="shell-portal-top"></div>
+  <div class="portal-inner">
+    <div class="page-head" style="margin-bottom:6px;">
+      <div><p class="eyebrow">Evolução</p><h1 style="font-size:22px;">Sua jornada até aqui</h1></div>
+    </div>
+
+    <div class="journey-card" id="journey"></div>
+
+    <div class="range-sel" id="range-sel" style="margin-bottom:16px;"></div>
+
+    <div class="card card-pad" style="margin-bottom:16px;" id="weight-chart-card">
+      <div class="chart-head" style="margin-bottom:2px;"><h3 style="margin:0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-faint);">Evolução do peso</h3></div>
+      <div id="weight-hero" style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px;"></div>
+      <div id="chart-weight"></div>
+    </div>
+    <div class="card card-pad" style="margin-bottom:16px;" id="waist-card"></div>
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="chart-head" style="display:flex;justify-content:space-between;margin-bottom:10px;"><h3 style="margin:0;font-size:13.5px;font-weight:600;">Aderência</h3></div>
+      <div id="chart-adherence"></div>
+    </div>
+
+    <div class="section-h"><h2>Fotos de evolução</h2></div>
+    <div class="card card-pad" style="margin-bottom:16px;" id="compare-card"></div>
+    <div class="photo-strip" id="photo-strip" style="grid-template-columns:repeat(2,1fr); margin-bottom:8px;"></div>
+
+    <button class="disclosure-btn" id="more-toggle" style="margin:18px 0 0;"></button>
+    <div class="disclosure-panel" id="more-panel" style="margin-top:14px;">
+      <div class="card card-pad" style="margin-bottom:16px;" id="sleep-chart-card">
+        <div class="chart-head" style="display:flex;justify-content:space-between;margin-bottom:10px;"><h3 style="margin:0;font-size:13.5px;font-weight:600;">Sono (h)</h3></div>
+        <div id="chart-sleep"></div>
+      </div>
+      <div class="card card-pad" style="margin-bottom:16px;" id="water-chart-card">
+        <div class="chart-head" style="display:flex;justify-content:space-between;margin-bottom:10px;"><h3 style="margin:0;font-size:13.5px;font-weight:600;">Água (L)</h3></div>
+        <div id="chart-water"></div>
+      </div>
+      <div class="card card-pad" style="margin-bottom:16px;">
+        <div class="chart-head" style="display:flex;justify-content:space-between;margin-bottom:10px;"><h3 style="margin:0;font-size:13.5px;font-weight:600;">Treinos realizados vs. meta</h3></div>
+        <div id="chart-workouts"></div>
+      </div>
+      <div class="card card-pad" id="cardio-chart-card">
+        <div class="chart-head" style="display:flex;justify-content:space-between;margin-bottom:10px;"><h3 style="margin:0;font-size:13.5px;font-weight:600;">Cardio realizado vs. meta</h3></div>
+        <div id="chart-cardio"></div>
+      </div>
+    </div>
+
+    <div class="section-h"><h2>Resumo do período</h2></div>
+    <div id="period-summary"></div>
+  </div>
+  <div id="shell-bottom-nav"></div>
+</div>
+
+<script src="../assets/js/storage.js?v=5"></script>
+<script src="../assets/js/data.js?v=5"></script>
+<script src="../assets/js/icons.js?v=5"></script>
+<script src="../assets/js/charts.js?v=5"></script>
+<script src="../assets/js/nav.js?v=5"></script>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var client = Trackly.getClient(params.get("client") || "joao");
+  TracklyNav.mountPortalNav("evolucao", client.id);
+  var color = TracklyNav.colorFor(client);
+  var state = { range: "12" };
+
+  var kpi = Trackly.computeKPIs(client);
+  var journeyItems = [
+    { l: "Peso", v: kpi.weightStart + "kg", now: kpi.weightNow + "kg" },
+    kpi.waistNow != null ? { l: "Cintura", v: kpi.waistStart + "cm", now: kpi.waistNow + "cm" } : null,
+    { l: "Aderência média", now: kpi.adherenceAvg + "%" }
+  ].filter(Boolean);
+  document.getElementById("journey").innerHTML =
+    '<div class="weeks">' + kpi.weeksElapsed + ' SEMANAS DE ACOMPANHAMENTO</div>' +
+    '<div class="journey-row">' + journeyItems.map(function (it) {
+      return '<div class="item"><div class="l">' + it.l + '</div><div class="v">' + (it.v ? it.v + ' →' : '') + '<strong>' + it.now + '</strong></div></div>';
+    }).join("") + '</div>';
+
+  function render() {
+    var weeks = Trackly.weeksInRange(client, state.range);
+    document.getElementById("range-sel").innerHTML = [["4", "4 sem"], ["8", "8 sem"], ["12", "12 sem"], ["all", "tudo"]].map(function (r) {
+      return '<button data-r="' + r[0] + '" class="' + (state.range === r[0] ? "active" : "") + '">' + r[1] + '</button>';
+    }).join("");
+    document.querySelectorAll("#range-sel button").forEach(function (b) {
+      b.addEventListener("click", function () { state.range = b.getAttribute("data-r"); render(); });
+    });
+
+    var lastW = weeks[weeks.length - 1], prevW = weeks.length > 1 ? weeks[weeks.length - 2] : null;
+    var wkDelta = prevW ? Trackly.round1(lastW.metrics.weight - prevW.metrics.weight) : 0;
+    document.getElementById("weight-hero").innerHTML =
+      '<span style="font-family:var(--font-display);font-size:34px;font-weight:600;">' + lastW.metrics.weight + 'kg</span>' +
+      (prevW ? '<span style="font-size:13px;font-weight:600;color:' + (Trackly.isGoodWeightDelta(client, wkDelta) ? "var(--brand)" : "var(--coral)") + ';">' + (wkDelta <= 0 ? "↓" : "↑") + ' ' + Math.abs(wkDelta) + 'kg esta semana</span>' : '');
+    document.getElementById("chart-weight").innerHTML = Charts.lineChart({
+      data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.weight }; }),
+      height: 260, color: color, unit: "kg", maxXLabels: 6
+    });
+
+    if (client.weeks[0].metrics.waist != null) {
+      document.getElementById("waist-card").style.display = "block";
+      document.getElementById("waist-card").innerHTML =
+        '<div class="chart-head" style="display:flex;justify-content:space-between;margin-bottom:10px;"><h3 style="margin:0;font-size:13.5px;font-weight:600;">Cintura</h3></div>' +
+        Charts.lineChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.waist }; }), height: 190, color: "var(--c3)", unit: "cm", maxXLabels: 5 });
+    } else {
+      document.getElementById("waist-card").style.display = "none";
+    }
+
+    document.getElementById("chart-adherence").innerHTML = Charts.lineChart({
+      data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.adherence }; }),
+      height: 190, color: "var(--gold)", unit: "%", min: 0, max: 100
+    });
+
+    document.getElementById("sleep-chart-card").style.display = Trackly.isTracked(client, "sleep") ? "block" : "none";
+    if (Trackly.isTracked(client, "sleep")) {
+      document.getElementById("chart-sleep").innerHTML = Charts.lineChart({
+        data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.sleep }; }),
+        height: 170, color: "var(--c4)", unit: "h"
+      });
+    }
+    document.getElementById("water-chart-card").style.display = Trackly.isTracked(client, "water") ? "block" : "none";
+    if (Trackly.isTracked(client, "water")) {
+      document.getElementById("chart-water").innerHTML = Charts.lineChart({
+        data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.water }; }),
+        height: 170, color: "var(--c4)", unit: "L"
+      });
+    }
+    document.getElementById("chart-workouts").innerHTML = Charts.barChart({
+      data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.workouts, goal: w.metrics.workoutsGoal }; }),
+      height: 170
+    });
+    document.getElementById("cardio-chart-card").style.display = Trackly.isTracked(client, "cardio") ? "block" : "none";
+    if (Trackly.isTracked(client, "cardio")) {
+      document.getElementById("chart-cardio").innerHTML = Charts.barChart({
+        data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.cardio, goal: w.metrics.cardioGoal }; }),
+        height: 170
+      });
+    }
+  }
+  render();
+
+  document.getElementById("more-toggle").innerHTML = ICONS.chevronR + "<span>Ver mais métricas</span>";
+  document.getElementById("more-toggle").addEventListener("click", function () {
+    this.classList.toggle("open");
+    document.getElementById("more-panel").classList.toggle("open");
+    this.querySelector("span").textContent = this.classList.contains("open") ? "Ocultar métricas" : "Ver mais métricas";
+  });
+
+  var angles = [["front", "Frente"], ["back", "Costas"]];
+  var hue = client.colorVar === "--c1" ? 155 : client.colorVar === "--c2" ? 32 : client.colorVar === "--c3" ? 265 : 205;
+  function photoSwatch(i, label) { return '<div class="photo-ph" style="background:hsl(' + hue + ',' + (26 + i * 4) + '%,' + (30 + i * 6) + '%);">' + label.toUpperCase() + '</div>'; }
+  var milestoneWeeks = client.weeks.filter(function (w, i) { return w.checkin.status === "submitted" && (i === 0 || i === client.weeks.length - 1 || (w.weekNumber - 1) % 4 === 0); }).slice(-4);
+  document.getElementById("photo-strip").innerHTML = milestoneWeeks.map(function (w) {
+    var imgs = angles.map(function (a, i) { return photoSwatch(i, a[1]); }).join("");
+    return '<div class="photo-week"><div class="imgs">' + imgs + '</div><div class="meta"><span>Semana ' + w.weekNumber + '</span><strong>' + w.metrics.weight + 'kg</strong></div></div>';
+  }).join("");
+
+  var submittedWeeks = client.weeks.filter(function (w) { return w.checkin.status === "submitted"; });
+  var compareState = { a: submittedWeeks[0].weekNumber, b: submittedWeeks[submittedWeeks.length - 1].weekNumber };
+  function renderCompare() {
+    var options = submittedWeeks.map(function (w) { return w.weekNumber; });
+    function optHtml(sel) { return options.map(function (v) { return '<option value="' + v + '"' + (v === sel ? " selected" : "") + '>Semana ' + v + '</option>'; }).join(""); }
+    function col(weekNumber, side) {
+      var w = client.weeks[weekNumber - 1];
+      var imgs = angles.map(function (a, i) { return photoSwatch(i, a[1]); }).join("");
+      return '<div><select class="compare-select" data-side="' + side + '">' + optHtml(weekNumber) + '</select>' +
+        '<div class="imgs" style="display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);border-radius:var(--radius-md);overflow:hidden;margin-top:8px;">' + imgs + '</div>' +
+        '<div style="text-align:center;margin-top:6px;font-family:var(--font-mono);font-size:12px;">' + w.metrics.weight + 'kg</div></div>';
+    }
+    document.getElementById("compare-card").innerHTML =
+      (submittedWeeks.length >= 2 ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' + col(compareState.a, "a") + col(compareState.b, "b") + '</div>' : '<p style="margin:0;font-size:13px;color:var(--ink-faint);">Ainda não há semanas suficientes pra comparar.</p>');
+    document.querySelectorAll(".compare-select").forEach(function (sel) {
+      sel.addEventListener("change", function () { compareState[sel.getAttribute("data-side")] = parseInt(sel.value, 10); renderCompare(); });
+    });
+  }
+  renderCompare();
+
+  var period = Trackly.buildPeriodSummary(client, 8);
+  document.getElementById("period-summary").innerHTML = !period
+    ? '<div class="card card-pad"><p style="margin:0;font-size:13.5px;color:var(--ink-faint);">Ainda não há semanas suficientes para um resumo de período — volte daqui a algumas semanas.</p></div>'
+    : (
+      '<div class="period-card">' +
+      '<div class="weeks" style="text-align:left;margin-bottom:0;">ÚLTIMAS ' + period.weeksCount + ' SEMANAS</div>' +
+      '<div class="period-stats">' +
+        '<div class="item"><div class="l">Peso</div><div class="v">' + (period.weightDelta > 0 ? "+" : "") + period.weightDelta + 'kg</div></div>' +
+        (period.waistDelta != null ? '<div class="item"><div class="l">Cintura</div><div class="v">' + (period.waistDelta > 0 ? "+" : "") + period.waistDelta + 'cm</div></div>' : '<div class="item"><div class="l">Aderência</div><div class="v">' + period.adherenceAvg + '%</div></div>') +
+        '<div class="item"><div class="l">Treinos</div><div class="v">' + period.workoutsTotal + '/' + period.workoutsGoalTotal + '</div></div>' +
+        (Trackly.isTracked(client, "sleep") ? '<div class="item"><div class="l">Sono médio</div><div class="v">' + period.sleepAvg + 'h</div></div>' : "") +
+      '</div>' +
+      '<p class="period-narrative"><strong>O que mudou</strong>' + period.narrative + '</p>' +
+      '</div>'
+    );
+})();
+</script>
+</body>
+</html>

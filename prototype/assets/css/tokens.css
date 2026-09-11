@@ -1,0 +1,61 @@
+/* Trackly — design tokens (V2: dark mode premium, padrão único).
+   Grafite/preto com leve calor neutro, texto off-white, esmeralda discreto para ação/sucesso,
+   dourado só para atenção. Sem neon, sem gradiente pesado — a referência é health/performance
+   SaaS sério (mais "painel de clínica bem desenhada" que "app de academia"). */
+
+:root {
+  /* superfícies */
+  --paper: #101210;
+  --surface: #1A1D1A;
+  --surface-sunken: #161815;
+  --surface-raised-shadow: inset 0 1px 0 rgba(255,255,255,0.035), 0 10px 26px -18px rgba(0,0,0,0.7);
+
+  /* tinta */
+  --ink: #F2F4EF;
+  --ink-muted: #9CA79C;
+  --ink-faint: #6C766B;
+  --line: #292D28;
+  --line-strong: #383D36;
+
+  /* marca — esmeralda discreto. --brand é o tom "texto/linha/ícone sobre fundo escuro";
+     --brand-deep é usado só em preenchimentos sólidos (botão, avatar) — sempre com texto --on-accent por cima. */
+  --brand: #3FAE81;
+  --brand-deep: #56C299;
+  --brand-dark: #14301F;
+  --brand-tint: rgba(63, 174, 129, 0.14);
+  --brand-tint-strong: rgba(63, 174, 129, 0.26);
+  --on-accent: #0A100C;
+
+  /* atenção / metas — dourado */
+  --gold: #D6A94E;
+  --gold-tint: rgba(214, 169, 78, 0.14);
+
+  /* alerta */
+  --coral: #DE8069;
+  --coral-tint: rgba(222, 128, 105, 0.14);
+
+  /* status semânticos */
+  --ok: var(--brand);
+  --ok-tint: var(--brand-tint);
+  --warn: var(--gold);
+  --warn-tint: var(--gold-tint);
+  --late: var(--coral);
+  --late-tint: var(--coral-tint);
+
+  /* tipografia */
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "Inter", -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  /* escala */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --sidebar-w: 248px;
+
+  /* clientes — cor de identidade em gráficos/avatares (ciclo), calibradas para contraste em fundo escuro */
+  --c1: #3FAE81;
+  --c2: #D6A94E;
+  --c3: #A99BE0;
+  --c4: #6FB3DE;
+}

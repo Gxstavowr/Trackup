@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Check-in — Trackly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  .ci-head { padding: 4px 0 18px; }
+  .ci-head .wk-tag { font-size: 11.5px; font-weight: 700; color: var(--brand); background: var(--brand-tint); display: inline-block; padding: 4px 10px; border-radius: 999px; margin-bottom: 10px; }
+  .ci-head h1 { font-family: var(--font-display); font-size: 23px; margin: 0 0 4px; }
+  .ci-head p { font-size: 13px; color: var(--ink-muted); margin: 0; }
+
+  .step-indicator { margin-bottom: 24px; }
+  .step-indicator .row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .step-indicator .count { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-faint); }
+  .step-indicator .label { font-size: 14px; font-weight: 700; }
+  .step-bar { display: flex; gap: 5px; }
+  .step-bar .seg { flex: 1; height: 3px; border-radius: 2px; background: var(--line-strong); }
+  .step-bar .seg.done { background: var(--brand); }
+
+  .step-panel { display: none; }
+  .step-panel.active { display: block; animation: fadein .18s ease; }
+
+  .range-wrap { text-align: center; padding: 6px 0 14px; }
+  .range-wrap .rv { font-family: var(--font-display); font-size: 40px; font-weight: 600; color: var(--brand); }
+  .range-wrap input[type="range"] { width: 100%; accent-color: var(--brand); margin-top: 10px; }
+  .range-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
+  .stepper { display: flex; align-items: center; gap: 14px; }
+  .stepper button { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface); font-size: 18px; font-weight: 600; color: var(--ink); }
+  .stepper .sv { flex: 1; text-align: center; font-family: var(--font-mono); font-size: 22px; font-weight: 600; }
+  .stepper-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 8px; }
+  .stepper-row .stepper { width: auto; }
+  .confirm-wrap { text-align: center; padding: 60px 20px; }
+  .confirm-wrap .ring { width: 72px; height: 72px; border-radius: 50%; background: var(--brand-tint); color: var(--brand); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
+  .confirm-wrap h2 { font-family: var(--font-display); font-size: 22px; margin: 0 0 8px; }
+  .confirm-wrap p { color: var(--ink-muted); font-size: 13.5px; max-width: 280px; margin: 0 auto 24px; }
+  .upload-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+
+  .wizard-nav { display: flex; gap: 10px; margin-top: 26px; }
+  .wizard-nav .btn-primary { flex: 1; }
+</style>
+</head>
+<body data-root="../">
+<div id="shell-demo"></div>
+<div class="portal">
+  <div class="portal-top" id="shell-portal-top"></div>
+  <div class="portal-inner">
+    <div id="ci-form"></div>
+    <div id="ci-confirm" style="display:none;"></div>
+  </div>
+  <div id="shell-bottom-nav"></div>
+</div>
+
+<script src="../assets/js/storage.js?v=5"></script>
+<script src="../assets/js/data.js?v=5"></script>
+<script src="../assets/js/icons.js?v=5"></script>
+<script src="../assets/js/charts.js?v=5"></script>
+<script src="../assets/js/nav.js?v=5"></script>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var client = Trackly.getClient(params.get("client") || "joao");
+  TracklyNav.mountPortalNav("checkin", client.id);
+
+  var cur = Trackly.currentWeek(client);
+  var pending = cur.checkin.status !== "submitted";
+  var week = pending ? cur : { weekNumber: cur.weekNumber + 1 };
+
+  var win = Trackly.getCheckinWindowStatus();
+  if (pending && win !== "open") {
+    var nextOpen = Trackly.nextOpenDate();
+    var nextOpenLabel = nextOpen.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+    document.getElementById("ci-form").innerHTML =
+      '<div class="ci-head" style="text-align:center;padding-top:40px;">' +
+      (win === "reminder"
+        ? '<h1>Seu próximo check-in</h1><p>Seu check-in estará disponível amanhã. Reserve alguns minutos para registrar sua semana.</p>'
+        : '<h1>Check-in encerrado</h1><p>O período de atualização desta semana terminou.<br>Próximo check-in: ' + nextOpenLabel + '.</p>') +
+      '</div><a href="dashboard.html?client=' + client.id + '" class="btn btn-secondary btn-block" style="margin-top:20px;">Voltar ao início</a>';
+    return;
+  }
+
+  var steps = Trackly.CHECKIN_STEPS;
+  var current = 1;
+  var state = { treinos: 0, cardio: 0 };
+
+  var stepPanels = {
+    1: '<div class="field"><label>Como foi a dieta?</label>' +
+      '<div class="range-wrap"><div class="rv" id="dieta-val">8</div><input type="range" min="0" max="10" step="1" value="8" id="f-dieta">' +
+      '<div class="range-labels"><span>0 — nada</span><span>10 — perfeito</span></div></div>' +
+      '<textarea id="f-dieta-txt" rows="2" placeholder="Em uma frase, como foi seguir o plano essa semana?"></textarea></div>' +
+      '<div class="field"><label>Fez a refeição livre? Se sim, qual dia e o que comeu?</label><textarea id="f-refeicao" rows="2" placeholder="Ex.: sim, sábado à noite — pizza."></textarea></div>' +
+      '<div class="field" style="margin-bottom:0;"><label>Houve beliscos de comida fora do plano?</label><textarea id="f-beliscos" rows="2" placeholder="Ex.: não / sim, doce à tarde em dois dias."></textarea></div>',
+
+    2: '<div class="field"><div class="stepper-row"><label style="margin:0;">Treinos realizados</label><div class="stepper" style="flex:none;"><button type="button" data-step="treinos" data-d="-1">−</button><div class="sv" id="treinos-val" style="width:34px;">0</div><button type="button" data-step="treinos" data-d="1">+</button></div></div></div>' +
+      '<div class="field"><label>Como foi sua performance nos treinos?</label><textarea id="f-performance" rows="2" placeholder="Força, disposição, evolução de carga..."></textarea></div>' +
+      (Trackly.isTracked(client, "cardio") ? (
+      '<div class="field"><div class="stepper-row"><label style="margin:0;">Sessões de cardio</label><div class="stepper" style="flex:none;"><button type="button" data-step="cardio" data-d="-1">−</button><div class="sv" id="cardio-val" style="width:34px;">0</div><button type="button" data-step="cardio" data-d="1">+</button></div></div></div>' +
+      '<div class="field" style="margin-bottom:0;"><label>Como foi o cardio? Tempo, dias e tipo.</label><textarea id="f-cardio-txt" rows="2" placeholder="Ex.: 3x, 30min, esteira."></textarea></div>'
+      ) : ""),
+
+    3: (client.gender === "f" ? '<div class="field"><label>Está no período menstrual?</label><div class="yn-row" id="f-periodo"><div class="yn-opt" data-v="sim">Sim</div><div class="yn-opt sel" data-v="nao">Não</div></div></div>' : "") +
+      (Trackly.isTracked(client, "water") ? '<div class="field"><label>Quantos litros de água você tomou por dia, em média?</label><input type="number" step="0.1" id="f-agua" placeholder="ex.: 2.8" inputmode="decimal"></div>' : "") +
+      (Trackly.isTracked(client, "sleep") ? '<div class="field"><label>Como foi seu sono?</label><input type="number" step="0.1" id="f-sono" placeholder="média de horas por noite, ex.: 7.2" inputmode="decimal" style="margin-bottom:8px;"><textarea id="f-sono-txt" rows="2" placeholder="Regular? Alguma noite mal dormida?"></textarea></div>' : "") +
+      (Trackly.isTracked(client, "digestion") ? '<div class="field"><label>Como foi sua digestão? Idas ao banheiro e estufamento.</label><textarea id="f-digestao" rows="2"></textarea></div>' : "") +
+      (Trackly.isTracked(client, "emotional") ? '<div class="field"><label>Como está seu emocional?</label><textarea id="f-emocional" rows="2"></textarea></div>' : "") +
+      '<div class="field"><label>Uso de substâncias/medicamentos <span style="font-weight:400;color:var(--ink-faint);">(quando aplicável)</span></label><textarea id="f-substancias" rows="2"></textarea></div>' +
+      '<div class="field" style="margin-bottom:0;"><label>Último exame enviado <span style="font-weight:400;color:var(--ink-faint);">(quando aplicável)</span></label><input type="text" id="f-exame" placeholder="Ex.: exame de sangue, semana 12"></div>',
+
+    4: '<div class="field"><label>Peso atual</label><input type="number" step="0.1" id="f-peso" placeholder="ex.: 81.5" inputmode="decimal"><p class="hint">em quilos, medido em jejum se possível</p></div>' +
+      (Trackly.isTracked(client, "photos") ? (
+      '<div class="field" style="margin-bottom:0;"><label>Fotos de evolução</label><div class="upload-grid-3">' +
+      ["front", "back", "side"].map(function (a) {
+        var names = { front: "Frente", back: "Costas", side: "Lateral" };
+        return '<label class="upload-slot" data-angle="' + a + '">' + ICONS.camera + '<span>' + names[a] + '</span><input type="file" accept="image/*" style="display:none;" data-angle-input="' + a + '"></label>';
+      }).join("") + '</div><p class="hint">Use sempre o mesmo local e roupa — facilita comparar sua evolução.</p></div>'
+      ) : "")
+  };
+
+  document.getElementById("ci-form").innerHTML =
+    '<div class="ci-head"><span class="wk-tag">SEMANA ' + week.weekNumber + '</span>' +
+    '<h1>Como foi sua semana?</h1><p>Leva menos de 3 minutos. Responda com sinceridade — é isso que ajuda seu coach a te orientar melhor.</p></div>' +
+    '<div class="step-indicator">' +
+      '<div class="row"><span class="count" id="step-count"></span><span class="label" id="step-label"></span></div>' +
+      '<div class="step-bar" id="step-bar"></div>' +
+    '</div>' +
+    steps.map(function (s) { return '<div class="step-panel" data-step="' + s.n + '">' + stepPanels[s.n] + '</div>'; }).join("") +
+    '<div class="wizard-nav" id="wizard-nav"></div>';
+
+  function renderNav() {
+    document.getElementById("step-count").textContent = current + " de " + steps.length;
+    document.getElementById("step-label").textContent = steps[current - 1].label;
+    document.getElementById("step-bar").innerHTML = steps.map(function (s) { return '<div class="seg' + (s.n <= current ? " done" : "") + '"></div>'; }).join("");
+    document.querySelectorAll(".step-panel").forEach(function (p) { p.classList.toggle("active", parseInt(p.getAttribute("data-step"), 10) === current); });
+    document.getElementById("wizard-nav").innerHTML =
+      (current > 1 ? '<button class="btn btn-secondary" id="btn-back">Voltar</button>' : "") +
+      '<button class="btn btn-primary" id="btn-next">' + (current === steps.length ? "Enviar check-in" : "Continuar") + '</button>';
+    document.getElementById("btn-next").addEventListener("click", function () {
+      if (current === steps.length) { submit(); return; }
+      current++; renderNav(); window.scrollTo(0, 0);
+    });
+    var back = document.getElementById("btn-back");
+    if (back) back.addEventListener("click", function () { current--; renderNav(); window.scrollTo(0, 0); });
+  }
+  renderNav();
+
+  document.getElementById("f-dieta").addEventListener("input", function (e) { document.getElementById("dieta-val").textContent = e.target.value; });
+  document.querySelectorAll('[data-step]').forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var key = btn.getAttribute("data-step"), d = parseInt(btn.getAttribute("data-d"), 10);
+      state[key] = Math.max(0, state[key] + d);
+      document.getElementById(key + "-val").textContent = state[key];
+    });
+  });
+  var periodoEl = document.getElementById("f-periodo");
+  if (periodoEl) {
+    periodoEl.querySelectorAll(".yn-opt").forEach(function (opt) {
+      opt.addEventListener("click", function () {
+        periodoEl.querySelectorAll(".yn-opt").forEach(function (o) { o.classList.remove("sel"); });
+        opt.classList.add("sel");
+      });
+    });
+  }
+  document.querySelectorAll('[data-angle-input]').forEach(function (input) {
+    input.addEventListener("change", function (e) {
+      var slot = input.closest(".upload-slot");
+      if (e.target.files && e.target.files[0]) {
+        var url = URL.createObjectURL(e.target.files[0]);
+        slot.style.backgroundImage = "url(" + url + ")";
+        slot.style.backgroundSize = "cover";
+        slot.style.backgroundPosition = "center";
+        slot.classList.add("filled");
+        slot.innerHTML = ICONS.check + "<span>Adicionada</span>" + slot.querySelector("input").outerHTML;
+      }
+    });
+  });
+
+  function submit() {
+    document.getElementById("ci-form").style.display = "none";
+    var el = document.getElementById("ci-confirm");
+    el.style.display = "block";
+    el.innerHTML =
+      '<div class="confirm-wrap"><div class="ring">' + ICONS.check + '</div>' +
+      '<h2>Check-in enviado!</h2>' +
+      '<p>Seu coach vai revisar suas respostas e enviar a orientação da próxima semana em breve.</p>' +
+      '<a href="dashboard.html?client=' + client.id + '" class="btn btn-primary">Voltar ao início</a></div>';
+  }
+})();
+</script>
+</body>
+</html>

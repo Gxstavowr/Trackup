@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard — Trackly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  .greet { font-size: 14px; color: var(--ink-muted); margin-bottom: 2px; }
+  .week-summary { margin: 22px 0 30px; }
+  .week-summary .range { font-size: 13px; color: var(--ink-faint); margin-bottom: 14px; }
+  .week-summary .nums { display: flex; align-items: baseline; gap: 26px; margin-bottom: 10px; flex-wrap: wrap; }
+  .week-summary .nums .item .n { font-family: var(--font-display); font-size: 28px; font-weight: 600; line-height: 1; }
+  .week-summary .nums .item .l { font-size: 12px; color: var(--ink-faint); font-weight: 500; margin-top: 4px; }
+  .week-summary .nums .frac { margin-left: auto; font-family: var(--font-mono); font-size: 13px; color: var(--ink-muted); }
+
+  .queue-section { margin-bottom: 30px; }
+  .queue-section .qs-label { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 10px; }
+  .queue-card { padding: 16px 4px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 16px; }
+  .queue-card:last-child { border-bottom: none; }
+  .queue-card .who { flex: 1; min-width: 0; }
+  .queue-card .who strong { font-size: 14.5px; display: block; margin-bottom: 3px; }
+  .queue-card .who .when { font-size: 12px; color: var(--ink-faint); }
+  .queue-card .who .when.done { color: var(--brand); }
+  .q-stats { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 7px; }
+  .q-stat { font-size: 12.5px; color: var(--ink-muted); display: flex; align-items: center; gap: 4px; }
+  .q-stat.good { color: var(--brand); }
+  .q-stat.bad { color: var(--coral); }
+  .q-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+  .empty-queue { padding: 20px 4px; color: var(--ink-faint); font-size: 13px; }
+  .all-done { text-align: center; padding: 30px 20px; }
+  .all-done svg { color: var(--brand); margin-bottom: 10px; }
+  .all-done p { font-size: 14px; margin: 0; }
+</style>
+</head>
+<body data-root="../">
+<div id="shell-demo"></div>
+<div class="shell">
+  <div id="shell-sidebar"></div>
+  <main class="main">
+    <div class="main-inner">
+      <button class="mobile-menu-btn" id="mobile-menu-btn">☰</button>
+      <p class="greet" id="greet"></p>
+      <div class="page-head" style="margin-bottom:0;">
+        <div><h1>Acompanhamento da semana</h1></div>
+      </div>
+
+      <div class="week-summary">
+        <p class="range" id="week-range"></p>
+        <div class="nums" id="week-nums"></div>
+        <div class="week-progress-bar"><div class="fill" id="week-fill"></div></div>
+      </div>
+
+      <div id="queue-received" class="queue-section"></div>
+      <div id="queue-completed" class="queue-section"></div>
+      <div id="queue-awaiting" class="queue-section"></div>
+    </div>
+  </main>
+</div>
+
+<script src="../assets/js/storage.js?v=5"></script>
+<script src="../assets/js/data.js?v=5"></script>
+<script src="../assets/js/icons.js?v=5"></script>
+<script src="../assets/js/charts.js?v=5"></script>
+<script src="../assets/js/nav.js?v=5"></script>
+<script>
+(function () {
+  TracklyNav.mountCoachShell("dashboard");
+  var active = Trackly.CLIENTS.filter(function (c) { return c.weeks.length > 0; });
+
+  var hour = new Date().getHours();
+  var greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+  document.getElementById("greet").textContent = greeting + ", " + Trackly.COACH.name.split(" ")[0] + ".";
+
+  function render() {
+    var snap = Trackly.buildWeeklySnapshot();
+    var anchorEnd = Trackly.ANCHOR; var anchorStart = new Date(anchorEnd); anchorStart.setDate(anchorStart.getDate() - anchorStart.getDay() + 1);
+    var weekEnd = new Date(anchorStart); weekEnd.setDate(weekEnd.getDate() + 6);
+    document.getElementById("week-range").textContent = "Semana de " + Trackly.fmtShort(anchorStart) + " a " + Trackly.fmtDate(weekEnd).slice(0, 5);
+
+    var received = active.filter(function (c) { return Trackly.clientStage(c) === "checkin_received"; });
+    var completed = active.filter(function (c) { return Trackly.clientStage(c) === "completed"; });
+    var awaiting = active.filter(function (c) { return Trackly.clientStage(c) === "awaiting_checkin"; });
+    var allDone = active.length > 0 && !received.length && !awaiting.length;
+
+    document.getElementById("week-nums").innerHTML =
+      '<div class="item"><div class="n">' + snap.total + '</div><div class="l">aluno' + (snap.total === 1 ? "" : "s") + '</div></div>' +
+      '<div class="item"><div class="n" style="color:var(--brand);">' + completed.length + '</div><div class="l">concluídos</div></div>' +
+      '<div class="item"><div class="n" style="color:' + (received.length ? "var(--gold)" : "var(--ink)") + ';">' + received.length + '</div><div class="l">para revisar</div></div>' +
+      '<div class="item"><div class="n" style="color:' + (awaiting.length ? "var(--coral)" : "var(--ink)") + ';">' + awaiting.length + '</div><div class="l">aguardando resposta</div></div>' +
+      '<div class="frac">' + completed.length + ' de ' + snap.total + '</div>';
+    document.getElementById("week-fill").style.width = (snap.total ? Math.round(100 * completed.length / snap.total) : 0) + "%";
+
+    if (allDone) {
+      document.getElementById("queue-received").innerHTML = '<div class="all-done">' + ICONS.check + '<h3 style="font-family:var(--font-display);font-size:17px;margin:0 0 4px;">Acompanhamento da semana concluído</h3><p>Todos os ' + active.length + ' alunos foram revisados.</p></div>';
+      document.getElementById("queue-awaiting").innerHTML = "";
+      document.getElementById("queue-completed").innerHTML = renderCompletedSection(completed);
+      document.querySelectorAll("[data-remind]").forEach(function (btn) { btn.addEventListener("click", function () { Trackly.sendReminder(btn.getAttribute("data-remind")); render(); }); });
+      return;
+    }
+
+    document.getElementById("queue-received").innerHTML = !received.length ? "" : (
+      '<p class="qs-label">Para revisar</p>' + received.map(function (c) {
+        var u = Trackly.studentUpdate(c), color = TracklyNav.colorFor(c);
+        var stats = [];
+        if (u.weightDelta != null && Math.abs(u.weightDelta) >= 0.1) stats.push('<span class="q-stat ' + (u.weightGood ? "good" : "bad") + '">Peso ' + (u.weightDelta < 0 ? "↓" : "↑") + ' ' + Math.abs(u.weightDelta) + 'kg</span>');
+        else if (u.weightDelta != null) stats.push('<span class="q-stat">Peso estável</span>');
+        stats.push('<span class="q-stat">Aderência ' + u.adherenceNow + '%' + (u.adherenceTrend === "up" ? " ↑" : u.adherenceTrend === "down" ? " ↓" : "") + '</span>');
+        if (u.sleepTrend === "down") stats.push('<span class="q-stat bad">Sono ↓</span>');
+        return '<div class="queue-card"><span class="avatar" style="background:' + color + '">' + c.initials + '</span>' +
+          '<div class="who"><strong>' + c.name + '</strong><span class="when">' + u.label + '</span><div class="q-stats">' + stats.join("") + '</div></div>' +
+          '<div class="q-actions"><a href="revisar.html?id=' + c.id + '" class="btn btn-primary">Revisar</a></div></div>';
+      }).join("")
+    );
+
+    document.getElementById("queue-completed").innerHTML = renderCompletedSection(completed);
+
+    document.getElementById("queue-awaiting").innerHTML = !awaiting.length ? "" : (
+      '<p class="qs-label">Aguardando resposta</p>' + awaiting.map(function (c) {
+        var color = TracklyNav.colorFor(c), u = Trackly.studentUpdate(c);
+        var reminded = c.remindedAt;
+        return '<div class="queue-card"><span class="avatar" style="background:' + color + '">' + c.initials + '</span>' +
+          '<div class="who"><strong>' + c.name + '</strong><span class="when">' + u.label + '</span></div>' +
+          '<div class="q-actions">' +
+            '<a href="cliente.html?id=' + c.id + '" class="btn btn-secondary">Ver aluno</a>' +
+            (reminded ? '<span style="font-size:12px;color:var(--ink-faint);">Lembrete ' + Trackly.relativeLabel(reminded) + '</span>' : '<button class="btn btn-ghost" data-remind="' + c.id + '">Enviar lembrete</button>') +
+          '</div></div>';
+      }).join("")
+    );
+
+    document.querySelectorAll("[data-remind]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        Trackly.sendReminder(btn.getAttribute("data-remind"));
+        render();
+      });
+    });
+  }
+
+  function renderCompletedSection(completed) {
+    if (!completed.length) return "";
+    return '<p class="qs-label">Concluídos</p>' + completed.map(function (c) {
+      var u = Trackly.studentUpdate(c), color = TracklyNav.colorFor(c);
+      return '<div class="queue-card"><span class="avatar" style="background:' + color + '">' + c.initials + '</span>' +
+        '<div class="who"><strong>' + c.name + '</strong><span class="when done">' + ICONS.check + ' ' + (u.completedAtLabel || "Acompanhamento concluído") + '</span></div>' +
+        '<div class="q-actions"><a href="cliente.html?id=' + c.id + '" class="btn btn-secondary">Ver acompanhamento</a></div></div>';
+    }).join("");
+  }
+  render();
+})();
+</script>
+</body>
+</html>

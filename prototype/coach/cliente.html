@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cliente — Trackly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  .profile-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 22px; flex-wrap: wrap; }
+  .profile-who { display: flex; align-items: center; gap: 16px; }
+  .profile-who .avatar { width: 52px; height: 52px; font-size: 19px; }
+  .profile-who h1 { font-family: var(--font-display); font-size: 25px; margin: 0 0 4px; }
+  .profile-meta { font-size: 13px; color: var(--ink-muted); display: flex; gap: 14px; flex-wrap: wrap; }
+  .profile-meta strong { color: var(--ink); }
+  .chart-card .chart-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+  .chart-card .chart-head h3 { font-size: 14px; margin: 0; font-weight: 600; }
+  .compare-select { width: 100%; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font-size: 13px; font-family: var(--font-body); }
+</style>
+</head>
+<body data-root="../">
+<div id="shell-demo"></div>
+<div class="shell">
+  <div id="shell-sidebar"></div>
+  <main class="main">
+    <div class="main-inner">
+      <button class="mobile-menu-btn" id="mobile-menu-btn">☰</button>
+      <a href="clientes.html" class="btn-ghost btn" style="padding-left:2px;margin-bottom:10px;">&larr; Todos os clientes</a>
+
+      <div class="profile-head">
+        <div class="profile-who">
+          <span class="avatar" id="p-avatar"></span>
+          <div>
+            <h1 id="p-name"></h1>
+            <div class="profile-meta" id="p-meta"></div>
+          </div>
+        </div>
+        <span class="pill" id="p-status"></span>
+      </div>
+
+      <div class="tabs" style="margin-top:22px;">
+        <button class="tab-btn active" data-tab="resumo">Resumo</button>
+        <button class="tab-btn" data-tab="evolucao">Evolução</button>
+        <button class="tab-btn" data-tab="historico">Histórico</button>
+        <button class="tab-btn" data-tab="fotos">Fotos</button>
+      </div>
+
+      <div class="tab-panel active" id="tab-resumo"></div>
+      <div class="tab-panel" id="tab-evolucao"></div>
+      <div class="tab-panel" id="tab-historico"></div>
+      <div class="tab-panel" id="tab-fotos"></div>
+    </div>
+  </main>
+</div>
+
+<script src="../assets/js/storage.js?v=5"></script>
+<script src="../assets/js/data.js?v=5"></script>
+<script src="../assets/js/icons.js?v=5"></script>
+<script src="../assets/js/charts.js?v=5"></script>
+<script src="../assets/js/nav.js?v=5"></script>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var client = Trackly.getClient(params.get("id") || "joao");
+  TracklyNav.mountCoachShell("clientes", client.id);
+
+  if (!client.weeks.length) {
+    document.querySelector(".main-inner").innerHTML =
+      '<a href="clientes.html" class="btn-ghost btn" style="padding-left:2px;margin-bottom:14px;">&larr; Todos os clientes</a>' +
+      '<div class="card card-pad" style="text-align:center;padding:48px 24px;">' +
+      '<p class="card-title" style="margin-bottom:6px;">' + client.name + ' ainda não iniciou o acompanhamento</p>' +
+      '<p class="card-sub" style="margin-bottom:18px;">' + (client.inviteStatus === "pending" ? "Envie o convite pra começar." : "Convite enviado — aguardando aceite.") + '</p>' +
+      '<a href="clientes.html" class="btn btn-secondary">Voltar pra clientes</a></div>';
+    return;
+  }
+
+  if (!Trackly.isTracked(client, "photos")) { var fotosBtn = document.querySelector('[data-tab="fotos"]'); if (fotosBtn) fotosBtn.remove(); }
+
+  var kpi = Trackly.computeKPIs(client);
+  var status = Trackly.computeStatus(client);
+  var color = TracklyNav.colorFor(client);
+
+  document.getElementById("p-avatar").textContent = client.initials;
+  document.getElementById("p-avatar").style.background = color;
+  document.getElementById("p-name").textContent = client.name;
+  var cur0 = Trackly.currentWeek(client);
+  var refWeek0 = cur0.orientation ? cur0 : (function () {
+    for (var i = client.weeks.length - 1; i >= 0; i--) if (client.weeks[i].orientation) return client.weeks[i];
+    return cur0;
+  })();
+  document.getElementById("p-meta").innerHTML =
+    '<span>Objetivo: <strong>' + client.objective + '</strong></span>' +
+    '<span>Início: <strong>' + Trackly.fmtDate(client.startDate) + '</strong></span>' +
+    '<span>Foco atual: <strong>' + Trackly.focusLabelFromOrientation(client, refWeek0) + '</strong></span>';
+  var pillClass = status.code === "ok" ? "pill-ok" : status.code === "late" ? "pill-late" : "pill-warn";
+  document.getElementById("p-status").className = "pill " + pillClass;
+  document.getElementById("p-status").innerHTML = "<span class=\"dot\"></span>" + status.label;
+
+  function deltaHtml(delta, unit, goodIfDown) {
+    if (delta == null) return "";
+    var good = goodIfDown ? delta <= 0 : Trackly.isGoodWeightDelta(client, delta);
+    var arrow = delta === 0 ? "" : (delta < 0 ? "&darr; " : "&uarr; ");
+    return '<div class="delta ' + (delta === 0 ? "delta-flat" : (good ? "delta-down" : "delta-up-bad")) + '">' + arrow + Math.abs(delta) + unit + "</div>";
+  }
+
+  // ---------------- RESUMO — 3 essenciais + prévia da evolução, nada além disso ----------------
+  function renderResumo() {
+    var cur = Trackly.currentWeek(client);
+    var previewWeeks = client.weeks.slice(-8).map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.weight }; });
+
+    var possibleStats = [
+      Trackly.isTracked(client, "weight") ? { label: "Peso atual", value: kpi.weightNow, unit: "kg", delta: deltaHtml(kpi.weightDelta, "kg") } : null,
+      Trackly.isTracked(client, "adherence") ? { label: "Aderência média", value: kpi.adherenceAvg, unit: "%", delta: "" } : null,
+      Trackly.isTracked(client, "workouts") ? { label: "Treinos", value: cur.metrics.workouts + "/" + cur.metrics.workoutsGoal, unit: "esta semana", delta: "" } : null,
+      Trackly.isTracked(client, "cardio") ? { label: "Cardio", value: cur.metrics.cardio + "/" + cur.metrics.cardioGoal, unit: "esta semana", delta: "" } : null
+    ].filter(Boolean).slice(0, 3);
+
+    document.getElementById("tab-resumo").innerHTML =
+      '<div class="stat-row" style="margin-bottom:18px;">' + possibleStats.map(function (s) {
+        return '<div class="stat"><div class="label">' + s.label + '</div><div class="value">' + s.value + '<span class="unit">' + s.unit + '</span></div>' + s.delta + '</div>';
+      }).join("") + '</div>' +
+      (Trackly.isTracked(client, "weight") ? (
+      '<div class="card card-pad">' +
+        '<div class="chart-head"><h3>Evolução do peso — últimas 8 semanas</h3><a href="#" data-goto-evolucao style="font-size:12.5px;color:var(--brand);font-weight:600;">ver tudo</a></div>' +
+        Charts.lineChart({ data: previewWeeks, height: 140, color: color, unit: "kg", maxXLabels: 4 }) +
+      '</div>') : "");
+
+    var link = document.querySelector('[data-goto-evolucao]');
+    if (link) link.addEventListener("click", function (e) { e.preventDefault(); document.querySelector('[data-tab="evolucao"]').click(); });
+  }
+
+  // ---------------- EVOLUÇÃO ----------------
+  var evoState = { range: "12" };
+  function renderEvolucao() {
+    var weeks = Trackly.weeksInRange(client, evoState.range);
+    var ranges = [["4", "4 sem"], ["8", "8 sem"], ["12", "12 sem"], ["all", "período completo"]];
+    var rangeBtns = ranges.map(function (r) { return '<button data-range="' + r[0] + '" class="' + (evoState.range === r[0] ? "active" : "") + '">' + r[1] + "</button>"; }).join("");
+
+    var blocks = [];
+    if (Trackly.isTracked(client, "measurements")) {
+      blocks.push('<div class="card card-pad"><div class="chart-head"><h3>Cintura</h3></div>' +
+        Charts.lineChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.waist }; }), height: 190, color: "var(--c3)", unit: "cm", maxXLabels: 5 }) + '</div>');
+    }
+    if (Trackly.isTracked(client, "adherence")) {
+      var adGoal = currentWeekGoal(client, "adherence");
+      blocks.push('<div class="card card-pad"><div class="chart-head"><h3>Aderência à dieta</h3></div>' +
+        Charts.lineChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.adherence }; }), height: 190, color: "var(--gold)", unit: "%", min: 0, max: 100, goalValue: adGoal }) + '</div>');
+    }
+    if (Trackly.isTracked(client, "sleep")) {
+      blocks.push('<div class="card card-pad"><div class="chart-head"><h3>Sono (h)</h3></div>' +
+        Charts.lineChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.sleep }; }), height: 190, color: "var(--c4)", unit: "h" }) + '</div>');
+    }
+    if (Trackly.isTracked(client, "workouts")) {
+      blocks.push('<div class="card card-pad"><div class="chart-head"><h3>Treinos realizados vs. meta</h3></div>' +
+        Charts.barChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.workouts, goal: w.metrics.workoutsGoal }; }), height: 190 }) + '</div>');
+    }
+    if (Trackly.isTracked(client, "cardio")) {
+      blocks.push('<div class="card card-pad"><div class="chart-head"><h3>Cardio realizado vs. meta</h3></div>' +
+        Charts.barChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.cardio, goal: w.metrics.cardioGoal }; }), height: 190 }) + '</div>');
+    }
+    if (Trackly.isTracked(client, "water")) {
+      blocks.push('<div class="card card-pad"><div class="chart-head"><h3>Água (L)</h3></div>' +
+        Charts.lineChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.water }; }), height: 190, color: "var(--c4)", unit: "L" }) + '</div>');
+    }
+
+    document.getElementById("tab-evolucao").innerHTML =
+      '<div class="range-sel" id="range-sel" style="margin-bottom:18px;">' + rangeBtns + '</div>' +
+      (Trackly.isTracked(client, "weight") ? (
+      '<div class="card card-pad chart-card" style="margin-bottom:18px;">' +
+        '<div class="chart-head"><h3>Peso</h3><div class="legend"><span class="item"><span class="sw" style="background:' + color + ';"></span>peso registrado</span></div></div>' +
+        Charts.lineChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.weight }; }), height: 260, color: color, unit: "kg" }) +
+      '</div>') : "") +
+      '<div class="grid-2">' + blocks.join("") + '</div>';
+
+    document.querySelectorAll("#range-sel button").forEach(function (b) {
+      b.addEventListener("click", function () { evoState.range = b.getAttribute("data-range"); renderEvolucao(); });
+    });
+  }
+  function currentWeekGoal(client, key) {
+    var g = Trackly.currentWeek(client).goals.filter(function (x) { return x.key === key; })[0];
+    return g ? g.target : null;
+  }
+
+  // ---------------- FOTOS ----------------
+  var hue = client.colorVar === "--c1" ? 155 : client.colorVar === "--c2" ? 32 : client.colorVar === "--c3" ? 265 : 205;
+  function photoSwatch(i, label) { return '<div class="photo-ph" style="background:hsl(' + hue + ',' + (26 + i * 4) + '%,' + (30 + i * 6) + '%);">' + label.toUpperCase() + '</div>'; }
+
+  var compareState = {};
+  function renderFotos() {
+    var angles = [["front", "Frente"], ["back", "Costas"], ["side_l", "Lat. esq."], ["side_r", "Lat. dir."]];
+    var submittedWeeks = client.weeks.filter(function (w) { return w.checkin.status === "submitted"; });
+    var milestoneWeeks = client.weeks.filter(function (w, i) { return w.checkin.status === "submitted" && (i === 0 || i === client.weeks.length - 1 || (w.weekNumber - 1) % 4 === 0); });
+    var cards = milestoneWeeks.map(function (w) {
+      var imgs = angles.map(function (a, i) { return photoSwatch(i, a[1]); }).join("");
+      return '<div class="photo-week"><div class="imgs">' + imgs + '</div><div class="meta"><span>Semana ' + w.weekNumber + '</span><strong>' + w.metrics.weight + 'kg</strong></div></div>';
+    }).join("");
+
+    if (compareState.a == null) compareState.a = submittedWeeks[0].weekNumber;
+    if (compareState.b == null) compareState.b = submittedWeeks[submittedWeeks.length - 1].weekNumber;
+    var options = submittedWeeks.map(function (w) { return { v: w.weekNumber, l: "Semana " + w.weekNumber }; });
+    function optHtml(sel) { return options.map(function (o) { return '<option value="' + o.v + '"' + (o.v === sel ? " selected" : "") + '>' + o.l + '</option>'; }).join(""); }
+    function compareCol(weekNumber, side) {
+      var w = client.weeks[weekNumber - 1];
+      var imgs = ["front", "back"].map(function (a, i) { return photoSwatch(i, a === "front" ? "Frente" : "Costas"); }).join("");
+      return '<div><select class="compare-select" data-side="' + side + '">' + optHtml(weekNumber) + '</select>' +
+        '<div class="imgs" style="display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);border-radius:var(--radius-md);overflow:hidden;margin-top:10px;">' + imgs + '</div>' +
+        '<div style="text-align:center;margin-top:8px;font-family:var(--font-mono);font-size:13px;">' + w.metrics.weight + 'kg</div></div>';
+    }
+    var weightDiff = Trackly.round1(client.weeks[compareState.b - 1].metrics.weight - client.weeks[compareState.a - 1].metrics.weight);
+
+    document.getElementById("tab-fotos").innerHTML =
+      '<p class="card-sub" style="margin-bottom:16px;">Fotos padronizadas (frente, costas, laterais) organizadas automaticamente por semana. Placeholders ilustrativos — nenhuma foto real.</p>' +
+      (submittedWeeks.length >= 2 ? (
+        '<div class="card card-pad" style="margin-bottom:24px;">' +
+          '<p class="card-title" style="margin-bottom:14px;">Comparar semanas</p>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">' + compareCol(compareState.a, "a") + compareCol(compareState.b, "b") + '</div>' +
+          '<div style="text-align:center;margin-top:14px;font-size:13px;color:' + (Trackly.isGoodWeightDelta(client, weightDiff) ? "var(--brand)" : "var(--coral)") + ';font-weight:600;">' + (weightDiff <= 0 ? "" : "+") + weightDiff + 'kg entre as duas semanas</div>' +
+        '</div>'
+      ) : "") +
+      '<div class="photo-strip">' + cards + '</div>';
+
+    document.querySelectorAll(".compare-select").forEach(function (sel) {
+      sel.addEventListener("change", function () { compareState[sel.getAttribute("data-side")] = parseInt(sel.value, 10); renderFotos(); });
+    });
+  }
+
+  // ---------------- HISTÓRICO — cada semana é o ciclo completo: ----------------
+  // check-in recebido -> orientação do coach -> metas -> resultado.
+  function renderHistorico() {
+    var weeks = client.weeks.slice().reverse();
+    var html = weeks.map(function (w, i) {
+      var submitted = w.checkin.status === "submitted";
+      var statusPill = submitted
+        ? '<span class="pill pill-ok"><span class="dot"></span>enviado</span>'
+        : '<span class="pill pill-late"><span class="dot"></span>pendente</span>';
+
+      var body = "";
+      if (submitted) {
+        var checklist = [
+          { done: true, label: "Check-in enviado" },
+          { done: !!w.orientation, label: "Coach revisou" },
+          { done: !!w.orientation, label: "Orientação e metas definidas" }
+        ];
+        body += '<div class="status-list compact" style="margin-bottom:18px;">' + checklist.map(function (s) {
+          return '<div class="row' + (s.done ? "" : " pending-row") + '"><span class="mark ' + (s.done ? "done" : "pending") + '">' + (s.done ? ICONS.check : "") + '</span><span>' + s.label + '</span></div>';
+        }).join("") + '</div>';
+
+        var stripItems = [
+          Trackly.isTracked(client, "weight") ? '<div class="item"><div class="label">Peso</div><div class="value">' + w.metrics.weight + '<span class="unit">kg</span></div></div>' : "",
+          Trackly.isTracked(client, "adherence") ? '<div class="item"><div class="label">Dieta</div><div class="value">' + Math.round(w.metrics.adherence / 10) + '<span class="unit">/10</span></div></div>' : "",
+          Trackly.isTracked(client, "workouts") ? '<div class="item"><div class="label">Treinos</div><div class="value">' + w.metrics.workouts + '<span class="unit">/' + w.metrics.workoutsGoal + '</span></div></div>' : "",
+          Trackly.isTracked(client, "water") ? '<div class="item"><div class="label">Água</div><div class="value">' + w.metrics.water + '<span class="unit">L</span></div></div>' : "",
+          Trackly.isTracked(client, "sleep") ? '<div class="item"><div class="label">Sono</div><div class="value">' + w.metrics.sleep + '<span class="unit">h</span></div></div>' : ""
+        ].join("");
+        body += '<div class="wc-block"><div class="wc-label">Check-in recebido</div><div class="resumo-strip">' + stripItems +
+          '</div>' + (w.note ? '<p style="font-size:13px;color:var(--ink-faint);margin:10px 0 0;">"' + w.note + '"</p>' : "") + '</div>';
+
+        body += '<div class="wc-block"><div class="wc-label">Orientação do coach</div>' +
+          (w.orientation ? '<div class="wc-orientation">' + w.orientation + '</div>' : '<div class="wc-orientation" style="color:var(--ink-faint);">Aguardando revisão do coach.</div>') +
+          '</div>';
+
+        var goalsRow = Trackly.trackedGoals(w, client).filter(function (g) { return g.key !== "adherence"; }).map(function (g) {
+          var color2 = g.status === "success" ? "var(--brand)" : g.status === "partial" ? "var(--gold)" : "var(--coral)";
+          var ic = g.status === "success" ? ICONS.check : g.status === "partial" ? ICONS.warn : ICONS.dash;
+          return '<span class="wc-goal"><span style="color:' + color2 + ';">' + ic + '</span>' + g.label + ': ' + g.actual + (g.unit === "%" ? "%" : "") + ' / ' + g.target + '</span>';
+        }).join("");
+        body += '<div class="wc-block"><div class="wc-label">Metas &amp; resultado</div><div class="wc-goals">' + goalsRow + '</div></div>';
+      } else {
+        body += '<div class="wc-block"><p style="font-size:13.5px;color:var(--ink-faint);margin:0;">Check-in ainda não enviado — previsto para ' + Trackly.fmtShort(w.end) + '.</p></div>';
+      }
+
+      return (
+        '<div class="week-cycle' + (i === 0 ? " open" : "") + '">' +
+        '<div class="wc-head">' +
+          '<span class="wk">S' + w.weekNumber + '</span>' +
+          '<span class="wt">' + Trackly.fmtShort(w.start) + '–' + Trackly.fmtShort(w.end) + '<span style="margin-left:10px;">' + statusPill + '</span></span>' +
+          '<span class="chev">' + ICONS.chevronR + '</span>' +
+        '</div>' +
+        '<div class="wc-body">' + body + '</div>' +
+        '</div>'
+      );
+    }).join("");
+    document.getElementById("tab-historico").innerHTML = '<div class="card card-pad">' + html + '</div>';
+    document.querySelectorAll(".wc-head").forEach(function (h) {
+      h.addEventListener("click", function () { h.closest(".week-cycle").classList.toggle("open"); });
+    });
+  }
+
+  var renderers = { resumo: renderResumo, evolucao: renderEvolucao, fotos: renderFotos, historico: renderHistorico };
+  var rendered = {};
+  document.querySelectorAll(".tab-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var tab = btn.getAttribute("data-tab");
+      document.querySelectorAll(".tab-btn").forEach(function (b) { b.classList.remove("active"); });
+      document.querySelectorAll(".tab-panel").forEach(function (p) { p.classList.remove("active"); });
+      btn.classList.add("active");
+      document.getElementById("tab-" + tab).classList.add("active");
+      if (!rendered[tab]) { renderers[tab](); rendered[tab] = true; }
+    });
+  });
+  renderResumo(); rendered.resumo = true;
+})();
+</script>
+</body>
+</html>

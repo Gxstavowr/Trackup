@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meu foco da semana — Trackly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  .cta-card { background: var(--brand-tint); border: 1px solid var(--brand-tint-strong); border-radius: var(--radius-lg); padding: 22px; margin-bottom: 24px; }
+  .cta-card p.t { font-size: 15px; font-weight: 700; margin: 0 0 4px; }
+  .cta-card p.s { font-size: 13px; color: var(--ink-muted); margin: 0 0 16px; }
+  .greet { padding: 4px 0 14px; font-size: 15px; color: var(--ink-muted); }
+  .focus-hero { padding: 2px 0 4px; }
+  .focus-hero .eyebrow { margin-bottom: 8px; }
+  .focus-hero h1 { font-family: var(--font-display); font-size: 25px; margin: 0 0 10px; font-weight: 600; line-height: 1.2; }
+  .focus-hero p { font-size: 13.5px; color: var(--ink-muted); line-height: 1.55; margin: 0 0 24px; }
+  .msg-card { border-left: 3px solid var(--brand); }
+  .msg-card .who { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .msg-card .who .name { font-size: 12.5px; font-weight: 600; }
+  .msg-card .who .role { font-size: 11px; color: var(--ink-faint); }
+  .msg-card p.txt { font-size: 14.5px; line-height: 1.6; margin: 0; color: var(--ink); }
+  .progress-row { display: flex; gap: 22px; margin-bottom: 16px; flex-wrap: wrap; }
+  .progress-row .item .l { font-size: 11.5px; color: var(--ink-faint); font-weight: 600; margin-bottom: 5px; }
+  .progress-row .item .v { font-family: var(--font-display); font-size: 20px; font-weight: 600; }
+  .progress-row .item .v .d { font-family: var(--font-body); font-size: 12px; font-weight: 600; margin-left: 5px; }
+</style>
+</head>
+<body data-root="../">
+<div id="shell-demo"></div>
+<div class="portal">
+  <div class="portal-top" id="shell-portal-top"></div>
+  <div class="portal-inner">
+    <p class="greet" id="greet"></p>
+
+    <div id="checkin-cta"></div>
+
+    <div class="focus-hero">
+      <p class="eyebrow">Seu foco esta semana</p>
+      <h1 id="focus-title"></h1>
+      <p id="focus-sentence"></p>
+    </div>
+
+    <div class="stack" id="goals-list" style="gap:10px; margin-bottom:26px;"></div>
+
+    <div class="section-h"><h2>Mensagem do seu coach</h2></div>
+    <div class="card card-pad msg-card" style="margin-bottom:28px;" id="message-block"></div>
+
+    <div class="section-h"><h2>Seu progresso</h2><a id="evo-link">ver evolução</a></div>
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="progress-row" id="progress-row"></div>
+      <div id="mini-chart"></div>
+    </div>
+
+    <div class="section-h"><h2>Status da semana</h2></div>
+    <div class="card card-pad" id="status-card"></div>
+  </div>
+  <div id="shell-bottom-nav"></div>
+</div>
+
+<script src="../assets/js/storage.js?v=5"></script>
+<script src="../assets/js/data.js?v=5"></script>
+<script src="../assets/js/icons.js?v=5"></script>
+<script src="../assets/js/charts.js?v=5"></script>
+<script src="../assets/js/nav.js?v=5"></script>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var client = Trackly.getClient(params.get("client") || "joao");
+  TracklyNav.mountPortalNav("dashboard", client.id);
+  var color = TracklyNav.colorFor(client);
+
+  var cur = Trackly.currentWeek(client);
+  var pending = cur.checkin.status !== "submitted";
+  var firstName = client.name.split(" ")[0];
+
+  var hour = new Date().getHours();
+  var greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+  document.getElementById("greet").textContent = greeting + ", " + firstName + " 👋";
+  document.getElementById("evo-link").href = "evolucao.html?client=" + client.id;
+
+  var win = Trackly.getCheckinWindowStatus();
+  var nextOpen = Trackly.nextOpenDate();
+  var nextOpenLabel = nextOpen.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+
+  if (pending) {
+    if (win === "reminder") {
+      document.getElementById("checkin-cta").innerHTML =
+        '<div class="cta-card">' +
+        '<p class="t">Seu check-in abre amanhã</p>' +
+        '<p class="s" style="margin-bottom:0;">Reserve alguns minutos amanhã para registrar sua semana.</p>' +
+        '</div>';
+    } else if (win === "open") {
+      document.getElementById("checkin-cta").innerHTML =
+        '<div class="cta-card">' +
+        '<p class="t">Seu check-in está disponível</p>' +
+        '<p class="s">Conte como foi sua semana — leva menos de 3 minutos.</p>' +
+        '<a href="checkin.html?client=' + client.id + '" class="btn btn-primary">Começar check-in</a>' +
+        '</div>';
+    } else {
+      document.getElementById("checkin-cta").innerHTML =
+        '<div class="cta-card">' +
+        '<p class="t">Check-in encerrado</p>' +
+        '<p class="s" style="margin-bottom:0;">O período de atualização desta semana terminou. Próximo check-in: ' + nextOpenLabel + '.</p>' +
+        '</div>';
+    }
+  }
+
+  // referência em vigor: o check-in mais recente que já tem orientação enviada
+  var refWeek = (!pending && cur.orientation) ? cur : (function () {
+    for (var i = client.weeks.length - 1; i >= 0; i--) if (client.weeks[i].orientation) return client.weeks[i];
+    return cur;
+  })();
+
+  var focus = Trackly.focusLabelFromOrientation(client, refWeek);
+  document.getElementById("focus-title").textContent = focus + ".";
+  document.getElementById("focus-sentence").textContent = refWeek.orientation
+    ? Trackly.focusIntro(client, refWeek.weekNumber)
+    : "Assim que seu coach revisar seu check-in, seu foco da semana aparece aqui.";
+
+  var goalIcons = { water: ICONS.drop, sleep: ICONS.moon, workouts: ICONS.dumbbell, cardio: ICONS.run };
+  document.getElementById("goals-list").innerHTML = Trackly.effectiveGoals(client, refWeek).map(function (g) {
+    return (
+      '<div class="card card-pad" style="display:flex;align-items:center;gap:14px;">' +
+      '<span style="width:34px;height:34px;border-radius:10px;background:var(--brand-tint);color:var(--brand);display:flex;align-items:center;justify-content:center;flex:none;">' + goalIcons[g.key] + '</span>' +
+      '<div style="flex:1;"><div style="font-size:13.5px;font-weight:600;">' + g.label + '</div><div style="font-size:12px;color:var(--ink-faint);">meta: ' + g.target + (g.unit === "%" ? "%" : (" " + g.unit)) + '</div></div>' +
+      '</div>'
+    );
+  }).join("");
+
+  document.getElementById("message-block").innerHTML = refWeek.orientation
+    ? ('<div class="who"><span class="avatar" style="width:28px;height:28px;font-size:11px;">' + Trackly.COACH.initials + '</span><div><div class="name">' + Trackly.COACH.name + '</div><div class="role">' + Trackly.COACH.role + '</div></div></div><p class="txt">' + refWeek.orientation + '</p>')
+    : '<p class="txt" style="color:var(--ink-faint);">Assim que seu coach revisar seu check-in, a mensagem da semana aparece aqui.</p>';
+
+  var kpi = Trackly.computeKPIs(client);
+  var progressItems = [
+    Trackly.isTracked(client, "weight") ? '<div class="item"><div class="l">Peso</div><div class="v mono">' + kpi.weightNow + 'kg<span class="d" style="color:' + (Trackly.isGoodWeightDelta(client, kpi.weightDelta) ? "var(--brand)" : "var(--coral)") + ';">' + (kpi.weightDelta <= 0 ? "↓" : "↑") + Math.abs(kpi.weightDelta) + 'kg</span></div></div>' : "",
+    Trackly.isTracked(client, "adherence") ? '<div class="item"><div class="l">Aderência</div><div class="v mono">' + kpi.adherenceAvg + '%</div></div>' : "",
+    Trackly.isTracked(client, "workouts") ? '<div class="item"><div class="l">Treinos</div><div class="v mono">' + cur.metrics.workouts + '/' + cur.metrics.workoutsGoal + '</div></div>' : ""
+  ].join("");
+  document.getElementById("progress-row").innerHTML = progressItems;
+  if (Trackly.isTracked(client, "weight")) {
+    var weights = client.weeks.slice(-8).map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.weight }; });
+    document.getElementById("mini-chart").innerHTML = Charts.lineChart({ data: weights, height: 110, color: color, unit: "kg", maxXLabels: 4 });
+  }
+
+  var nextLabel = pending
+    ? (win === "open" ? "Check-in disponível agora" : win === "reminder" ? "Check-in abre amanhã" : "Próximo check-in: " + nextOpenLabel)
+    : "Próximo check-in: " + nextOpenLabel;
+  var statusRows = [
+    { done: client.weeks.length > 1, label: "Check-in anterior concluído" },
+    { done: !!refWeek.orientation, label: refWeek.orientation ? "Orientação recebida" : "Aguardando orientação do coach" },
+    { done: !pending, label: pending ? nextLabel : "Check-in enviado — " + nextLabel.toLowerCase() }
+  ];
+  document.getElementById("status-card").innerHTML = '<div class="status-list">' + statusRows.map(function (r) {
+    return '<div class="row' + (r.done ? "" : " pending-row") + '"><span class="mark ' + (r.done ? "done" : "pending") + '">' + (r.done ? ICONS.check : "") + '</span><span>' + r.label + '</span></div>';
+  }).join("") + '</div>';
+})();
+</script>
+</body>
+</html>
