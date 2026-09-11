@@ -110,7 +110,8 @@
           '<div class="lr-body"><strong>' + c.name + '</strong><span class="lr-meta">' + u.label + '</span></div>' +
           '<div class="lr-actions">' +
             '<a href="cliente.html?id=' + c.id + '" class="btn btn-secondary">Ver aluno</a>' +
-            (reminded ? '<span style="font-size:12px;color:var(--ink-faint);">Lembrete ' + Trackly.relativeLabel(reminded) + '</span>' : '<button class="btn btn-ghost" data-remind="' + c.id + '">Enviar lembrete</button>') +
+            (reminded ? '<span style="font-size:12px;color:var(--ink-faint);">Cobrado ' + Trackly.relativeLabel(reminded) + '</span>' :
+              (c.phone ? '<a href="' + Trackly.whatsappUrl(c.phone, Trackly.checkinNudgeMessage(c)) + '" target="_blank" rel="noopener" class="btn btn-ghost" data-remind="' + c.id + '">Cobrar check-in</a>' : '<button class="btn btn-ghost" data-remind="' + c.id + '">Enviar lembrete</button>')) +
           '</div></div>';
       }).join("")
     );

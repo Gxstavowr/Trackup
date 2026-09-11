@@ -215,20 +215,9 @@
       '<h2>Check-in enviado!</h2>' +
       '<p>Seu coach vai revisar suas respostas e enviar a orientação da próxima semana em breve.</p>' +
       '<div style="display:flex;flex-direction:column;gap:10px;max-width:260px;margin:0 auto 20px;">' +
-        '<button class="btn btn-secondary" id="notify-coach">Avisar coach</button>' +
-        '<button class="btn btn-ghost" id="notify-whatsapp">Avisar no WhatsApp</button>' +
+        '<a href="' + Trackly.whatsappUrl(Trackly.COACH.phone, Trackly.checkinReceivedMessageForCoach(client)) + '" target="_blank" rel="noopener" class="btn btn-secondary">Avisar coach no WhatsApp</a>' +
       '</div>' +
       '<a href="dashboard.html?client=' + client.id + '" class="btn btn-primary">Voltar ao início</a></div>';
-
-    function simulateNotify(btnId, sentLabel) {
-      var btn = document.getElementById(btnId);
-      btn.addEventListener("click", function () {
-        btn.textContent = "✓ " + sentLabel;
-        btn.disabled = true;
-      });
-    }
-    simulateNotify("notify-coach", "Coach avisada");
-    simulateNotify("notify-whatsapp", "Enviado no WhatsApp");
   }
 })();
 </script>
