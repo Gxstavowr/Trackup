@@ -23,6 +23,12 @@
   .msg-card .who .role { font-size: 11px; color: var(--ink-faint); }
   .msg-card p.txt { font-size: 14.5px; line-height: 1.6; margin: 0; color: var(--ink); }
   .progress-row { display: flex; gap: 28px; margin-bottom: 16px; flex-wrap: wrap; }
+  .today-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 24px; }
+  .today-mini { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 14px 15px; background: var(--surface); display: block; }
+  .today-mini .ic { width: 28px; height: 28px; border-radius: 8px; background: var(--brand-tint); color: var(--brand); display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+  .today-mini .label { font-size: 10.5px; color: var(--ink-faint); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; }
+  .today-mini .title { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+  .today-mini .sub { font-size: 11.5px; color: var(--ink-muted); }
 </style>
 </head>
 <body data-root="../">
@@ -33,6 +39,8 @@
     <p class="greet" id="greet"></p>
 
     <div id="checkin-cta"></div>
+
+    <div class="today-row" id="today-row"></div>
 
     <div class="focus-hero">
       <p class="eyebrow">Seu foco esta semana</p>
@@ -104,6 +112,35 @@
         '</div>';
     }
   }
+
+  var todayMini = [];
+  if (client.workout && client.workout.days.length) {
+    var day = Trackly.todaysWorkoutDay(client);
+    todayMini.push(
+      '<a class="today-mini" href="treino.html?client=' + client.id + '">' +
+        '<div class="ic">' + ICONS.dumbbell + '</div>' +
+        '<div class="label">Treino de hoje</div>' +
+        '<div class="title">' + day.name + '</div>' +
+        '<div class="sub">' + day.exercises.length + ' exercícios · ~' + day.durationMin + 'min</div>' +
+      '</a>'
+    );
+  }
+  if (client.nutritionPlan) {
+    var nowHHMM = new Date().toTimeString().slice(0, 5);
+    var meals = Trackly.todaysMeals(client);
+    var nextMeal = meals.filter(function (m) { return m.time > nowHHMM; })[0];
+    var tomorrow = !nextMeal;
+    if (!nextMeal) nextMeal = meals[0];
+    todayMini.push(
+      '<a class="today-mini" href="nutricao.html?client=' + client.id + '">' +
+        '<div class="ic">' + ICONS.apple + '</div>' +
+        '<div class="label">Próxima refeição</div>' +
+        '<div class="title">' + nextMeal.name + '</div>' +
+        '<div class="sub">' + nextMeal.time + (tomorrow ? " · amanhã" : "") + '</div>' +
+      '</a>'
+    );
+  }
+  document.getElementById("today-row").innerHTML = todayMini.join("");
 
   // referência em vigor: o check-in mais recente que já tem orientação enviada
   var refWeek = (!pending && cur.orientation) ? cur : (function () {
