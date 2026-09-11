@@ -107,11 +107,21 @@
     return '<div class="mini-photo" style="background:hsl(' + hue + ',' + (26 + i * 4) + '%,' + (26 + i * 5) + '%);">' + a[1] + '</div>';
   }).join("");
 
+  // peso desta semana vs. a submissão anterior — para o hero-stat
+  var weeksSoFar = client.weeks.slice(0, client.weeks.indexOf(cur) + 1).filter(function (w) { return w.checkin.status === "submitted"; });
+  var prevSubmitted = weeksSoFar.length > 1 ? weeksSoFar[weeksSoFar.length - 2] : null;
+  var weightDeltaForHero = "";
+  if (prevSubmitted && Trackly.isTracked(client, "weight")) {
+    var wd = Trackly.round1(cur.metrics.weight - prevSubmitted.metrics.weight);
+    var wdGood = Trackly.isGoodWeightDelta(client, wd);
+    weightDeltaForHero = '<div class="delta" style="color:' + (wd === 0 ? "var(--ink-faint)" : (wdGood ? "var(--brand)" : "var(--coral)")) + ';">' + (wd === 0 ? "" : (wd < 0 ? "↓ " : "↑ ")) + Math.abs(wd) + 'kg</div>';
+  }
+
   // Últimas semanas — contexto de tendência antes de decidir
   var recent = Trackly.recentWeeksTable(client, 3);
   var recentTableHtml = recent.weeks.length < 2 ? "" : (
-    '<div class="card card-pad" style="margin-bottom:18px;">' +
-      '<p class="card-title" style="margin-bottom:14px;">Últimas semanas</p>' +
+    '<div style="margin-bottom:26px;">' +
+      '<p class="section-label">Últimas semanas</p>' +
       '<div style="overflow-x:auto;"><table class="recent-table"><thead><tr><th></th>' +
         recent.weeks.map(function (w, i) { return '<th class="' + (i === recent.weeks.length - 1 ? "now" : "") + '">' + (i === recent.weeks.length - 1 ? "Atual" : "S-" + (recent.weeks.length - 1 - i)) + '</th>'; }).join("") +
       '</tr></thead><tbody>' +
@@ -130,8 +140,8 @@
     var prevW = submittedWeeks[submittedWeeks.length - 2];
     function ph(i) { return '<div class="vs-photo" style="background:hsl(' + hue + ',' + (26 + i * 4) + '%,' + (30 + i * 8) + '%);"></div>'; }
     return (
-      '<div class="card card-pad" style="margin-bottom:18px;">' +
-        '<p class="card-title" style="margin-bottom:14px;">Evolução visual</p>' +
+      '<div style="margin-bottom:26px;">' +
+        '<p class="section-label">Evolução visual</p>' +
         '<div class="visual-evo">' +
           '<div><div class="vs-photos">' + ph(0) + ph(1) + '</div><div class="vs-label">Semana ' + prevW.weekNumber + '</div></div>' +
           '<span class="vs-arrow">' + ICONS.chevronR + '</span>' +
@@ -148,28 +158,22 @@
       '<div class="wk">Check-in — Semana ' + cur.weekNumber + ' &nbsp;·&nbsp; recebido ' + Trackly.relativeLabel(cur.checkin.submittedAt) + '</div>' +
     '</div>' +
 
-    '<div class="card card-pad" style="margin-bottom:18px;">' +
-      '<p class="card-title" style="margin-bottom:14px;">Resumo</p>' +
-      '<div class="resumo-strip">' +
-        (Trackly.isTracked(client, "weight") ? '<div class="item"><div class="label">Peso</div><div class="value">' + cur.metrics.weight + '<span class="unit">kg</span></div></div>' : "") +
-        (Trackly.isTracked(client, "adherence") ? '<div class="item"><div class="label">Dieta</div><div class="value">' + Math.round(cur.metrics.adherence / 10) + '<span class="unit">/10</span></div></div>' : "") +
-        (Trackly.isTracked(client, "workouts") ? '<div class="item"><div class="label">Treinos</div><div class="value">' + cur.metrics.workouts + '<span class="unit">/' + cur.metrics.workoutsGoal + '</span></div></div>' : "") +
-        (Trackly.isTracked(client, "cardio") ? '<div class="item"><div class="label">Cardio</div><div class="value">' + cur.metrics.cardio + '<span class="unit">/' + cur.metrics.cardioGoal + '</span></div></div>' : "") +
-        (Trackly.isTracked(client, "water") ? '<div class="item"><div class="label">Água</div><div class="value">' + cur.metrics.water + '<span class="unit">L</span></div></div>' : "") +
-        (Trackly.isTracked(client, "sleep") ? '<div class="item"><div class="label">Sono</div><div class="value">' + cur.metrics.sleep + '<span class="unit">h</span></div></div>' : "") +
-      '</div>' +
+    '<div style="display:flex;gap:32px;flex-wrap:wrap;margin-bottom:28px;">' +
+      (Trackly.isTracked(client, "weight") ? '<div class="hero-stat"><div class="value">' + cur.metrics.weight + '<span class="unit">kg</span></div>' + weightDeltaForHero + '<div class="label">peso</div></div>' : "") +
+      (Trackly.isTracked(client, "adherence") ? '<div class="hero-stat"><div class="value">' + cur.metrics.adherence + '<span class="unit">%</span></div><div class="label">aderência</div></div>' : "") +
+      (Trackly.isTracked(client, "sleep") ? '<div class="hero-stat"><div class="value">' + cur.metrics.sleep + '<span class="unit">h</span></div><div class="label">sono</div></div>' : "") +
     '</div>' +
 
     (insights.length ? (
-    '<div class="card card-pad" style="margin-bottom:18px;">' +
-      '<p class="card-title" style="margin-bottom:12px;">O que mudou</p>' +
+    '<div style="margin-bottom:26px;">' +
+      '<p class="section-label">O que mudou</p>' +
       '<div class="insight-list">' + insights.map(function (t) { return '<div class="row"><span class="dot"></span>' + t + '</div>'; }).join("") + '</div>' +
     '</div>'
     ) : "") +
 
     recentTableHtml +
 
-    '<div class="card card-pad" style="margin-bottom:18px;">' +
+    '<div style="margin-bottom:26px;">' +
       '<button class="disclosure-btn" id="qa-toggle">' + ICONS.chevronR + '<span>Ver respostas completas</span></button>' +
       '<div class="disclosure-panel" id="qa-panel">' +
         '<div class="qa-list">' + qaLabels.map(function (row) {
