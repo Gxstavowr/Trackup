@@ -11,8 +11,8 @@
 <style>
   .profile-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 22px; flex-wrap: wrap; }
   .profile-who { display: flex; align-items: center; gap: 16px; }
-  .profile-who .avatar { width: 52px; height: 52px; font-size: 19px; }
-  .profile-who h1 { font-family: var(--font-display); font-size: 25px; margin: 0 0 4px; }
+  .profile-who .avatar { width: clamp(42px, 12vw, 52px); height: clamp(42px, 12vw, 52px); font-size: clamp(15px, 4vw, 19px); }
+  .profile-who h1 { font-family: var(--font-display); font-size: clamp(1.25rem, 1rem + 1.2vw, 1.5625rem); margin: 0 0 4px; }
   .profile-meta { font-size: 13px; color: var(--ink-muted); display: flex; gap: 14px; flex-wrap: wrap; }
   .profile-meta strong { color: var(--ink); }
   .chart-card .chart-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }

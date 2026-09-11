@@ -1,7 +1,9 @@
 .lp-nav {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; row-gap: 10px;
   padding: 20px 40px; max-width: 1180px; margin: 0 auto;
 }
+.lp-nav .brand { min-width: 0; }
+.lp-nav .brand span { min-width: 0; }
 .lp-nav .links { display: flex; gap: 28px; font-size: 13.5px; font-weight: 500; color: var(--ink-muted); }
 .lp-nav .links a:hover { color: var(--ink); }
 
@@ -13,7 +15,7 @@
 }
 .lp-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand); }
 .lp-hero h1 {
-  font-family: var(--font-display); font-size: 52px; line-height: 1.06; font-weight: 600;
+  font-family: var(--font-display); font-size: clamp(1.9rem, 1.3rem + 2.6vw, 3.25rem); line-height: 1.06; font-weight: 600;
   letter-spacing: -.02em; margin: 0 0 20px; max-width: 620px;
 }
 .lp-hero h1 em { font-style: normal; color: var(--brand); }
@@ -29,7 +31,7 @@
 .hero-card .hc-name { display: flex; align-items: center; gap: 10px; }
 .hero-card .hc-name .who { font-weight: 600; font-size: 14px; }
 .hero-card .hc-name .obj { font-size: 12px; color: var(--ink-faint); }
-.hc-stats { display: flex; gap: 22px; margin-bottom: 6px; }
+.hc-stats { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-bottom: 6px; }
 .hc-stat .l { font-size: 11.5px; color: var(--ink-faint); font-weight: 600; margin-bottom: 4px; }
 .hc-stat .v { font-family: var(--font-display); font-size: 27px; font-weight: 600; }
 .hc-stat .v span { font-family: var(--font-body); font-size: 12.5px; color: var(--brand); font-weight: 700; margin-left: 6px; }
@@ -37,7 +39,7 @@
 
 .lp-strip { background: var(--surface); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 46px 40px; margin-top: 60px; }
 .lp-strip-inner { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1.3fr; gap: 50px; align-items: center; }
-.lp-strip h2 { font-family: var(--font-display); font-size: 25px; margin: 0 0 10px; letter-spacing: -.01em; }
+.lp-strip h2 { font-family: var(--font-display); font-size: clamp(1.25rem, 1.1rem + 0.7vw, 1.5625rem); margin: 0 0 10px; letter-spacing: -.01em; }
 .lp-strip p { color: var(--ink-muted); font-size: 14px; line-height: 1.6; margin: 0; }
 .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .compare-col { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 16px 18px; }
@@ -52,7 +54,7 @@
 
 .lp-section { max-width: 1180px; margin: 70px auto; padding: 0 40px; }
 .lp-section .eyebrow { text-align: left; }
-.lp-section h2 { font-family: var(--font-display); font-size: 30px; margin: 0 0 12px; letter-spacing: -.01em; max-width: 600px; }
+.lp-section h2 { font-family: var(--font-display); font-size: clamp(1.4rem, 1.15rem + 1.2vw, 1.875rem); margin: 0 0 12px; letter-spacing: -.01em; max-width: 600px; }
 .lp-section > p.lead { color: var(--ink-muted); font-size: 15px; max-width: 560px; margin: 0 0 36px; }
 
 .loop-track { display: flex; align-items: stretch; gap: 0; overflow-x: auto; padding-bottom: 8px; }
@@ -73,7 +75,7 @@
 .persona-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
 .persona-card { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); padding: 28px; box-shadow: var(--surface-raised-shadow); }
 .persona-card .who { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-.persona-card .who .ic { width: 34px; height: 34px; border-radius: 10px; background: var(--brand-tint); color: var(--brand); display: flex; align-items: center; justify-content: center; }
+.persona-card .who .ic { width: clamp(30px, 8vw, 34px); height: clamp(30px, 8vw, 34px); border-radius: 10px; background: var(--brand-tint); color: var(--brand); display: flex; align-items: center; justify-content: center; }
 .persona-card h3 { font-family: var(--font-display); font-size: 19px; margin: 0; }
 .persona-card ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 11px; }
 .persona-card li { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; color: var(--ink-muted); line-height: 1.5; }
@@ -81,9 +83,15 @@
 
 .lp-footer { border-top: 1px solid var(--line); padding: 30px 40px; max-width: 1180px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--ink-faint); }
 
-@media (max-width: 900px) {
+@media (max-width: 768px) {
   .lp-hero-grid, .lp-strip-inner, .persona-grid, .compare-grid { grid-template-columns: 1fr; }
-  .lp-hero h1 { font-size: 36px; }
   .lp-nav .links { display: none; }
   .lp-nav, .lp-hero, .lp-section, .lp-strip, .lp-footer { padding-left: 20px; padding-right: 20px; }
+}
+
+@media (max-width: 480px) {
+  .lp-nav, .lp-hero, .lp-section, .lp-strip, .lp-footer { padding-left: 16px; padding-right: 16px; }
+  .lp-hero { padding-top: 34px; }
+  .lp-cta-row { flex-direction: column; align-items: stretch; }
+  .lp-footer { flex-direction: column; gap: 10px; text-align: center; }
 }

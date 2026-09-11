@@ -51,7 +51,7 @@
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 20px;
-  --sidebar-w: 248px;
+  --sidebar-w: clamp(13.75rem, 4vw + 12rem, 15.5rem);
 
   /* escala de espaçamento — V6: a interface deve respirar (menos elementos, mais espaço) */
   --space-1: 4px;
@@ -62,10 +62,11 @@
   --space-6: 32px;
   --space-7: 48px;
 
-  /* tipografia — números grandes são protagonistas, labels pequenos e discretos */
-  --text-hero: 34px;
-  --text-counter: 56px;
-  --text-label: 11.5px;
+  /* tipografia — números grandes são protagonistas, labels pequenos e discretos.
+     clamp() com base em vw para escalar fluidamente entre mobile e desktop, sem media query. */
+  --text-hero: clamp(1.65rem, 1.35rem + 1.3vw, 2.125rem);
+  --text-counter: clamp(2.4rem, 1.7rem + 3vw, 3.5rem);
+  --text-label: clamp(0.66rem, 0.62rem + 0.15vw, 0.72rem);
 
   /* clientes — cor de identidade em gráficos/avatares (ciclo), calibradas para contraste em fundo escuro */
   --c1: #3FAE81;

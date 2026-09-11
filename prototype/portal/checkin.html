@@ -11,7 +11,7 @@
 <style>
   .ci-head { padding: 4px 0 18px; }
   .ci-head .wk-tag { font-size: 11.5px; font-weight: 700; color: var(--brand); background: var(--brand-tint); display: inline-block; padding: 4px 10px; border-radius: 999px; margin-bottom: 10px; }
-  .ci-head h1 { font-family: var(--font-display); font-size: 23px; margin: 0 0 4px; }
+  .ci-head h1 { font-family: var(--font-display); font-size: clamp(1.2rem, 1rem + 1vw, 1.4375rem); margin: 0 0 4px; }
   .ci-head p { font-size: 13px; color: var(--ink-muted); margin: 0; }
 
   .step-indicator { margin-bottom: 24px; }
@@ -23,7 +23,7 @@
   .step-panel.active { display: block; animation: fadein .18s ease; }
 
   .range-wrap { text-align: center; padding: 6px 0 14px; }
-  .range-wrap .rv { font-family: var(--font-display); font-size: 40px; font-weight: 600; color: var(--brand); }
+  .range-wrap .rv { font-family: var(--font-display); font-size: clamp(1.75rem, 1.45rem + 1.5vw, 2.5rem); font-weight: 600; color: var(--brand); }
   .range-wrap input[type="range"] { width: 100%; accent-color: var(--brand); margin-top: 10px; }
   .range-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
   .stepper { display: flex; align-items: center; gap: 14px; }
@@ -32,7 +32,7 @@
   .stepper-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 8px; }
   .stepper-row .stepper { width: auto; }
   .confirm-wrap { text-align: center; padding: 60px 20px; }
-  .confirm-wrap .ring { width: 72px; height: 72px; border-radius: 50%; background: var(--brand-tint); color: var(--brand); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
+  .confirm-wrap .ring { width: clamp(56px, 16vw, 72px); height: clamp(56px, 16vw, 72px); border-radius: 50%; background: var(--brand-tint); color: var(--brand); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
   .confirm-wrap h2 { font-family: var(--font-display); font-size: 22px; margin: 0 0 8px; }
   .confirm-wrap p { color: var(--ink-muted); font-size: 13.5px; max-width: 280px; margin: 0 auto 24px; }
   .upload-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -74,7 +74,7 @@
     document.getElementById("ci-form").innerHTML =
       '<div style="text-align:center;padding:70px 24px 20px;">' +
       '<p class="eyebrow" style="justify-content:center;display:flex;">' + (win === "reminder" ? "Em breve" : "Check-in indisponível") + '</p>' +
-      '<h1 style="font-family:var(--font-display);font-size:23px;margin:0 0 10px;">' + (win === "reminder" ? "Seu check-in abre amanhã" : "Seu próximo check-in abre " + nextOpenLabel) + '</h1>' +
+      '<h1 style="font-family:var(--font-display);font-size:clamp(1.2rem, 1rem + 1vw, 1.4375rem);margin:0 0 10px;">' + (win === "reminder" ? "Seu check-in abre amanhã" : "Seu próximo check-in abre " + nextOpenLabel) + '</h1>' +
       '<p style="font-size:13.5px;color:var(--ink-muted);max-width:280px;margin:0 auto;">' + (win === "reminder" ? "Reserve alguns minutos amanhã para registrar sua semana." : "O período desta semana já terminou — volte então.") + '</p>' +
       '</div><a href="dashboard.html?client=' + client.id + '" class="btn btn-secondary btn-block" style="margin-top:20px;">Voltar ao início</a>';
     return;
@@ -104,7 +104,7 @@
 
     3: (workoutsAuto ? (
       '<div class="field"><label>Treinos realizados</label>' +
-      '<div class="resumo-strip" style="padding:2px 0;"><div class="item"><div class="value" style="font-size:26px;">' + state.treinos + '</div><div class="label">registrados automaticamente pelo app</div></div></div>' +
+      '<div class="resumo-strip" style="padding:2px 0;"><div class="item"><div class="value" style="font-size:clamp(1.2rem, 1.05rem + 0.7vw, 1.625rem);">' + state.treinos + '</div><div class="label">registrados automaticamente pelo app</div></div></div>' +
       '<p class="hint">Contabilizado a partir dos treinos que você concluiu na aba Treino — nada pra digitar aqui.</p></div>'
     ) : (
       '<div class="field"><div class="stepper-row"><label style="margin:0;">Treinos realizados</label><div class="stepper" style="flex:none;"><button type="button" data-step="treinos" data-d="-1">−</button><div class="sv" id="treinos-val" style="width:34px;">0</div><button type="button" data-step="treinos" data-d="1">+</button></div></div></div>'

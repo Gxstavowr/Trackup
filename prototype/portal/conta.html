@@ -10,8 +10,8 @@
 <link rel="stylesheet" href="../assets/css/base.css?v=12">
 <style>
   .acct-head { display: flex; align-items: center; gap: 14px; padding: 6px 0 22px; }
-  .acct-head .avatar { width: 52px; height: 52px; font-size: 19px; }
-  .acct-head h1 { font-family: var(--font-display); font-size: 20px; margin: 0 0 3px; font-weight: 600; }
+  .acct-head .avatar { width: clamp(42px, 12vw, 52px); height: clamp(42px, 12vw, 52px); font-size: clamp(15px, 4vw, 19px); }
+  .acct-head h1 { font-family: var(--font-display); font-size: clamp(1.05rem, 0.9rem + 1vw, 1.25rem); margin: 0 0 3px; font-weight: 600; }
   .acct-head p { font-size: 12.5px; color: var(--ink-faint); margin: 0; }
   .plan-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
   .plan-row .name { font-size: 15px; font-weight: 700; }
