@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Financeiro — Trackly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  .fin-table-head, .fin-row { display: grid; grid-template-columns: 2fr 1.3fr 1fr 1fr 1fr; gap: 12px; align-items: center; padding: 12px 4px; }
+  .fin-table-head { font-size: 10.5px; color: var(--ink-faint); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--line); }
+  .fin-row { border-bottom: 1px solid var(--line); font-size: 13.5px; }
+  .fin-row:last-child { border-bottom: none; }
+  .fin-row .who { display: flex; align-items: center; gap: 10px; }
+  .fin-row .who strong { font-weight: 600; font-size: 13.5px; }
+  .fin-row .val { font-family: var(--font-mono); font-weight: 600; }
+  @media (max-width: 760px) {
+    .fin-table-head { display: none; }
+    .fin-row { grid-template-columns: 1fr 1fr; row-gap: 6px; padding: 14px 4px; }
+    .fin-row .who { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body data-root="../">
+<div id="shell-demo"></div>
+<div class="shell">
+  <div id="shell-sidebar"></div>
+  <main class="main">
+    <div class="main-inner">
+      <button class="mobile-menu-btn" id="mobile-menu-btn">☰</button>
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">Financeiro</p>
+          <h1>Financeiro</h1>
+          <p>Visão geral da receita — não é um sistema de contabilidade.</p>
+        </div>
+      </div>
+
+      <div class="stat-row" id="stat-row" style="margin-bottom:28px;"></div>
+
+      <div class="section-label">Receita — últimos meses</div>
+      <div class="card card-pad" style="margin-bottom:28px;" id="chart-card"></div>
+
+      <div class="section-label">Clientes</div>
+      <div class="card card-pad">
+        <div class="fin-table-head"><div>Cliente</div><div>Plano</div><div>Valor</div><div>Vencimento</div><div>Status</div></div>
+        <div id="fin-body"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../assets/js/storage.js?v=11"></script>
+<script src="../assets/js/data.js?v=11"></script>
+<script src="../assets/js/icons.js?v=11"></script>
+<script src="../assets/js/charts.js?v=11"></script>
+<script src="../assets/js/nav.js?v=11"></script>
+<script>
+(function () {
+  TracklyNav.mountCoachShell("financeiro");
+
+  var statusLabel = { paid: "Pago", pending: "Pendente", overdue: "Atrasado", cancelled: "Cancelado", refunded: "Estornado" };
+  var statusPill = { paid: "pill-ok", pending: "pill-warn", overdue: "pill-late", cancelled: "pill", refunded: "pill" };
+  var periodMonths = { monthly: 1, quarterly: 3, semiannual: 6, annual: 12 };
+  function fmtMoney(cents) { return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+
+  var clients = Trackly.CLIENTS.filter(function (c) { return c.plan; });
+  var now = Trackly.ANCHOR;
+
+  var receitaMes = 0, mrr = 0, aReceber = 0, atrasado = 0;
+  var monthBuckets = {};
+
+  clients.forEach(function (c) {
+    mrr += Math.round(c.plan.priceCents / periodMonths[c.plan.period]);
+    c.paymentsHistory.forEach(function (p) {
+      if (p.status === "paid" && p.paidDate) {
+        var key = p.paidDate.getFullYear() + "-" + p.paidDate.getMonth();
+        monthBuckets[key] = (monthBuckets[key] || 0) + p.amountCents;
+        if (p.paidDate.getFullYear() === now.getFullYear() && p.paidDate.getMonth() === now.getMonth()) receitaMes += p.amountCents;
+      }
+      if (p.status === "pending") aReceber += p.amountCents;
+      if (p.status === "overdue") atrasado += p.amountCents;
+    });
+  });
+
+  document.getElementById("stat-row").innerHTML = [
+    ["Receita do mês", fmtMoney(receitaMes)],
+    ["MRR", fmtMoney(mrr)],
+    ["A receber", fmtMoney(aReceber)],
+    ["Atrasado", fmtMoney(atrasado)]
+  ].map(function (s) { return '<div class="stat"><div class="label">' + s[0] + '</div><div class="value">' + s[1] + '</div></div>'; }).join("");
+
+  var monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  var chartData = [];
+  for (var i = 5; i >= 0; i--) {
+    var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    var key = d.getFullYear() + "-" + d.getMonth();
+    chartData.push({ label: monthNames[d.getMonth()], value: Math.round((monthBuckets[key] || 0) / 100) });
+  }
+  document.getElementById("chart-card").innerHTML = Charts.barChart({ data: chartData, height: 200 });
+
+  document.getElementById("fin-body").innerHTML = clients.map(function (c) {
+    var pay = Trackly.currentPayment(c);
+    return (
+      '<div class="fin-row">' +
+        '<div class="who"><span class="avatar" style="width:26px;height:26px;font-size:10.5px;background:' + TracklyNav.colorFor(c) + '">' + c.initials + '</span><strong>' + c.name + '</strong></div>' +
+        '<div>' + c.plan.name + '</div>' +
+        '<div class="val">' + fmtMoney(pay.amountCents) + '</div>' +
+        '<div>' + Trackly.fmtShort(pay.dueDate) + '</div>' +
+        '<div><span class="pill ' + statusPill[pay.status] + '"><span class="dot"></span>' + statusLabel[pay.status] + '</span></div>' +
+      '</div>'
+    );
+  }).join("");
+})();
+</script>
+</body>
+</html>
