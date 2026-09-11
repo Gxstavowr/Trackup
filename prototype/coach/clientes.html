@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Clientes — Trackly</title>
+<title>Alunos — Trackly</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -24,8 +24,8 @@
       <button class="mobile-menu-btn" id="mobile-menu-btn">☰</button>
       <div class="page-head">
         <div>
-          <p class="eyebrow">Clientes</p>
-          <h1>Meus clientes</h1>
+          <p class="eyebrow">Alunos</p>
+          <h1>Alunos</h1>
           <p id="count-sub"></p>
         </div>
         <button class="btn btn-primary" id="add-toggle">+ Adicionar aluno</button>
@@ -44,8 +44,7 @@
 
       <div class="filter-bar">
         <button class="chip-filter active" data-filter="all">Todos</button>
-        <button class="chip-filter" data-filter="review">Aguardando revisão</button>
-        <button class="chip-filter" data-filter="late">Atrasados</button>
+        <button class="chip-filter" data-filter="avaliacao">Avaliação</button>
         <button class="chip-filter" data-filter="warn">Atenção</button>
         <button class="chip-filter" data-filter="ok">Em dia</button>
         <input class="search-input" id="search" type="text" placeholder="Buscar por nome...">
@@ -85,16 +84,17 @@
 
   var nextAction = {
     invite: null, // resolvido por linha, depende do inviteStatus
-    review: ["Revisar check-in", "revisar.html?id="], late: ["Cobrar check-in", "cliente.html?id="],
-    warn: ["Analisar tendência", "cliente.html?id="], ok: ["Nenhuma — tudo em dia", null]
+    review: ["Avaliar agora", "revisar.html?id="], progress: ["Continuar avaliação", "revisar.html?id="],
+    late: ["Cobrar check-in", "cliente.html?id="],
+    warn: ["Analisar tendência", "cliente.html?id="], ok: ["Ver", "cliente.html?id="]
   };
 
   function render() {
     var clients = Trackly.CLIENTS;
-    document.getElementById("count-sub").textContent = clients.length + " cliente" + (clients.length === 1 ? "" : "s") + " no total.";
+    document.getElementById("count-sub").textContent = clients.length + " aluno" + (clients.length === 1 ? "" : "s") + " ativo" + (clients.length === 1 ? "" : "s") + ".";
 
     var rows = clients.map(function (c) { return { c: c, s: Trackly.computeStatus(c) }; })
-      .filter(function (x) { return state.filter === "all" || x.s.code === state.filter; })
+      .filter(function (x) { return state.filter === "all" || (state.filter === "avaliacao" ? ["late", "review", "progress"].indexOf(x.s.code) !== -1 : x.s.code === state.filter); })
       .filter(function (x) { return x.c.name.toLowerCase().indexOf(state.q.toLowerCase()) !== -1; });
 
     document.getElementById("empty").style.display = rows.length ? "none" : "block";
@@ -102,7 +102,7 @@
 
     document.getElementById("roster-body").innerHTML = rows.map(function (x) {
       var c = x.c, cur = c.weeks.length ? Trackly.currentWeek(c) : null;
-      var pillClass = x.s.code === "ok" ? "pill-ok" : x.s.code === "late" ? "pill-late" : x.s.code === "invite" ? "pill-warn" : "pill-warn";
+      var pillClass = x.s.code === "ok" ? "pill-ok" : x.s.code === "late" ? "pill-late" : "pill-warn";
       var clickable = !!cur;
       var actionHtml;
       if (x.s.code === "invite") {
