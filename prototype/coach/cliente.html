@@ -44,16 +44,20 @@
 
       <div class="tabs" style="margin-top:22px;">
         <button class="tab-btn active" data-tab="resumo">Visão geral</button>
+        <button class="tab-btn" id="tab-treino-link" type="button">Treino</button>
+        <button class="tab-btn" id="tab-nutricao-link" type="button">Nutrição</button>
         <button class="tab-btn" id="tab-avaliacao-link" type="button">Avaliação</button>
         <button class="tab-btn" data-tab="evolucao">Evolução</button>
         <button class="tab-btn" data-tab="fotos">Fotos</button>
         <button class="tab-btn" data-tab="historico">Histórico</button>
+        <button class="tab-btn" data-tab="pagamentos">Pagamentos</button>
       </div>
 
       <div class="tab-panel active" id="tab-resumo"></div>
       <div class="tab-panel" id="tab-evolucao"></div>
       <div class="tab-panel" id="tab-fotos"></div>
       <div class="tab-panel" id="tab-historico"></div>
+      <div class="tab-panel" id="tab-pagamentos"></div>
     </div>
   </main>
 </div>
@@ -394,7 +398,30 @@
     });
   }
 
-  var renderers = { resumo: renderResumo, evolucao: renderEvolucao, fotos: renderFotos, historico: renderHistorico };
+  // ---------------- PAGAMENTOS — resumo do plano + histórico, dentro do perfil (não uma página própria) ----------------
+  function renderPagamentos() {
+    var statusLabel = { paid: "Pago", pending: "Pendente", overdue: "Atrasado", cancelled: "Cancelado", refunded: "Estornado" };
+    var statusPill = { paid: "pill-ok", pending: "pill-warn", overdue: "pill-late", cancelled: "pill", refunded: "pill" };
+    function fmtMoney(cents) { return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+    if (!client.plan) { document.getElementById("tab-pagamentos").innerHTML = '<div class="empty-state"><h3>Nenhum plano cadastrado</h3></div>'; return; }
+    var pay = Trackly.currentPayment(client);
+    var rows = client.paymentsHistory.slice().reverse();
+    document.getElementById("tab-pagamentos").innerHTML =
+      '<div class="card card-pad" style="margin-bottom:20px;">' +
+        '<div class="plan-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
+          '<span style="font-size:15px;font-weight:700;">' + client.plan.name + '</span>' +
+          '<span class="pill ' + statusPill[pay.status] + '"><span class="dot"></span>' + statusLabel[pay.status] + '</span>' +
+        '</div>' +
+        '<div style="font-family:var(--font-mono);font-size:13px;color:var(--ink-muted);">' + fmtMoney(client.plan.priceCents) + ' · vencimento ' + Trackly.fmtShort(pay.dueDate) + '</div>' +
+        (pay.status === "overdue" ? '<a href="' + Trackly.whatsappUrl(client.phone, Trackly.overduePaymentMessage(client)) + '" target="_blank" class="btn btn-secondary" style="margin-top:16px;">Cobrar no WhatsApp</a>' : '') +
+      '</div>' +
+      '<div class="section-label">Histórico</div>' +
+      '<div class="card card-pad">' + rows.map(function (p) {
+        return '<div class="list-row"><div class="lr-body"><strong>' + fmtMoney(p.amountCents) + '</strong><span class="lr-meta">' + Trackly.fmtShort(p.dueDate) + '</span></div><span class="pill ' + statusPill[p.status] + '"><span class="dot"></span>' + statusLabel[p.status] + '</span></div>';
+      }).join("") + '</div>';
+  }
+
+  var renderers = { resumo: renderResumo, evolucao: renderEvolucao, fotos: renderFotos, historico: renderHistorico, pagamentos: renderPagamentos };
   var rendered = {};
   document.querySelectorAll(".tab-btn[data-tab]").forEach(function (btn) {
     btn.addEventListener("click", function () {
@@ -408,6 +435,10 @@
   });
   var avalLink = document.getElementById("tab-avaliacao-link");
   if (avalLink) avalLink.addEventListener("click", function () { location.href = "revisar.html?id=" + client.id; });
+  var treinoLink = document.getElementById("tab-treino-link");
+  if (treinoLink) treinoLink.addEventListener("click", function () { location.href = "treino.html?id=" + client.id; });
+  var nutricaoLink = document.getElementById("tab-nutricao-link");
+  if (nutricaoLink) nutricaoLink.addEventListener("click", function () { location.href = "nutricao.html?id=" + client.id; });
   renderResumo(); rendered.resumo = true;
 })();
 </script>
