@@ -126,7 +126,7 @@
       return (
         '<div class="list-row"' + (clickable ? ' tabindex="0" role="button" style="cursor:pointer;" onclick="location.href=\'cliente.html?id=' + c.id + '\'" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();location.href=\'cliente.html?id=' + c.id + '\';}"' : '') + '>' +
           '<span class="avatar lr-lead" style="background:' + TracklyNav.colorFor(c) + '">' + c.initials + '</span>' +
-          '<div class="lr-body"><strong>' + c.name + '</strong><span class="lr-meta">' + c.objective + (cur && cur.checkin.status === "submitted" ? " · último check-in " + Trackly.fmtShort(cur.end) : "") + '</span></div>' +
+          '<div class="lr-body"><strong>' + c.name + '</strong><span class="lr-meta">' + (c.age && c.heightCm ? c.age + " anos · " + (c.heightCm / 100).toFixed(2).replace(".", ",") + " m · " : "") + c.objective + (cur && cur.checkin.status === "submitted" ? " · última atualização " + Trackly.fmtShort(cur.end) : "") + '</span></div>' +
           '<span class="pill ' + pillClass + '"><span class="dot"></span>' + x.s.label + '</span>' +
           payPill +
           '<div class="lr-actions" style="flex-direction:column;align-items:flex-end;gap:4px;">' + actionHtml + cobrarHtml + '</div>' +
