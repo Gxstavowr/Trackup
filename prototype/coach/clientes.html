@@ -138,6 +138,7 @@
       a.addEventListener("click", function (e) {
         e.preventDefault(); e.stopPropagation();
         Trackly.sendInvite(a.getAttribute("data-send-invite"));
+        TracklyNav.toast("Convite enviado");
         render();
       });
     });

@@ -81,7 +81,7 @@
       document.getElementById("queue-awaiting").innerHTML = "";
       document.getElementById("queue-completed").innerHTML = renderCompletedSection(completed);
       wireCompletedToggle();
-      document.querySelectorAll("[data-remind]").forEach(function (btn) { btn.addEventListener("click", function () { Trackly.sendReminder(btn.getAttribute("data-remind")); render(); }); });
+      document.querySelectorAll("[data-remind]").forEach(function (btn) { btn.addEventListener("click", function () { Trackly.sendReminder(btn.getAttribute("data-remind")); TracklyNav.toast("Lembrete enviado"); render(); }); });
       return;
     }
 
@@ -119,6 +119,7 @@
     document.querySelectorAll("[data-remind]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         Trackly.sendReminder(btn.getAttribute("data-remind"));
+        TracklyNav.toast("Lembrete enviado");
         render();
       });
     });
