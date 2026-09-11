@@ -456,6 +456,87 @@
     c._weekWorkoutsDone = 0;
   });
 
+  // ================================================================
+  // V11 — Nutrição: plano visual por refeição, não "planilha". Substituições
+  // equivalentes ficam junto do item (mesma ideia de contexto-no-lugar-certo
+  // do resto do produto — brief §33/§34).
+  // ================================================================
+  function meal(id, name, time, items, substitutes, macros) {
+    return { id: id, name: name, time: time, items: items, substitutes: substitutes || [], macros: macros };
+  }
+  var NUTRITION_PLANS = {
+    joao: {
+      planName: "Emagrecimento — déficit moderado",
+      meals: [
+        meal("cafe", "Café da manhã", "07:00",
+          [{ food: "Ovos mexidos", qty: "3 unid." }, { food: "Pão integral", qty: "1 fatia" }, { food: "Mamão", qty: "1 fatia" }],
+          [["Pão integral", "Tapioca (2 col.)"]], { protein: 24, carbs: 30, fat: 14, kcal: 340 }),
+        meal("almoco", "Almoço", "12:30",
+          [{ food: "Frango grelhado", qty: "150g" }, { food: "Arroz integral", qty: "4 col." }, { food: "Salada verde", qty: "à vontade" }, { food: "Feijão", qty: "2 col." }],
+          [["Arroz integral", "Batata doce (100g)"]], { protein: 42, carbs: 45, fat: 10, kcal: 460 }),
+        meal("lanche", "Lanche da tarde", "16:00",
+          [{ food: "Iogurte natural", qty: "1 pote" }, { food: "Granola", qty: "1 col." }],
+          [["Iogurte natural", "Whey protein (1 dose)"]], { protein: 14, carbs: 20, fat: 6, kcal: 190 }),
+        meal("jantar", "Jantar", "20:00",
+          [{ food: "Tilápia grelhada", qty: "150g" }, { food: "Legumes no vapor", qty: "1 prato" }],
+          [["Tilápia grelhada", "Patinho moído (120g)"]], { protein: 38, carbs: 15, fat: 8, kcal: 290 })
+      ]
+    },
+    maria: {
+      planName: "Emagrecimento — foco em saciedade",
+      meals: [
+        meal("cafe", "Café da manhã", "07:30",
+          [{ food: "Omelete de claras", qty: "3 unid." }, { food: "Aveia", qty: "2 col." }, { food: "Banana", qty: "1 unid." }],
+          [["Aveia", "Tapioca (2 col.)"]], { protein: 22, carbs: 35, fat: 8, kcal: 300 }),
+        meal("almoco", "Almoço", "12:00",
+          [{ food: "Peito de frango", qty: "130g" }, { food: "Quinoa", qty: "3 col." }, { food: "Salada colorida", qty: "à vontade" }],
+          [["Quinoa", "Arroz integral (3 col.)"]], { protein: 36, carbs: 38, fat: 9, kcal: 380 }),
+        meal("lanche", "Lanche da tarde", "16:30",
+          [{ food: "Whey protein", qty: "1 dose" }, { food: "Maçã", qty: "1 unid." }],
+          [], { protein: 26, carbs: 22, fat: 3, kcal: 220 }),
+        meal("jantar", "Jantar", "19:30",
+          [{ food: "Salmão grelhado", qty: "120g" }, { food: "Aspargos", qty: "1 prato" }],
+          [["Salmão grelhado", "Tilápia (140g)"]], { protein: 30, carbs: 10, fat: 14, kcal: 290 })
+      ]
+    },
+    pedro: {
+      planName: "Hipertrofia — superávit calórico",
+      meals: [
+        meal("cafe", "Café da manhã", "06:30",
+          [{ food: "Ovos inteiros", qty: "4 unid." }, { food: "Pão francês", qty: "2 unid." }, { food: "Aveia", qty: "3 col." }],
+          [["Pão francês", "Tapioca (3 col.)"]], { protein: 34, carbs: 55, fat: 18, kcal: 520 }),
+        meal("almoco", "Almoço", "12:00",
+          [{ food: "Carne vermelha magra", qty: "200g" }, { food: "Arroz branco", qty: "6 col." }, { food: "Feijão", qty: "3 col." }, { food: "Salada", qty: "à vontade" }],
+          [["Carne vermelha magra", "Frango (220g)"]], { protein: 55, carbs: 70, fat: 16, kcal: 680 }),
+        meal("pos-treino", "Pós-treino", "17:00",
+          [{ food: "Whey protein", qty: "2 doses" }, { food: "Banana", qty: "1 unid." }, { food: "Batata doce", qty: "150g" }],
+          [], { protein: 48, carbs: 50, fat: 4, kcal: 420 }),
+        meal("jantar", "Jantar", "20:30",
+          [{ food: "Frango grelhado", qty: "200g" }, { food: "Arroz integral", qty: "5 col." }, { food: "Legumes", qty: "1 prato" }],
+          [["Frango grelhado", "Carne vermelha magra (180g)"]], { protein: 52, carbs: 48, fat: 12, kcal: 520 })
+      ]
+    },
+    ana: {
+      planName: "Condicionamento — equilíbrio energético",
+      meals: [
+        meal("cafe", "Café da manhã", "07:00",
+          [{ food: "Iogurte natural", qty: "1 pote" }, { food: "Granola", qty: "2 col." }, { food: "Frutas vermelhas", qty: "1 punhado" }],
+          [["Granola", "Aveia (2 col.)"]], { protein: 18, carbs: 40, fat: 9, kcal: 320 }),
+        meal("almoco", "Almoço", "12:30",
+          [{ food: "Peito de frango", qty: "140g" }, { food: "Arroz integral", qty: "4 col." }, { food: "Salada", qty: "à vontade" }],
+          [["Arroz integral", "Quinoa (4 col.)"]], { protein: 38, carbs: 42, fat: 10, kcal: 420 }),
+        meal("lanche", "Lanche da tarde", "16:00",
+          [{ food: "Mix de castanhas", qty: "1 punhado" }, { food: "Maçã", qty: "1 unid." }],
+          [], { protein: 8, carbs: 24, fat: 14, kcal: 250 }),
+        meal("jantar", "Jantar", "20:00",
+          [{ food: "Peixe grelhado", qty: "150g" }, { food: "Legumes no vapor", qty: "1 prato" }],
+          [["Peixe grelhado", "Frango grelhado (150g)"]], { protein: 34, carbs: 16, fat: 9, kcal: 300 })
+      ]
+    }
+  };
+  CLIENTS.forEach(function (c) { c.nutritionPlan = NUTRITION_PLANS[c.id] || null; });
+  function todaysMeals(client) { return client.nutritionPlan ? client.nutritionPlan.meals : []; }
+
   // ---------------- helpers derivados ----------------
 
   function getClient(id) { return CLIENTS.filter(function (c) { return c.id === id; })[0] || CLIENTS[0]; }
@@ -1132,6 +1213,7 @@
     completeOrientation: completeOrientation, submitCheckin: submitCheckin, sendReminder: sendReminder, markReviewOpened: markReviewOpened,
     createClient: createClient, sendInvite: sendInvite, acceptInvite: acceptInvite,
     EXERCISE_LIBRARY: EXERCISE_LIBRARY, getExercise: getExercise,
-    logWorkoutSession: logWorkoutSession, todaysWorkoutDay: todaysWorkoutDay
+    logWorkoutSession: logWorkoutSession, todaysWorkoutDay: todaysWorkoutDay,
+    todaysMeals: todaysMeals
   };
 })(window);
