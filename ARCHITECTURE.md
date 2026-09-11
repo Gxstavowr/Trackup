@@ -208,3 +208,49 @@ backend real.
 7. Histórico — timeline
 
 Landing/apresentação do conceito também incluída (`prototype/index.html`).
+
+## V6 — redesign Apple/Wellness premium
+
+Transformação de linguagem visual sobre a mesma lógica/dados: escala de espaçamento e
+tipografia (`--space-*`, `--text-hero`, `--text-counter`), componentes compartilhados
+`.hero-stat`/`.big-counter`/`.list-row`/`.compare-slider`/`.step-dots`, motor de gráficos
+retocado (grid reduzido a 2 linhas, ponto atual discreto, tooltip refinado). Dashboard do
+coach virou um indicador central (`X/Y acompanhados`) com "Concluídos" recolhido atrás de
+clique; a tabela de clientes virou lista de linhas; o perfil do cliente ganhou abas
+reordenadas (Visão geral/Evolução/Fotos/Histórico) e a aba Fotos foi reconstruída em torno
+de um comparador antes/depois arrastável, substituindo a galeria por semana. Nenhuma
+mudança em `data.js` além de bump de versão — puramente camada de apresentação.
+
+## V7 — inteligência de produto (memória/padrões) + ajustes finais de app premium
+
+A missão desta versão foi transformar o histórico semanal acumulado em contexto útil pro
+coach, sem IA genérica e sem inventar métricas — só leitura regrada de `client.weeks`:
+
+1. **`Trackly.buildCoachMemory(client)`** (`assets/js/data.js`) — devolve um resumo do
+   período (peso/aderência/semanas-na-meta), até duas observações "o que está funcionando"
+   e "merece atenção", e uma nota de marco (menor peso do acompanhamento / faixa de
+   estabilidade do peso). Regra de dados mínimos, tudo num só lugar: **< 3 semanas
+   submetidas → retorna `null`** (nada aparece); **3–5 semanas** → só a comparação
+   início/fim do período; **6+ semanas** → também consistência (taxa de acerto de metas,
+   aderência alta); **8+ semanas** → também a faixa de estabilidade do peso. Consumido pela
+   aba Visão Geral do perfil do cliente (`coach/cliente.html`).
+2. **`Trackly.trendLine(client)`** — uma única frase cautelosa de tendência ("Peso caiu
+   2.1kg nas últimas 8 semanas."), nunca causal, exibida logo abaixo do hero de peso na
+   Evolução (coach e portal). Mesma régua de dados mínimos (3+ semanas).
+3. **"O que mudou" na revisão** (`coach/revisar.html`) deixou de ser frases soltas
+   (`checkInInsights`) e virou pares objetivos semana-anterior → semana-atual (peso,
+   aderência, sono), coloridos por favorável/desfavorável — mais rápido de escanear que
+   texto corrido.
+4. **Check-in reordenado**: Peso e fotos agora é a etapa 1 (antes era a etapa 4),
+   refletindo a ordem real do workflow (`CHECKIN_TEMPLATE`/`CHECKIN_STEPS` em `data.js` +
+   `portal/checkin.html`).
+5. **Notificações simuladas** — "Avisar coach" e "Avisar no WhatsApp" na tela de sucesso do
+   check-in do aluno; "Enviar também pelo WhatsApp" na tela de sucesso da orientação do
+   coach. São simulações de UI local (troca de texto do botão + `disabled`), sem chamada de
+   rede e sem novo campo persistido — um espaço reservado explícito para uma integração
+   real futura, não uma funcionalidade fingida como pronta.
+
+**Simplificação deliberada**: o brief pede uma estrutura `coachMemory` com um array
+`patterns` separado de `strengths`/`attentionPoints`. Como todo padrão que esta versão
+consegue detectar honestamente já cai em uma dessas duas categorias, `patterns` foi
+propositalmente omitido em vez de existir como um array sempre vazio.
