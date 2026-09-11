@@ -202,6 +202,20 @@
     var lastW = weeks[weeks.length - 1], prevWk = weeks.length > 1 ? weeks[weeks.length - 2] : null;
     var wDelta = prevWk ? Trackly.round1(lastW.metrics.weight - prevWk.metrics.weight) : null;
 
+    var period = Trackly.buildPeriodSummary(client, evoState.range);
+    var periodHtml = !period ? "" : (
+      '<div class="period-card" style="margin-top:24px;">' +
+      '<div class="weeks" style="text-align:left;margin-bottom:0;">' + period.weeksCount + ' SEMANAS SELECIONADAS</div>' +
+      '<div class="period-stats">' +
+        (Trackly.isTracked(client, "weight") ? '<div class="item"><div class="l">Peso</div><div class="v">' + (period.weightDelta > 0 ? "+" : "") + period.weightDelta + 'kg</div></div>' : "") +
+        (Trackly.isTracked(client, "measurements") && period.waistDelta != null ? '<div class="item"><div class="l">Cintura</div><div class="v">' + (period.waistDelta > 0 ? "+" : "") + period.waistDelta + 'cm</div></div>' : "") +
+        (Trackly.isTracked(client, "adherence") ? '<div class="item"><div class="l">Aderência</div><div class="v">' + period.adherenceAvg + '%</div></div>' : "") +
+        (Trackly.isTracked(client, "workouts") ? '<div class="item"><div class="l">Treinos</div><div class="v">' + period.workoutsTotal + '/' + period.workoutsGoalTotal + '</div></div>' : "") +
+      '</div>' +
+      '<p class="period-narrative"><strong>O que mudou</strong>' + period.narrative + '</p>' +
+      '</div>'
+    );
+
     document.getElementById("tab-evolucao").innerHTML =
       '<div class="range-sel" id="range-sel" style="margin-bottom:18px;">' + rangeBtns + '</div>' +
       (Trackly.isTracked(client, "weight") ? (
@@ -210,7 +224,7 @@
         (function () { var t = Trackly.trendLine(client); return t ? '<p style="font-size:13px;color:var(--ink-muted);margin:0 0 16px;">' + t + '</p>' : ""; })() +
         Charts.lineChart({ data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.weight }; }), height: 260, color: color, unit: "kg" }) +
       '</div>') : "") +
-      '<div class="stack">' + blocks.join("") + '</div>';
+      '<div class="stack">' + blocks.join("") + '</div>' + periodHtml;
 
     document.querySelectorAll("#range-sel button").forEach(function (b) {
       b.addEventListener("click", function () { evoState.range = b.getAttribute("data-range"); renderEvolucao(); });
