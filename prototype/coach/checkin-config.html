@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Configurar check-in — Trackly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/base.css?v=14">
+<style>
+  .cc-step-card { margin-bottom: 18px; }
+  .cc-step-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+  .cc-step-head .card-title { margin-bottom: 0; }
+  .cc-step-sub { font-size: 12px; color: var(--ink-faint); margin: 0 0 14px; }
+  .cc-row { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px; margin-top: 10px; transition: opacity .12s; }
+  .cc-row.inactive { opacity: .5; }
+  .cc-row-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .cc-row-top input[type="text"] { flex: 1; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font-size: 13.5px; font-weight: 600; }
+  .cc-order { display: flex; flex-direction: column; gap: 2px; }
+  .cc-order button { width: 26px; height: 20px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-muted); border-radius: 5px; font-size: 11px; line-height: 1; cursor: pointer; }
+  .cc-order button:hover { color: var(--ink); border-color: var(--ink-faint); }
+  .cc-remove { flex: none; width: 30px; height: 30px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-faint); cursor: pointer; }
+  .cc-remove:hover { color: var(--coral); border-color: var(--coral); }
+  .cc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; align-items: end; }
+  .cc-mini label { display: block; font-size: 11px; font-weight: 600; color: var(--ink-faint); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .03em; }
+  .cc-mini select, .cc-mini input[type="text"] { width: 100%; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font-size: 13px; }
+  .cc-check { display: flex; align-items: center; gap: 7px; padding-bottom: 8px; }
+  .cc-check label { font-size: 12.5px; font-weight: 500; color: var(--ink-muted); }
+  .cc-key { font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint); margin-top: 8px; }
+  .cc-key input { font-family: var(--font-mono); }
+  .cc-error { margin-top: 16px; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--late-tint); color: var(--coral); font-size: 13px; font-weight: 500; }
+  .cc-actions { display: flex; gap: 10px; margin-top: 20px; align-items: center; }
+  .cc-actions .btn-primary { flex: none; padding: 12px 22px; }
+</style>
+</head>
+<body data-root="../">
+<div id="shell-demo"></div>
+<div class="shell">
+  <div id="shell-sidebar"></div>
+  <main class="main">
+    <div class="main-inner">
+      <button class="mobile-menu-btn" id="mobile-menu-btn">☰</button>
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">Configurações</p>
+          <h1>Check-in</h1>
+          <p>Escolha quais perguntas seus alunos respondem toda semana — ative, edite, reordene ou crie perguntas novas. Respostas já enviadas nunca são alteradas.</p>
+        </div>
+        <button class="btn btn-primary" id="btn-add-question">+ Adicionar pergunta</button>
+      </div>
+
+      <div id="steps-host"></div>
+
+      <div id="cc-error" class="cc-error" style="display:none;"></div>
+      <div class="cc-actions">
+        <button class="btn btn-primary" id="btn-save">Salvar alterações</button>
+        <span id="cc-saved-hint" style="font-size:12.5px;color:var(--ink-faint);"></span>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../assets/js/storage.js?v=13"></script>
+<script src="../assets/js/data.js?v=16"></script>
+<script src="../assets/js/icons.js?v=12"></script>
+<script src="../assets/js/charts.js?v=13"></script>
+<script src="../assets/js/nav.js?v=14"></script>
+<script>
+(function () {
+  TracklyNav.mountCoachShell("checkin-config");
+
+  var TYPE_LABELS = {
+    "number": "Número", "text": "Texto livre", "stepper": "Contador (+/-)",
+    "scale+text": "Escala 0–10 + texto", "number+text": "Número + texto",
+    "yesno": "Sim / Não", "photos": "Fotos"
+  };
+  var TRACKS_LABELS = {
+    weight: "Peso", adherence: "Aderência", workouts: "Treinos", cardio: "Cardio",
+    water: "Água", sleep: "Sono", digestion: "Digestão", emotional: "Emocional",
+    measurements: "Medidas", photos: "Fotos"
+  };
+  var TRACKS_KEYS = Object.keys(Trackly.TRACKING_DEFAULT);
+
+  function genUid() { return "q" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function cloneJSON(v) { return JSON.parse(JSON.stringify(v)); }
+
+  var state = { template: cloneJSON(Trackly.COACH.checkinTemplate), steps: cloneJSON(Trackly.COACH.checkinSteps) };
+  state.template.forEach(function (q) { q._uid = genUid(); });
+
+  function findQ(uid) {
+    var found = null;
+    state.template.forEach(function (q) { if (q._uid === uid) found = q; });
+    return found;
+  }
+  function indexOfUid(uid) {
+    var idx = -1;
+    state.template.forEach(function (q, i) { if (q._uid === uid) idx = i; });
+    return idx;
+  }
+
+  function opt(value, label, selected) {
+    return '<option value="' + value + '"' + (selected ? " selected" : "") + '>' + label + "</option>";
+  }
+
+  function renderRow(q) {
+    var typeOpts = Object.keys(TYPE_LABELS).map(function (t) { return opt(t, TYPE_LABELS[t], q.type === t); }).join("");
+    var tracksOpts = opt("", "(nenhuma)", !q.tracks) + TRACKS_KEYS.map(function (k) { return opt(k, TRACKS_LABELS[k] || k, q.tracks === k); }).join("");
+    var genderOpts = opt("", "Todos", !q.genderOnly) + opt("f", "Feminino", q.genderOnly === "f") + opt("m", "Masculino", q.genderOnly === "m");
+    var stepOpts = state.steps.map(function (s) { return opt(s.n, "Passo " + s.n + " — " + s.label, q.step === s.n); }).join("");
+    return (
+      '<div class="cc-row' + (q.active ? "" : " inactive") + '" data-uid="' + q._uid + '">' +
+        '<div class="cc-row-top">' +
+          '<div class="cc-order"><button type="button" data-action="up" title="Mover para cima">▲</button><button type="button" data-action="down" title="Mover para baixo">▼</button></div>' +
+          '<input type="text" data-field="label" value="' + escAttr(q.label) + '" placeholder="Texto da pergunta">' +
+          '<button type="button" class="cc-remove" data-action="remove" title="Remover pergunta">' + ICONS.close + "</button>" +
+        "</div>" +
+        '<div class="cc-grid">' +
+          '<div class="cc-mini"><label>Tipo</label><select data-field="type">' + typeOpts + "</select></div>" +
+          '<div class="cc-mini"><label>Alimenta a métrica</label><select data-field="tracks">' + tracksOpts + "</select></div>" +
+          '<div class="cc-mini"><label>Passo</label><select data-field="step">' + stepOpts + "</select></div>" +
+          '<div class="cc-mini"><label>Restrita a</label><select data-field="genderOnly">' + genderOpts + "</select></div>" +
+          '<div class="cc-check"><input type="checkbox" id="chk-active-' + q._uid + '" data-field="active"' + (q.active ? " checked" : "") + '><label for="chk-active-' + q._uid + '">Ativa</label></div>' +
+          '<div class="cc-check"><input type="checkbox" id="chk-req-' + q._uid + '" data-field="required"' + (q.required ? " checked" : "") + '><label for="chk-req-' + q._uid + '">Obrigatória</label></div>' +
+        "</div>" +
+        '<div class="cc-key">chave: <input type="text" data-field="key" value="' + escAttr(q.key) + '" style="border:none;background:transparent;padding:2px 4px;width:160px;"></div>' +
+      "</div>"
+    );
+  }
+
+  function escAttr(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;"); }
+
+  function render() {
+    document.getElementById("steps-host").innerHTML = state.steps.map(function (s) {
+      var qs = state.template.filter(function (q) { return q.step === s.n; });
+      return (
+        '<div class="card card-pad cc-step-card">' +
+          '<div class="cc-step-head"><p class="card-title">Passo ' + s.n + " — " + s.label + "</p></div>" +
+          '<p class="cc-step-sub">' + qs.length + " pergunta" + (qs.length === 1 ? "" : "s") + "</p>" +
+          qs.map(renderRow).join("") +
+        "</div>"
+      );
+    }).join("");
+    wireRows();
+  }
+
+  function wireRows() {
+    document.querySelectorAll(".cc-row").forEach(function (row) {
+      var uid = row.getAttribute("data-uid");
+      row.querySelectorAll("[data-field]").forEach(function (el) {
+        var field = el.getAttribute("data-field");
+        var evt = (el.tagName === "SELECT" || el.type === "checkbox") ? "change" : "input";
+        el.addEventListener(evt, function () {
+          var q = findQ(uid);
+          if (!q) return;
+          var val = el.type === "checkbox" ? el.checked : el.value;
+          if (field === "step") val = parseInt(val, 10);
+          if ((field === "tracks" || field === "genderOnly") && val === "") val = null;
+          q[field] = val;
+          if (field === "active") row.classList.toggle("inactive", !val);
+          if (field === "step") render();
+        });
+      });
+      row.querySelector('[data-action="up"]').addEventListener("click", function () { moveQuestion(uid, -1); });
+      row.querySelector('[data-action="down"]').addEventListener("click", function () { moveQuestion(uid, 1); });
+      row.querySelector('[data-action="remove"]').addEventListener("click", function () { removeQuestion(uid); });
+    });
+  }
+
+  function moveQuestion(uid, dir) {
+    var i = indexOfUid(uid);
+    if (i === -1) return;
+    var step = state.template[i].step;
+    var j = i + dir;
+    while (j >= 0 && j < state.template.length && state.template[j].step !== step) j += dir;
+    if (j < 0 || j >= state.template.length) return;
+    var tmp = state.template[i]; state.template[i] = state.template[j]; state.template[j] = tmp;
+    render();
+  }
+
+  function removeQuestion(uid) {
+    state.template = state.template.filter(function (q) { return q._uid !== uid; });
+    render();
+  }
+
+  document.getElementById("btn-add-question").addEventListener("click", function () {
+    state.template.push({
+      _uid: genUid(),
+      key: "pergunta" + (state.template.length + 1),
+      label: "Nova pergunta",
+      type: "text",
+      step: (state.steps[0] || { n: 1 }).n,
+      active: true,
+      required: false,
+      tracks: null,
+      genderOnly: null
+    });
+    render();
+    window.scrollTo(0, document.body.scrollHeight);
+  });
+
+  document.getElementById("btn-save").addEventListener("click", function () {
+    var errEl = document.getElementById("cc-error");
+    var hintEl = document.getElementById("cc-saved-hint");
+    var payload = state.template.map(function (q) {
+      var copy = Object.assign({}, q);
+      delete copy._uid;
+      return copy;
+    });
+    var result = Trackly.saveCheckinTemplate(payload, state.steps);
+    if (!result.ok) {
+      errEl.textContent = result.error;
+      errEl.style.display = "block";
+      hintEl.textContent = "";
+      return;
+    }
+    errEl.style.display = "none";
+    hintEl.textContent = "Salvo — os próximos check-ins já usam essa configuração.";
+    TracklyNav.toast("Check-in atualizado");
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

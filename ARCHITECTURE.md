@@ -90,6 +90,66 @@ automáticos por padrão (seção 11) e benchmarking entre clientes (seção 23)
 já comporta os dois — `Metric` por semana por cliente é exatamente o input que um motor de
 tendência ou um benchmark agregado vai precisar — mas nenhum dos dois é construído agora.
 
+### Treino, Nutrição, Pagamentos e Notificações (TODO #31 — entidades adicionadas em V11/V17)
+
+O bloco acima cobre o ciclo de check-in; V11 (treino/nutrição/pagamentos) e V17 (notificações)
+adicionaram subsistemas próprios ao protótipo (`client.workout`, `client.nutritionPlan`,
+`client.plan`/`paymentsHistory`, `NOTIFICATIONS`) que ainda não tinham sido formalizados aqui.
+Todas as entidades abaixo também penduram em `Account` (via `client_id` → `Client` → `account_id`),
+mesma regra de isolamento multi-tenant do bloco anterior:
+
+```
+├─ Exercise  (biblioteca compartilhada da conta, não por cliente)
+│   └─ id, account_id, name, category, instruction
+│
+├─ WorkoutPlan  (protocolo em vigor de um cliente)
+│   └─ id, client_id, name, created_at
+│   └─ WorkoutDay { id, plan_id, name, duration_min, order }
+│       └─ WorkoutExercise { id, day_id, exercise_id, sets, reps, rest_sec, rir, notes, order }
+│
+├─ WorkoutLog  (execução real, uma linha por sessão registrada pelo aluno)
+│   └─ id, client_id, exercise_id, week_number, load, reps, completed_at
+│
+├─ NutritionPlan  (refeições em vigor de um cliente)
+│   └─ id, client_id, name, updated_at
+│   └─ Meal { id, plan_id, name, time, order }
+│       └─ MealItem { id, meal_id, food_id, qty, macros }
+│       └─ Substitution { id, meal_item_id, alternative_food_id }
+│
+├─ Food  (biblioteca compartilhada da conta — nome + macros base)
+│   └─ id, account_id, name, unit, macros
+│
+├─ Subscription  (situação da assinatura — distinto do status de cada cobrança)
+│   └─ id, client_id, plan_name, price_cents, period (monthly|quarterly|semiannual),
+│      status (active|paused|cancelled), created_at
+│
+├─ Payment  (uma cobrança — o que hoje é `paymentsHistory[]`)
+│   └─ id, subscription_id, due_date, paid_date, amount_cents,
+│      status (pending|paid|overdue|cancelled|refunded), method
+│
+├─ PaymentEvent  (auditoria — o que gerou cada mudança de estado acima)
+│   └─ id, payment_id, type (created|charged|refunded|status_changed), detail, created_at
+│      — no protótipo hoje isso passa por `paymentProvider.charge/refund`, sempre simulado
+│      e documentado como tal; nunca uma chamada real a um gateway
+│
+└─ Notification  (`NOTIFICATIONS` em `data.js`, item 21 do TODO)
+    └─ id, client_id, event_type, recipient (coach|client), message, channels
+       (in_app: bool, whatsapp: bool, push/email: "declared" até existir backend pra
+       disparar de verdade), read, created_at
+    └─ NotificationEvent — mesmo princípio do PaymentEvent: o `event_type` já é a fonte
+       de verdade (`checkin_received`, `orientation_ready`, `checkin_overdue`,
+       `checkin_reminder`, `payment_overdue`); nenhuma tabela de evento separada é
+       necessária hoje porque `Notification` já registra o evento no momento em que
+       acontece — só vale separar se um mesmo evento algum dia puder gerar múltiplos
+       registros de canal (hoje gera um registro único com vários canais dentro).
+```
+
+`Subscription` é a situação da assinatura (o que o coach define — plano, valor,
+periodicidade, ativo/pausado/cancelado); `Payment` é cada cobrança individual dentro
+dela. Separar os dois foi o que faltava no protótipo: hoje `client.plan` mistura as
+duas coisas em um objeto só, e não existe um status de assinatura distinto do status da
+última cobrança — ver item 22 do TODO.
+
 ## V2 — fluxo corrigido, clareza, dark mode
 
 Revisão sobre o MVP inicial, com três mudanças estruturais:
@@ -193,6 +253,40 @@ backend real.
    Isso expôs (e corrigiu) uma lacuna real: os gráficos de Água e Cardio nunca tinham sido
    ligados nas telas de Evolução (coach e aluno) — existiam no motor de gráficos mas não eram
    chamados por nenhuma página.
+
+## Multi-tenancy, privacidade e segurança (TODO #32)
+
+O plano de produção (seção "Stack de produção" acima) já trata isolamento por conta como
+requisito desde o dia 1: `account_id` em toda tabela de negócio + RLS no Postgres + bucket
+de Storage privado por conta (`account_id/client_id/...`) + Supabase Auth com duas roles.
+Isso não muda com esta seção — o que faltava era dizer explicitamente onde o protótipo
+atual FICA AQUÉM desse plano, pra ninguém confundir "página parece pronta" com "modelo de
+segurança implementado":
+
+- **Não há autenticação nenhuma.** Uma única conta de coach hardcoded em `data.js`; o
+  aluno é identificado só pelo parâmetro de URL `?client=<id>` (ou `?id=<id>` no coach),
+  sem sessão, sem senha, sem verificação de que quem está vendo a página é quem diz ser.
+- **Não há isolamento de acesso.** Trocar o id na URL abre os dados de outro cliente —
+  não existe conceito de "este id pertence a esta sessão" porque não existe sessão.
+  Isso é aceitável para um protótipo estático de demonstração com dados fictícios, mas é
+  a violação exata que RLS + Auth existem para impedir em produção, e não pode ser
+  corrigida dentro do protótipo em si — precisa do backend real (users/sessions + checagem
+  de posse em toda query, não só na UI).
+- **Fotos e pagamentos, hoje, não são um risco real** porque não existem de verdade: fotos
+  são sempre placeholders ilustrativos (nunca upload real, ver item 10) e não há segredo de
+  gateway nenhum armazenado em lugar algum (item 22) — então "proteger fotos" e "manter
+  credenciais só no backend" estão satisfeitos hoje pelo motivo mais simples possível (nada
+  sensível existe pra vazar), não por controle de acesso implementado.
+- **Eventos já são registrados onde já existe uma trilha útil**: `NotificationEvent` e
+  `PaymentEvent` (seção anterior) cobrem "registrar eventos importantes" para os dois
+  subsistemas que mais precisam de auditoria hoje. Um log de auditoria genérico
+  (login, alteração de dado sensível, etc.) só faz sentido quando existir autenticação de
+  verdade — construí-lo antes disso seria registrar eventos que ainda não podem acontecer.
+
+Nada disso é uma reorganização possível dentro de HTML/CSS/JS estático — é a razão pela
+qual a seção "Stack de produção" já existe neste documento. O protótipo intencionalmente
+não simula autenticação (simular login sem backend real ensinaria o hábito errado: dar a
+sensação de que "tem login" quando não tem controle de acesso nenhum por trás).
 
 ## Inventário de telas do MVP
 

@@ -1,0 +1,163 @@
+/* Trackly — portal do ALUNO: linguagem visual própria (wellness premium, claro e quente).
+   Escopado inteiramente em `.portal` para nunca vazar pro coach, que continua no tema
+   escuro de tokens.css. Reaproveita as MESMAS classes compartilhadas (.card, .list-row,
+   .bottom-nav, .btn, .pill...) só redefinindo os tokens e alguns componentes por cima —
+   assim toda a lógica/JS que já gera esse HTML continua funcionando sem alteração. */
+
+.portal {
+  --paper: #FBF7F0;
+  --surface: #FFFFFF;
+  --surface-sunken: #F3EDE2;
+  --surface-raised-shadow: 0 1px 0 rgba(255,255,255,0.6) inset, 0 14px 32px -22px rgba(80,60,30,0.28);
+  --ink: #211D16;
+  --ink-muted: #756B5B;
+  --ink-faint: #A99E8C;
+  --line: #EEE6D8;
+  --line-strong: #E1D5BF;
+  --brand: #2F6F52;
+  --brand-deep: #24593F;
+  --brand-dark: #16342A;
+  --brand-tint: rgba(47,111,82,0.10);
+  --brand-tint-strong: rgba(47,111,82,0.20);
+  --on-accent: #FFFFFF;
+  --gold: #C57D3F;
+  --gold-tint: rgba(197,125,63,0.13);
+  --coral: #C15A44;
+  --coral-tint: rgba(193,90,68,0.12);
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+
+  background: var(--paper);
+  color: var(--ink);
+  font-feature-settings: "tnum" 1;
+}
+
+/* desktop: a largura não deve virar dashboard — mantém a sensação de app, centralizado
+   como uma "tela de telefone" flutuando sobre o fundo escuro do resto do produto. */
+@media (min-width: 640px) {
+  .portal {
+    margin: 28px auto;
+    min-height: calc(100vh - 56px);
+    border-radius: 32px;
+    box-shadow: 0 40px 90px -32px rgba(10,8,4,0.55);
+    overflow: hidden;
+  }
+}
+
+/* ---------- topo: saudação + data + avatar ---------- */
+.portal-top { padding: 20px 20px 4px; }
+.portal-top .brand { color: var(--ink); }
+.portal-top .brand svg path { stroke: var(--brand); }
+.portal-top .brand svg circle { fill: var(--brand); }
+.portal-top .avatar { box-shadow: 0 4px 14px -6px rgba(0,0,0,.35); }
+.portal .greet-block { padding: 6px 0 16px; }
+.portal .greet-block .hello { font-family: var(--font-display); font-size: clamp(1.15rem, 1rem + 0.8vw, 1.375rem); font-weight: 600; margin: 0 0 3px; }
+.portal .greet-block .date { font-size: 12.5px; color: var(--ink-faint); text-transform: capitalize; }
+
+/* ---------- superfícies compartilhadas reformuladas ---------- */
+.portal .card {
+  background: var(--surface);
+  border: none;
+  box-shadow: var(--surface-raised-shadow);
+}
+.portal .eyebrow { color: var(--brand); }
+.portal hr.hl { border-top-color: var(--line); }
+
+.portal .list-row { border-bottom-color: var(--line); }
+.portal .list-row:hover { background: var(--surface-sunken); }
+.portal .list-row .lr-meta { color: var(--ink-faint); }
+
+.portal .btn-primary { background: var(--brand); color: var(--on-accent); box-shadow: 0 10px 24px -12px rgba(47,111,82,.55); }
+.portal .btn-primary:hover { background: var(--brand-deep); }
+.portal .btn-secondary { background: var(--surface); border-color: var(--line-strong); color: var(--ink); }
+.portal .btn-ghost { color: var(--ink-muted); }
+.portal .btn-ghost:hover { background: var(--surface-sunken); }
+.portal .btn-lg { padding: 15px 18px; font-size: 15px; border-radius: var(--radius-md); }
+
+.portal .field input, .portal .field textarea, .portal .field select {
+  background: var(--surface); border-color: var(--line-strong); font-size: 16px; padding: 13px 14px;
+}
+.portal .field label { color: var(--ink); }
+.portal .field .hint { color: var(--ink-faint); }
+
+.portal .status-list .mark.pending { border-color: var(--line-strong); }
+.portal .pill-ok { background: var(--brand-tint); color: var(--brand); }
+.portal .pill-warn { background: var(--gold-tint); color: var(--gold); }
+.portal .pill-late { background: var(--coral-tint); color: var(--coral); }
+
+.portal .drawer-panel { background: var(--surface); border-color: var(--line); }
+.portal .drawer-close { background: var(--surface-sunken); border-color: var(--line); color: var(--ink-muted); }
+.portal .drawer-backdrop { background: rgba(30,22,10,.35); }
+
+.portal .hero-stat .value { color: var(--ink); }
+.portal .hero-stat .label { color: var(--ink-faint); }
+
+/* ---------- foco da semana — o "hero" da home, não um card genérico ---------- */
+.portal .focus-hero {
+  background: linear-gradient(155deg, var(--brand-tint), rgba(47,111,82,0.02) 65%);
+  border: 1px solid var(--brand-tint-strong);
+  border-radius: var(--radius-lg);
+  padding: 24px 22px;
+}
+.portal .focus-hero .eyebrow { margin-bottom: 10px; }
+.portal .focus-hero h1 { font-size: clamp(1.4rem, 1.15rem + 1.4vw, 1.875rem); letter-spacing: -.01em; }
+.portal .focus-hero p { color: var(--ink-muted); }
+
+/* ---------- mensagem do coach — pessoal, não notificação ---------- */
+.portal .msg-card { background: var(--surface); border: none; border-left: 3px solid var(--brand); }
+.portal .msg-card .role { color: var(--ink-faint); }
+.portal .msg-card p.txt { color: var(--ink); font-family: var(--font-display); font-size: 15.5px; line-height: 1.6; }
+
+/* ---------- hoje: linhas compactas, não cards gigantes ---------- */
+.portal .today-mini { background: var(--surface); border: none; box-shadow: var(--surface-raised-shadow); transition: transform .12s ease; }
+.portal .today-mini:active { transform: scale(.98); }
+.portal .today-mini .ic { background: var(--brand-tint); color: var(--brand); }
+.portal .today-mini .sub { color: var(--ink-faint); }
+
+/* ---------- check-in CTA ---------- */
+.portal .cta-card { background: linear-gradient(155deg, var(--brand-tint), rgba(47,111,82,0.03)); border-color: var(--brand-tint-strong); }
+
+/* ---------- seções sem card: progresso e status ganham só respiro, não caixa ---------- */
+.portal .section-plain { padding: 2px 0; }
+
+/* ---------- bottom nav: barra de app clara, item ativo discreto ---------- */
+.portal .bottom-nav { background: var(--surface); border-top: 1px solid var(--line); box-shadow: 0 -10px 26px -22px rgba(30,22,10,.4); padding: 10px 8px calc(10px + env(safe-area-inset-bottom)); }
+.portal .bn-item { color: var(--ink-faint); gap: 3px; }
+.portal .bn-item .bn-ic { display: flex; align-items: center; justify-content: center; width: 40px; height: 26px; border-radius: 999px; transition: background-color .15s ease; }
+.portal .bn-item.active { color: var(--brand); }
+.portal .bn-item.active .bn-ic { background: var(--brand-tint); }
+
+/* ---------- treino: execução em etapas, uma por vez ---------- */
+.portal .ex-step { background: var(--surface); border: none; box-shadow: var(--surface-raised-shadow); border-radius: var(--radius-lg); padding: 24px 22px 22px; }
+.portal .ex-step .ex-progress { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); font-weight: 600; margin-bottom: 10px; }
+.portal .ex-step .ex-name { font-family: var(--font-display); font-size: clamp(1.3rem, 1.1rem + 1vw, 1.5625rem); font-weight: 600; margin: 0 0 4px; }
+.portal .ex-step .ex-target { font-size: 13.5px; color: var(--ink-muted); margin-bottom: 6px; }
+.portal .ex-step .ex-rest { font-size: 12.5px; color: var(--ink-faint); margin-bottom: 18px; }
+.portal .ex-step .ex-last { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-faint); background: var(--surface-sunken); border-radius: 999px; padding: 5px 12px; margin-bottom: 18px; }
+.portal .ex-step .ex-last b { color: var(--ink-muted); font-weight: 600; }
+.portal .ex-step .ex-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+.portal .ex-step .ex-inputs .field { margin-bottom: 0; }
+.portal .ex-dots { display: flex; gap: 6px; margin-bottom: 18px; }
+.portal .ex-dots .d { flex: 1; height: 4px; border-radius: 2px; background: var(--line); }
+.portal .ex-dots .d.done { background: var(--brand); }
+.portal .ex-dots .d.current { background: var(--gold); }
+
+/* ---------- nutrição: lista de refeições, detalhe em sheet ---------- */
+.portal .meal-row { background: var(--surface); border: none; box-shadow: var(--surface-raised-shadow); }
+.portal .meal-row .kcal { color: var(--ink-faint); }
+.portal .mi-item-row { border-bottom: 1px solid var(--line); }
+.portal .mi-item-row:last-child { border-bottom: none; }
+
+/* ---------- fotos / comparação ---------- */
+.portal .compare-slider { box-shadow: var(--surface-raised-shadow); }
+.portal .angle-tabs, .portal .range-sel { background: var(--surface-sunken); }
+.portal .angle-tabs button.active, .portal .range-sel button.active { background: var(--surface); color: var(--ink); }
+
+/* ---------- pagamento: atenção só quando necessário ---------- */
+.portal .pay-alert { display: flex; align-items: center; gap: 10px; background: var(--coral-tint); border: 1px solid rgba(193,90,68,.3); border-radius: var(--radius-md); padding: 13px 16px; margin-bottom: 18px; font-size: 13.5px; color: var(--coral); font-weight: 600; }
+.portal .pay-alert a.btn { margin-left: auto; flex: none; }
+
+@media (max-width: 480px) {
+  .portal-top { padding: 16px 18px 2px; }
+}

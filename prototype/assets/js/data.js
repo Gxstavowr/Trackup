@@ -32,7 +32,8 @@
   }
   function nextOpenDate() {
     var d = new Date(APP_DATE);
-    while (d.getDay() !== 5) d.setDate(d.getDate() + 1);
+    // limite explícito: um ?simDate= inválido gera Invalid Date e não pode travar a página
+    for (var i = 0; i < 7 && d.getDay() !== 5; i++) d.setDate(d.getDate() + 1);
     if (d.getTime() === APP_DATE.getTime()) d.setDate(d.getDate() + 7);
     return d;
   }
@@ -52,6 +53,12 @@
     return "Oi, " + first + "! Tudo bem por aí? Não recebemos sua atualização nesta semana e queria saber se está tudo certo com o plano. Quando puder, me atualiza 😊";
   }
 
+  // aviso de quinta-feira — janela ainda não abriu, então NUNCA é a mesma mensagem de cobrança
+  // de um check-in já disponível/atrasado (brief TODO §20: "quinta: Seu check-in abre amanhã.")
+  function checkinReminderMessage(client) {
+    return "Oi, " + client.name.split(" ")[0] + "! Passando pra avisar: seu check-in abre amanhã. Já pode ir se organizando pra registrar sua semana 😊";
+  }
+
   function checkinReceivedMessageForCoach(client) {
     return client.name.split(" ")[0] + " enviou o check-in semanal pelo app.";
   }
@@ -61,6 +68,7 @@
   }
 
   function addDays(date, n) { var d = new Date(date); d.setDate(d.getDate() + n); return d; }
+  function addHours(date, n) { return new Date(new Date(date).getTime() + n * 3600000); }
   function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
   function round1(n) { return Math.round(n * 10) / 10; }
   function fmtDate(d) { return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }); }
@@ -83,6 +91,47 @@
     }
     return "success";
   }
+
+  // ---------------- V13 — o ciclo semanal como estado explícito (brief TODO §5) ----------------
+  // Antes, o estado da semana era sempre RE-DERIVADO (checkin.status + orientation + reviewOpenedAt).
+  // Agora cada semana guarda o estado de verdade em `cycleStatus`, e TODA transição é registrada em
+  // `cycleStatusHistory` (append-only — a trilha de auditoria que faltava: `orientation_sent`
+  // continua sendo um fato inspecionável mesmo com a semana já em repouso como `completed`).
+  // clientStage()/computeStatus()/needsReview()/isLate() passaram a LER esse campo em vez de
+  // recalcular — os valores que elas devolvem continuam exatamente os mesmos de antes.
+  var CYCLE_STATUS = {
+    AWAITING_CHECKIN: "awaiting_checkin",   // semana criada; o aluno ainda não enviou o check-in
+    CHECKIN_RECEIVED: "checkin_received",   // o aluno enviou (submitCheckin)
+    UNDER_REVIEW: "under_review",           // o coach abriu a avaliação (markUnderReview)
+    ORIENTATION_DRAFT: "orientation_draft", // o coach salvou rascunho sem enviar (saveOrientationDraft)
+    ORIENTATION_SENT: "orientation_sent",   // o instante do envio (completeOrientation)
+    COMPLETED: "completed"                  // estado de repouso, no mesmo envio
+  };
+  // ordem canônica do ciclo — serve só pra nunca REBAIXAR uma semana que já passou de um ponto
+  var CYCLE_ORDER = [
+    CYCLE_STATUS.AWAITING_CHECKIN, CYCLE_STATUS.CHECKIN_RECEIVED, CYCLE_STATUS.UNDER_REVIEW,
+    CYCLE_STATUS.ORIENTATION_DRAFT, CYCLE_STATUS.ORIENTATION_SENT, CYCLE_STATUS.COMPLETED
+  ];
+  function cycleRank(status) { return CYCLE_ORDER.indexOf(status); }
+
+  // única forma de mudar o estado de uma semana: muda o campo E registra na trilha.
+  function stampCycleStatus(week, status, at) {
+    if (!week) return null;
+    if (!week.cycleStatusHistory) week.cycleStatusHistory = [];
+    week.cycleStatus = status;
+    week.cycleStatusHistory.push({ status: status, at: at || new Date() });
+    return week;
+  }
+  // compatibilidade: semana vinda de um estado salvo antigo (sem cycleStatus) ainda responde certo
+  function deriveCycleStatus(week) {
+    if (!week || !week.checkin || week.checkin.status !== "submitted") return CYCLE_STATUS.AWAITING_CHECKIN;
+    if (week.orientation) return CYCLE_STATUS.COMPLETED;
+    if (week.orientationDraft) return CYCLE_STATUS.ORIENTATION_DRAFT;
+    if (week.reviewOpenedAt) return CYCLE_STATUS.UNDER_REVIEW;
+    return CYCLE_STATUS.CHECKIN_RECEIVED;
+  }
+  function cycleStatusOf(week) { return week ? (week.cycleStatus || deriveCycleStatus(week)) : CYCLE_STATUS.AWAITING_CHECKIN; }
+  function weekByNumber(client, n) { return client.weeks.filter(function (w) { return w.weekNumber === n; })[0] || null; }
 
   function buildWeeks(cfg) {
     var n = cfg.weeks;
@@ -130,10 +179,100 @@
         metrics: { weight: weight, waist: waist, bodyFat: bodyFat, adherence: status === "submitted" ? adherence : null, workouts: workouts, workoutsGoal: workoutsGoal, cardio: cardio, cardioGoal: cardioGoal, water: water, waterGoal: waterGoal, sleep: sleep, sleepGoal: sleepGoal, energy: energy, hunger: hunger },
         goals: goals,
         orientation: (cfg.orientations || {})[i] || null,
-        note: (cfg.notes || {})[i] || null
+        note: (cfg.notes || {})[i] || null,
+        // toda semana nasce aguardando o check-in — o resto da trilha é completado por
+        // backfillCycleHistory() depois que as orientações fictícias já foram preenchidas.
+        cycleStatus: CYCLE_STATUS.AWAITING_CHECKIN,
+        cycleStatusHistory: [{ status: CYCLE_STATUS.AWAITING_CHECKIN, at: w.start }]
       });
     }
     return out;
+  }
+
+  // ---------------- nascimento de uma semana fora do gerador de dados fictícios ----------------
+  // Única fonte de verdade pra criar um registro de semana em branco (usada pelo ciclo, quando a
+  // semana anterior é concluída, e pela reidratação do localStorage).
+  function seedWeekRecord(weekNumber, start, end, prevWeek, goalTargets) {
+    var prevMetrics = (prevWeek && prevWeek.metrics) || {};
+    function targetFor(key, fallback) {
+      if (goalTargets && goalTargets[key] != null) return goalTargets[key];
+      return fallback != null ? fallback : null;
+    }
+    var goals = ((prevWeek && prevWeek.goals) || []).map(function (g) {
+      return { key: g.key, icon: g.icon, label: g.label, unit: g.unit, target: targetFor(g.key, g.target), actual: null, mode: g.mode, status: "pending" };
+    });
+    var week = {
+      weekNumber: weekNumber, start: start, end: end,
+      checkin: { status: "pending", submittedAt: null },
+      metrics: {
+        // medidas continuam valendo até o aluno reportar de novo; o que é "feito na semana" zera
+        weight: prevMetrics.weight != null ? prevMetrics.weight : null,
+        waist: prevMetrics.waist != null ? prevMetrics.waist : null,
+        bodyFat: prevMetrics.bodyFat != null ? prevMetrics.bodyFat : null,
+        adherence: null, // null = semana ainda não entra em nenhuma análise/gráfico de aderência
+        workouts: 0, workoutsGoal: targetFor("workouts", prevMetrics.workoutsGoal),
+        cardio: 0, cardioGoal: targetFor("cardio", prevMetrics.cardioGoal),
+        water: 0, waterGoal: targetFor("water", prevMetrics.waterGoal),
+        sleep: 0, sleepGoal: targetFor("sleep", prevMetrics.sleepGoal),
+        energy: null, hunger: null
+      },
+      goals: goals,
+      orientation: null, note: null
+    };
+    stampCycleStatus(week, CYCLE_STATUS.AWAITING_CHECKIN, start);
+    return week;
+  }
+
+  // "a próxima semana nasce naturalmente do ciclo": chamada quando uma semana chega a `completed`.
+  // Idempotente — só a última semana gera a próxima, e só se ela ainda não existir.
+  function ensureNextWeek(client, week, goalTargets) {
+    var last = currentWeek(client);
+    if (!last || last.weekNumber !== week.weekNumber) return null;
+    var start = addDays(week.end, 1);
+    var next = seedWeekRecord(week.weekNumber + 1, start, addDays(start, 6), week, goalTargets);
+    next._userAuthored = true; // nasceu de uma ação do coach: as metas dela precisam ser persistidas
+    client.weeks.push(next);
+    return next;
+  }
+
+  // config da PRIMEIRA semana de um aluno criado à mão (aceite de convite / instanciação).
+  // Um lugar só, em vez das duas cópias que o audit apontou (§9.8) — e sem uma terceira:
+  // a criação da próxima semana do ciclo usa seedWeekRecord(), acima.
+  function firstWeekSeedConfig(anchor, opts) {
+    opts = opts || {};
+    return {
+      weeks: 1, anchor: anchor,
+      weightStart: 75, weightEnd: 75,
+      waistStart: opts.waist ? 90 : null, waistEnd: opts.waist ? 90 : null,
+      workoutsGoal: 4, cardioGoal: 2, waterGoal: 3, sleepGoal: 7.5, adherenceGoal: 85,
+      adherence: function () { return 80; }
+    };
+  }
+
+  // dados fictícios: completa a trilha de estados a partir do que cada semana já implica
+  // (check-in enviado -> recebido; orientação escrita -> enviada/concluída), com horários
+  // plausíveis e em ordem. Roda uma vez por aluno, depois de attachQA/autoFillOrientations.
+  function backfillCycleHistory(client) {
+    client.weeks.forEach(function (w) {
+      if (!w.cycleStatusHistory || !w.cycleStatusHistory.length) {
+        w.cycleStatus = CYCLE_STATUS.AWAITING_CHECKIN;
+        w.cycleStatusHistory = [{ status: CYCLE_STATUS.AWAITING_CHECKIN, at: w.start }];
+      }
+      if (w.cycleStatusHistory.length > 1) return; // já tem trilha — nunca sobrescreve
+      if (w.checkin.status !== "submitted") return;
+      var received = w.checkin.submittedAt || addDays(w.end, -1);
+      stampCycleStatus(w, CYCLE_STATUS.CHECKIN_RECEIVED, received);
+      if (!w.orientation) {
+        if (w.reviewOpenedAt) stampCycleStatus(w, CYCLE_STATUS.UNDER_REVIEW, w.reviewOpenedAt);
+        return;
+      }
+      var opened = w.reviewOpenedAt || addHours(received, 12);
+      stampCycleStatus(w, CYCLE_STATUS.UNDER_REVIEW, opened);
+      var sent = w.orientationSentAt || addHours(opened, 2);
+      stampCycleStatus(w, CYCLE_STATUS.ORIENTATION_SENT, sent);
+      stampCycleStatus(w, CYCLE_STATUS.COMPLETED, sent);
+    });
+    return client;
   }
 
   function sinWobble(amp, period, phase) { return function (i) { return amp * Math.sin((i / period) * 2 * Math.PI + (phase || 0)); }; }
@@ -344,6 +483,7 @@
   autoFillOrientations(CLIENTS[1], [10]); // Maria: semana atual aguardando revisão do coach
   autoFillOrientations(CLIENTS[2], []);   // Pedro: semana atual está pendente (nem chegou pro coach)
   autoFillOrientations(CLIENTS[3], []);   // Ana: tudo revisado, inclusive a semana atual
+  CLIENTS.forEach(function (c) { backfillCycleHistory(c); }); // estado/trilha do ciclo dos dados fictícios
 
   var COACH = { name: "Renata Prado", role: "Coach de nutrição e treino", initials: "RP", phone: "5511988887777" };
   var COLOR_CYCLE = ["--c1", "--c2", "--c3", "--c4"];
@@ -449,6 +589,15 @@
     var client = getClient(clientId);
     client.workout = workout;
     if (global.TracklyStore) TracklyStore.patchClient(clientId, { workoutProtocol: workout });
+  }
+  // V16 — item 8 do TODO: cada aluno tem seu próprio client.tracking (flags por métrica, ver
+  // TRACKING_DEFAULT acima), mas até aqui só era definido na criação do aluno e ficava congelado
+  // pra sempre. Isso dá ao coach um jeito de editar depois — mesmo padrão mutate-then-patch de
+  // saveWorkoutProtocol/saveCheckinTemplate.
+  function saveTrackingSettings(clientId, trackingSettings) {
+    var client = getClient(clientId);
+    client.tracking = trackingSettings;
+    if (global.TracklyStore) TracklyStore.patchClient(clientId, { tracking: trackingSettings });
   }
   function todaysWorkoutDay(client) {
     if (!client.workout || !client.workout.days.length) return null;
@@ -556,7 +705,10 @@
   var paymentProvider = {
     name: "simulado",
     note: "abstração — trocar por Mercado Pago/Asaas/Stripe quando integrar de verdade",
-    charge: function (clientId, method) { return { ok: true, method: method, simulated: true }; }
+    charge: function (clientId, method) { return { ok: true, method: method, simulated: true }; },
+    // estorno — mesmo padrão do charge acima: nunca chamado de verdade, só documenta o encaixe
+    // (Mercado Pago/Asaas/Stripe expõem uma chamada de estorno equivalente a trocar aqui dentro).
+    refund: function (clientId, paymentId) { return { ok: true, paymentId: paymentId, simulated: true }; }
   };
 
   var PLANS = {
@@ -565,6 +717,10 @@
     pedro: { name: "Plano Mensal", priceCents: 24900, period: "monthly" },
     ana: { name: "Plano Semestral", priceCents: 119900, period: "semiannual" }
   };
+  function fmtBRL(cents) { return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+  // só pra deixar o log de eventos legível — a UI (cliente.html) tem sua própria cópia pro <select>,
+  // mesmo padrão de duplicação já usado por statusLabel/statusPill entre cliente.html e pagamento.html.
+  var PERIOD_LABELS_FOR_LOG = { monthly: "mensal", quarterly: "trimestral", semiannual: "semestral", annual: "anual" };
   function paymentHistoryFor(clientId, currentStatus) {
     var price = PLANS[clientId].priceCents;
     var hist = [
@@ -584,9 +740,23 @@
   CLIENTS.forEach(function (c) {
     c.plan = PLANS[c.id];
     c.paymentsHistory = paymentHistoryFor(c.id, PAYMENT_STATE[c.id]);
+    // situação da ASSINATURA (ativa/pausada/cancelada) — não confundir com o status de UMA cobrança
+    // (pago/pendente/atrasado/estornado), que vive em cada item de paymentsHistory.
+    c.subscriptionStatus = "active";
+    // TODO §22 — log leve de pagamentos: plano criado/editado, pagamento marcado, reembolso, mudança
+    // de status. Mesmo formato id/type/timestamp/detail das NOTIFICATIONS, sem virar um framework
+    // de auditoria — só o suficiente pra "registrar pagamentos, eventos, reembolsos e mudanças de estado".
+    c.paymentsEvents = [];
   });
+  function paymentEventId() { return "pev" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function logPaymentEvent(client, type, detail) {
+    client.paymentsEvents.unshift({ id: paymentEventId(), type: type, timestamp: new Date(), detail: detail || "" });
+  }
+  function serializePaymentsEvents(client) {
+    return client.paymentsEvents.map(function (e) { return Object.assign({}, e, { timestamp: toISO(e.timestamp) }); });
+  }
   function currentPayment(client) {
-    var h = client.paymentsHistory;
+    var h = client.paymentsHistory || []; // aluno sem plano ainda: nenhuma cobrança existe (TODO §34)
     return h.length ? h[h.length - 1] : null;
   }
   // "Cobrar pagamento" pelo WhatsApp — mesmo padrão do checkinNudgeMessage (V9): mensagem
@@ -607,11 +777,149 @@
     pay.paidDate = now;
     pay.method = method || "pix";
     paymentProvider.charge(clientId, method);
+    logPaymentEvent(client, "payment_paid", fmtBRL(pay.amountCents) + " via " + pay.method);
     if (global.TracklyStore) {
       TracklyStore.patchClient(clientId, {
-        paymentSettled: { paymentId: pay.id, paidDate: now.toISOString(), method: pay.method }
+        paymentSettled: { paymentId: pay.id, paidDate: now.toISOString(), method: pay.method },
+        paymentsEvents: serializePaymentsEvents(client)
       });
     }
+  }
+
+  // TODO §22 — coach edita nome/valor/periodicidade do plano. Mesmo padrão mutate-then-patch do
+  // saveNutritionPlan: mescla por cima do plano atual e persiste o objeto inteiro (não é dado
+  // volátil como as datas de paymentsHistory, então dá pra sobrescrever direto no reload).
+  function savePlan(clientId, planPatch) {
+    var client = getClient(clientId);
+    client.plan = Object.assign({}, client.plan, planPatch);
+    logPaymentEvent(client, "plan_edited", client.plan.name + " · " + fmtBRL(client.plan.priceCents) + " · " + (PERIOD_LABELS_FOR_LOG[client.plan.period] || client.plan.period));
+    if (global.TracklyStore) {
+      TracklyStore.patchClient(clientId, { plan: client.plan, paymentsEvents: serializePaymentsEvents(client) });
+    }
+  }
+
+  // TODO §22 — "situação da assinatura" (ativa/pausada/cancelada): estado do VÍNCULO coach-aluno,
+  // nunca confundir com o status de uma cobrança específica (pago/pendente/atrasado/estornado).
+  function setSubscriptionStatus(clientId, status) {
+    var client = getClient(clientId);
+    if (client.subscriptionStatus === status) return;
+    client.subscriptionStatus = status;
+    logPaymentEvent(client, "subscription_status_changed", status);
+    if (global.TracklyStore) {
+      TracklyStore.patchClient(clientId, { subscriptionStatus: status, paymentsEvents: serializePaymentsEvents(client) });
+    }
+  }
+
+  // TODO §22 — reembolso: só um pagamento já PAGO pode ser estornado. Passa pela mesma abstração de
+  // gateway do simulatePayment (paymentProvider.refund) — nunca chamado de verdade, mesmo padrão.
+  function refundPayment(clientId, paymentId) {
+    var client = getClient(clientId);
+    var pay = client.paymentsHistory.filter(function (p) { return p.id === paymentId; })[0];
+    if (!pay || pay.status !== "paid") return;
+    var now = new Date();
+    pay.status = "refunded";
+    pay.refundedAt = now;
+    paymentProvider.refund(clientId, paymentId);
+    logPaymentEvent(client, "refund", fmtBRL(pay.amountCents) + " · venc. " + fmtShort(pay.dueDate));
+    if (global.TracklyStore) {
+      TracklyStore.patchClient(clientId, {
+        // grava a lista inteira dos que já estão marcados refunded em memória — mesmo padrão
+        // "reconstrói do estado atual" do saveNotifications, evita precisar de merge por id.
+        paymentsRefunded: client.paymentsHistory.filter(function (p) { return p.status === "refunded"; })
+          .map(function (p) { return { paymentId: p.id, refundedAt: toISO(p.refundedAt) }; }),
+        paymentsEvents: serializePaymentsEvents(client)
+      });
+    }
+  }
+
+  // ================================================================
+  // V17 — item 21 do TODO: camada de notificações multicanal.
+  // O EVENTO é a fonte de verdade, nunca o canal — "separar o evento da forma como ele é
+  // entregue". notify(eventType, clientId) decide, a partir só do tipo de evento: quem recebe
+  // (o coach ou o próprio aluno), a mensagem (sempre reaproveitando as funções de mensagem que já
+  // existiam acima — nunca duplica o texto) e em quais canais aquele evento pode circular. Hoje só
+  // in-app e WhatsApp de fato "saem" (o protótipo não tem backend pra disparar push/e-mail de
+  // verdade) — push e e-mail ficam DECLARADOS na notificação (channels.push/channels.email
+  // = "declared"), mesmo padrão do paymentProvider simulado acima: documenta o encaixe sem fingir
+  // que existe. Isso é o que deixa "checkin_available pode gerar push, WhatsApp ou e-mail depois"
+  // verdadeiro sem reescrever nenhum call site — só troca o que acontece dentro de notify().
+  // ================================================================
+  var NOTIFICATION_EVENTS = {
+    // aluno enviou o check-in -> avisa o COACH (mesma mensagem do botão "Avisar coach no
+    // WhatsApp" em portal/checkin.html — nunca duplicada aqui).
+    checkin_received: { recipient: "coach", messageFn: checkinReceivedMessageForCoach, whatsapp: true },
+    // orientação enviada -> avisa o ALUNO (mesma mensagem do "Avisar <nome> no WhatsApp").
+    orientation_ready: { recipient: "client", messageFn: orientationReadyMessageForStudent, whatsapp: true },
+    // cobrança de check-in atrasado -> avisa o ALUNO (mesma mensagem do "Cobrar check-in").
+    checkin_overdue: { recipient: "client", messageFn: checkinNudgeMessage, whatsapp: true },
+    // lembrete de quinta-feira (janela abre amanhã) -> avisa o ALUNO (mesma mensagem do "Lembrar").
+    checkin_reminder: { recipient: "client", messageFn: checkinReminderMessage, whatsapp: true },
+    // pagamento em atraso -> avisa o ALUNO (mesma mensagem do "Cobrar no WhatsApp" do financeiro).
+    payment_overdue: { recipient: "client", messageFn: overduePaymentMessage, whatsapp: true }
+  };
+
+  // lista achatada — não é parte do CLIENTS que data.js reconstrói do zero a cada load, então é
+  // persistida e reidratada à parte (restoreNotifications, chamada de dentro de applyStoredOverrides).
+  var NOTIFICATIONS = [];
+
+  function notifId() { return "ntf" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+  function persistNotifications() {
+    if (!global.TracklyStore) return;
+    TracklyStore.saveNotifications(NOTIFICATIONS.map(function (n) {
+      return Object.assign({}, n, { createdAt: toISO(n.createdAt) });
+    }));
+  }
+
+  // dispatcher: um evento -> mensagem certa (reaproveitada, nunca reescrita) + registro in-app +
+  // canais declarados. `clientId` é sempre o ALUNO a que o evento se refere (mesmo quando quem
+  // recebe é o coach) — é o mesmo client que toda função de mensagem acima já espera.
+  function notify(eventType, clientId) {
+    var def = NOTIFICATION_EVENTS[eventType];
+    var client = getClient(clientId);
+    if (!def || !client) return null;
+    var record = {
+      id: notifId(),
+      eventType: eventType,
+      clientId: clientId,
+      recipient: def.recipient === "coach" ? "coach" : clientId,
+      message: def.messageFn(client),
+      channels: {
+        inApp: true,
+        whatsapp: !!(def.whatsapp && client.phone),
+        // "declaradas": o TODO pede a FORMA, não o disparo de verdade — sem backend aqui pra
+        // enviar push/e-mail. Ligar de verdade é trocar só isto dentro de notify(), nunca os
+        // call sites que já chamam Trackly.notify(...).
+        push: "declared", email: "declared"
+      },
+      createdAt: new Date(),
+      read: false
+    };
+    NOTIFICATIONS.unshift(record); // mais recente primeiro
+    persistNotifications();
+    return record;
+  }
+
+  // who: "coach" ou o id de um aluno — a mesma chave usada em `recipient` acima.
+  function getNotifications(who) {
+    return NOTIFICATIONS.filter(function (n) { return n.recipient === who; });
+  }
+  function unreadNotificationCount(who) {
+    return getNotifications(who).filter(function (n) { return !n.read; }).length;
+  }
+  function markNotificationRead(id) {
+    var n = NOTIFICATIONS.filter(function (x) { return x.id === id; })[0];
+    if (n && !n.read) { n.read = true; persistNotifications(); }
+    return n;
+  }
+  function markAllNotificationsRead(who) {
+    var changed = false;
+    NOTIFICATIONS.forEach(function (n) { if (n.recipient === who && !n.read) { n.read = true; changed = true; } });
+    if (changed) persistNotifications();
+  }
+  function restoreNotifications(stored) {
+    if (!stored || !stored.length) return;
+    NOTIFICATIONS = stored.map(function (n) { return Object.assign({}, n, { createdAt: n.createdAt ? new Date(n.createdAt) : new Date() }); });
   }
 
   // ---------------- helpers derivados ----------------
@@ -620,6 +928,12 @@
 
   function currentWeek(client) { return client.weeks.length ? client.weeks[client.weeks.length - 1] : null; }
 
+  // última semana cujo ciclo o coach fechou de fato (orientação enviada por ele, com carimbo)
+  function lastSentWeek(client) {
+    for (var i = client.weeks.length - 1; i >= 0; i--) if (client.weeks[i].orientationSentAt) return client.weeks[i];
+    return null;
+  }
+
   function isTracked(client, key) { return !!(client.tracking && client.tracking[key] !== false); }
 
   // metas do aluno filtradas pelo que ele realmente acompanha (nunca um número universal)
@@ -627,15 +941,44 @@
     return week.goals.filter(function (g) { return g.key === "adherence" ? isTracked(client, "adherence") : isTracked(client, g.key); });
   }
 
-  // true quando o check-in mais recente já chegou pro coach mas ainda não recebeu orientação
+  // true quando o check-in mais recente já chegou pro coach mas ainda não recebeu orientação.
+  // V13: lê o estado guardado da semana em vez de re-derivar — o valor de retorno é o mesmo.
   function needsReview(client) {
-    var cur = currentWeek(client);
-    return !!cur && cur.checkin.status === "submitted" && !cur.orientation;
+    var st = cycleStatusOf(currentWeek(client));
+    return st === CYCLE_STATUS.CHECKIN_RECEIVED || st === CYCLE_STATUS.UNDER_REVIEW || st === CYCLE_STATUS.ORIENTATION_DRAFT;
   }
 
   function isLate(client) {
+    return cycleStatusOf(currentWeek(client)) === CYCLE_STATUS.AWAITING_CHECKIN;
+  }
+
+  // a sexta-feira que cai dentro desta semana — é o dia em que o check-in dela abre
+  // (mesma régua de getCheckinWindowStatus: quinta = lembrete, sexta/sábado/domingo = aberto).
+  function checkinOpensOn(week) {
+    var d = new Date(week.start);
+    // limite explícito: uma data inválida (localStorage corrompido) não pode travar a página
+    for (var i = 0; i < 7 && d.getDay() !== 5; i++) d.setDate(d.getDate() + 1);
+    return d;
+  }
+  // "Atrasado" é só depois que o PRAZO da semana (week.end) passou. Uma semana que ainda está
+  // correndo — inclusive a que acabou de nascer do ciclo — está aguardando, não atrasada.
+  function isCheckinOverdue(client) {
     var cur = currentWeek(client);
-    return !cur || cur.checkin.status !== "submitted";
+    if (!cur || cycleStatusOf(cur) !== CYCLE_STATUS.AWAITING_CHECKIN) return false;
+    return APP_DATE > cur.end;
+  }
+
+  // Derivado, nunca guardado: o 7º estado do brief ("next_checkin_due") não é o estado de nenhuma
+  // semana — é a antecedência. Vale quando a semana atual ainda aguarda o check-in, a janela dela
+  // ainda não abriu, e hoje já está no dia de lembrete (quinta). Só pra mensagem
+  // ("o check-in da semana está chegando"), nunca pra liberar/bloquear tela.
+  function isNextCheckinDue(client) {
+    var cur = currentWeek(client);
+    if (!cur || cycleStatusOf(cur) !== CYCLE_STATUS.AWAITING_CHECKIN) return false;
+    var opensAt = checkinOpensOn(cur);
+    if (APP_DATE >= opensAt) return false; // a janela já abriu: não é mais "está chegando"
+    var daysUntil = Math.round((opensAt - APP_DATE) / 86400000);
+    return daysUntil <= 1 && getCheckinWindowStatus() === "reminder";
   }
 
   function relativeLabel(date) {
@@ -650,9 +993,10 @@
   // checkin_received / completed) só existem aqui; a interface usa linguagem humana.
   function clientStage(client) {
     if (client.inviteStatus && client.inviteStatus !== "active") return client.inviteStatus; // 'pending' | 'invited'
-    if (isLate(client)) return "awaiting_checkin";
-    if (needsReview(client)) return "checkin_received";
-    return "completed";
+    var st = cycleStatusOf(currentWeek(client));
+    if (st === CYCLE_STATUS.AWAITING_CHECKIN) return "awaiting_checkin";
+    if (st === CYCLE_STATUS.ORIENTATION_SENT || st === CYCLE_STATUS.COMPLETED) return "completed";
+    return "checkin_received"; // checkin_received | under_review | orientation_draft — a fila do coach é a mesma
   }
 
   function computeStatus(client) {
@@ -663,10 +1007,22 @@
     }
     var cur = currentWeek(client);
     if (isLate(client)) {
-      return { code: "late", label: "Check-in atrasado", reason: "Check-in da semana " + cur.weekNumber + " ainda não foi enviado (previsto para " + fmtShort(cur.end) + ")." };
+      if (isCheckinOverdue(client)) {
+        return { code: "late", label: "Check-in atrasado", reason: "Check-in da semana " + cur.weekNumber + " ainda não foi enviado (previsto para " + fmtShort(cur.end) + ")." };
+      }
+      // semana ainda correndo (inclusive a que nasceu agora do ciclo): não é atraso, não se cobra.
+      // `code` próprio pra que nenhuma tela pinte de vermelho nem ofereça "Cobrar check-in".
+      var opensAt = checkinOpensOn(cur);
+      return {
+        code: "waiting", label: "Aguardando check-in",
+        reason: APP_DATE < opensAt
+          ? ("Check-in da semana " + cur.weekNumber + " abre " + fmtShort(opensAt) + ".")
+          : ("Check-in da semana " + cur.weekNumber + " está aberto até " + fmtShort(cur.end) + ".")
+      };
     }
     if (needsReview(client)) {
-      if (cur.reviewOpenedAt) {
+      var st = cycleStatusOf(cur);
+      if (st === CYCLE_STATUS.UNDER_REVIEW || st === CYCLE_STATUS.ORIENTATION_DRAFT) {
         return { code: "progress", label: "Em avaliação", reason: "Avaliação de " + client.name.split(" ")[0] + " em andamento — ainda não enviada." };
       }
       return { code: "review", label: "Aguardando avaliação", reason: "Check-in da semana " + cur.weekNumber + " recebido " + relativeLabel(cur.checkin.submittedAt) + " — ainda sem avaliação." };
@@ -695,8 +1051,15 @@
 
   function computeKPIs(client) {
     var w = client.weeks;
-    var first = w[0].metrics, curW = currentWeek(client), last = curW.metrics;
     var submitted = w.filter(function (x) { return x.metrics.adherence != null; });
+    // "esta semana" precisa ser a última semana com check-in de verdade, não a semana mais
+    // recente do array — quando o ciclo já avançou (nova semana criada, ainda pendente), essa
+    // semana só tem placeholders (peso copiado, aderência/treinos/água/sono zerados ou nulos),
+    // e usá-la aqui produzia "null%" e deltas negativos do tamanho do valor inteiro anterior
+    // (achado ao vivo na validação do item 36, com um cliente real recém-criado avançando de
+    // semana). Cai pra semana atual só no caso (sem check-in nenhum ainda) que não deveria
+    // acontecer na prática, já que a semana 1 sempre nasce com metrics preenchidos.
+    var first = w[0].metrics, lastWeek = submitted.length ? submitted[submitted.length - 1] : currentWeek(client), last = lastWeek.metrics;
     var adherenceAvg = Math.round(avg(submitted.map(function (x) { return x.metrics.adherence; })));
     var workoutsTotal = submitted.reduce(function (s, x) { return s + x.metrics.workouts; }, 0);
     var workoutsGoalTotal = submitted.reduce(function (s, x) { return s + x.metrics.workoutsGoal; }, 0);
@@ -847,10 +1210,13 @@
   }
 
   // frase única de tendência (brief V7 §24) — nunca um bloco de análise, só uma linha cautelosa
-  function trendLine(client) {
-    var weeks = client.weeks.filter(function (w) { return w.metrics.adherence != null; });
+  // range opcional: mesmo período selecionado no seletor da Evolução (brief TODO §11 — "o resumo
+  // deve refletir apenas o período selecionado"). Sem range, mantém o comportamento antigo
+  // (até as últimas 8 semanas) — é o que a legenda rápida do Resumo do coach ainda usa.
+  function trendLine(client, range) {
+    var weeks = (range ? weeksInRange(client, range) : client.weeks).filter(function (w) { return w.metrics.adherence != null; });
     if (weeks.length < 3) return null;
-    var n = Math.min(weeks.length, 8);
+    var n = range ? weeks.length : Math.min(weeks.length, 8);
     var recent = weeks.slice(-n);
     var first = recent[0].metrics, last = recent[recent.length - 1].metrics;
 
@@ -980,8 +1346,18 @@
   function studentUpdate(client) {
     var cur = currentWeek(client);
     if (!cur || cur.checkin.status !== "submitted") {
+      var overdue = isCheckinOverdue(client);
       var d = cur ? daysSince(cur.end) : 0;
-      return { late: true, label: d <= 0 ? "Check-in previsto para hoje" : "Sem check-in há " + d + " dia" + (d === 1 ? "" : "s") };
+      // semana ainda correndo: o coach precisa ver quando ela abre, não "há N dias sem check-in".
+      // E o "concluído em" continua vindo do último ciclo fechado, que é o trabalho que ele fez.
+      var lastSent = lastSentWeek(client);
+      return {
+        late: overdue, upcoming: !overdue && !!cur,
+        label: overdue
+          ? (d <= 0 ? "Check-in previsto para hoje" : "Sem check-in há " + d + " dia" + (d === 1 ? "" : "s"))
+          : (APP_DATE < checkinOpensOn(cur) ? "Check-in abre " + fmtShort(checkinOpensOn(cur)) : "Check-in aberto até " + fmtShort(cur.end)),
+        completedAtLabel: lastSent ? ("Orientação enviada " + relativeLabel(lastSent.orientationSentAt) + (lastSent.orientationSentTime ? (" às " + lastSent.orientationSentTime) : "")) : null
+      };
     }
     var weeks = client.weeks.filter(function (w) { return w.metrics.adherence != null; });
     var idx = weeks.length - 1, prev = idx > 0 ? weeks[idx - 1] : null;
@@ -1028,40 +1404,112 @@
     };
   }
 
-  // ---------------- template do check-in (estrutura pronta pra futura configuração por coach) ----------------
-  var CHECKIN_TEMPLATE = [
-    { key: "peso", label: "Peso atual", type: "number", step: 1, active: true, required: true, tracks: "weight" },
-    { key: "fotos", label: "Fotos de evolução", type: "photos", step: 1, active: true, required: false, tracks: "photos" },
-    { key: "dieta", label: "Como foi a dieta?", type: "scale+text", step: 2, active: true, required: true, tracks: "adherence" },
-    { key: "refeicaoLivre", label: "Fez a refeição livre? Se sim, qual dia e o que comeu?", type: "text", step: 2, active: true, required: false, tracks: "adherence" },
-    { key: "beliscos", label: "Houve beliscos de comida fora do plano?", type: "text", step: 2, active: true, required: false, tracks: "adherence" },
+  // ================================================================
+  // V14 — o check-in como formulário flexível (TODO §6)
+  // Este é o ÚNICO lugar onde o questionário existe. Antes ele era uma constante morta: a página
+  // do aluno tinha a própria cópia em HTML e a revisão do coach uma terceira cópia dos rótulos —
+  // três listas que só podiam divergir. Agora o template é uma CONFIGURAÇÃO DO COACH
+  // (COACH.checkinTemplate/checkinSteps), editável em coach/checkin-config.html e persistida em
+  // coachSettings. Hoje existe um coach só (multi-coach é outro item do TODO) — a estrutura já
+  // está no formato certo pra virar "por coach" sem retrabalho, mesma ideia do paymentProvider.
+  //
+  // Campos de uma pergunta:
+  //   key/label/type/step/active/required — o que é e onde aparece (step = id do passo)
+  //   tracks      — métrica que a resposta alimenta (opcional; sem isso é pergunta livre)
+  //   genderOnly  — restrição de gênero (opcional)
+  //   apresentação (opcional, só o formulário do aluno lê): formLabel, optionalNote,
+  //   placeholder, textPlaceholder, hint, multiline
+  // ================================================================
+  var METRIC_KEYS = ["weight", "adherence", "workouts", "cardio", "water", "sleep", "digestion", "emotional"];
+  var DEFAULT_CHECKIN_TEMPLATE = [
+    { key: "peso", label: "Peso atual", type: "number", step: 1, active: true, required: true, tracks: "weight", placeholder: "ex.: 81.5", hint: "em quilos, medido em jejum se possível" },
+    { key: "fotos", label: "Fotos de evolução", type: "photos", step: 1, active: true, required: false, tracks: "photos", hint: "Use sempre o mesmo local e roupa — facilita comparar sua evolução." },
+    { key: "dieta", label: "Como foi a dieta?", type: "scale+text", step: 2, active: true, required: true, tracks: "adherence", placeholder: "Em uma frase, como foi seguir o plano essa semana?" },
+    { key: "refeicaoLivre", label: "Fez a refeição livre? Se sim, qual dia e o que comeu?", type: "text", step: 2, active: true, required: false, tracks: "adherence", placeholder: "Ex.: sim, sábado à noite — pizza." },
+    { key: "beliscos", label: "Houve beliscos de comida fora do plano?", type: "text", step: 2, active: true, required: false, tracks: "adherence", placeholder: "Ex.: não / sim, doce à tarde em dois dias." },
     { key: "treinos", label: "Treinos realizados", type: "stepper", step: 3, active: true, required: true, tracks: "workouts" },
-    { key: "performanceTreino", label: "Como foi sua performance nos treinos?", type: "text", step: 3, active: true, required: false, tracks: "workouts" },
+    { key: "performanceTreino", label: "Como foi sua performance nos treinos?", type: "text", step: 3, active: true, required: false, tracks: "workouts", placeholder: "Força, disposição, evolução de carga..." },
     { key: "cardio", label: "Sessões de cardio", type: "stepper", step: 3, active: true, required: true, tracks: "cardio" },
-    { key: "cardioDetalhe", label: "Como foi o cardio? Tempo, dias e tipo.", type: "text", step: 3, active: true, required: false, tracks: "cardio" },
+    { key: "cardioDetalhe", label: "Como foi o cardio? Tempo, dias e tipo.", type: "text", step: 3, active: true, required: false, tracks: "cardio", placeholder: "Ex.: 3x, 30min, esteira." },
     { key: "periodoMenstrual", label: "Está no período menstrual?", type: "yesno", step: 4, active: true, required: false, genderOnly: "f" },
-    { key: "agua", label: "Quantos litros de água você tomou por dia, em média?", type: "number", step: 4, active: true, required: true, tracks: "water" },
-    { key: "sono", label: "Como foi seu sono?", type: "number+text", step: 4, active: true, required: true, tracks: "sleep" },
+    { key: "agua", label: "Quantos litros de água você tomou por dia, em média?", type: "number", step: 4, active: true, required: true, tracks: "water", placeholder: "ex.: 2.8" },
+    { key: "sono", label: "Como foi seu sono?", type: "number+text", step: 4, active: true, required: true, tracks: "sleep", placeholder: "média de horas por noite, ex.: 7.2", textPlaceholder: "Regular? Alguma noite mal dormida?" },
     { key: "digestao", label: "Como foi sua digestão? Idas ao banheiro e estufamento.", type: "text", step: 4, active: true, required: false, tracks: "digestion" },
     { key: "emocional", label: "Como está seu emocional?", type: "text", step: 4, active: true, required: false, tracks: "emotional" },
-    { key: "substancias", label: "Uso de substâncias/medicamentos, quando aplicável.", type: "text", step: 4, active: true, required: false },
-    { key: "exame", label: "Último exame enviado, quando aplicável.", type: "text", step: 4, active: false, required: false }
+    { key: "substancias", label: "Uso de substâncias/medicamentos, quando aplicável.", type: "text", step: 4, active: true, required: false, formLabel: "Uso de substâncias/medicamentos", optionalNote: "(quando aplicável)" },
+    { key: "exame", label: "Último exame enviado, quando aplicável.", type: "text", step: 4, active: true, required: false, multiline: false, formLabel: "Último exame enviado", optionalNote: "(quando aplicável)", placeholder: "Ex.: exame de sangue, semana 12" }
   ];
-  var CHECKIN_STEPS = [
+  var DEFAULT_CHECKIN_STEPS = [
     { n: 1, label: "Peso e fotos" },
     { n: 2, label: "Alimentação" },
     { n: 3, label: "Treino" },
     { n: 4, label: "Bem-estar" }
   ];
+  function cloneJSON(v) { return JSON.parse(JSON.stringify(v)); }
+  COACH.checkinTemplate = cloneJSON(DEFAULT_CHECKIN_TEMPLATE);
+  COACH.checkinSteps = cloneJSON(DEFAULT_CHECKIN_STEPS);
+
   // perguntas do template que fazem sentido pra este aluno — filtra por `tracks` (quando a
-  // pergunta pertence a uma métrica) e por gênero (periodoMenstrual).
+  // pergunta pertence a uma métrica) e por gênero (periodoMenstrual). Mesmo comportamento de antes,
+  // só que lendo a configuração do coach em vez de uma constante.
   function checkinTemplateFor(client) {
-    return CHECKIN_TEMPLATE.filter(function (q) {
+    return (COACH.checkinTemplate || []).filter(function (q) {
       if (!q.active) return false;
       if (q.genderOnly && q.genderOnly !== client.gender) return false;
       if (q.tracks && !isTracked(client, q.tracks)) return false;
       return true;
     });
+  }
+
+  // grava o template editado pelo coach. Recusa (sem persistir nada) quando duas perguntas ATIVAS
+  // apontam pra mesma métrica — isso faria duas respostas gravarem em cima do mesmo número.
+  function saveCheckinTemplate(template, steps) {
+    if (!template || !template.length) return { ok: false, error: "O check-in precisa de pelo menos uma pergunta." };
+    var byTracks = {}, byKey = {}, err = null;
+    template.forEach(function (q) {
+      if (!q.key) err = err || "Toda pergunta precisa de uma chave.";
+      if (byKey[q.key]) err = err || ('Existe mais de uma pergunta com a chave "' + q.key + '".');
+      byKey[q.key] = true;
+      if (!q.active || !q.tracks) return;
+      if (byTracks[q.tracks]) {
+        err = err || ('Duas perguntas ativas estão vinculadas à métrica "' + q.tracks + '" (' + byTracks[q.tracks] + ' e ' + q.label + '). Cada métrica só pode ser alimentada por uma pergunta.');
+      }
+      byTracks[q.tracks] = q.label;
+    });
+    if (err) return { ok: false, error: err };
+    COACH.checkinTemplate = cloneJSON(template);
+    if (steps && steps.length) COACH.checkinSteps = cloneJSON(steps);
+    if (global.TracklyStore) {
+      TracklyStore.saveCoachSettings({ checkinTemplate: COACH.checkinTemplate, checkinSteps: COACH.checkinSteps });
+    }
+    return { ok: true };
+  }
+
+  // ---------------- respostas de uma semana, prontas pra leitura ----------------
+  // Registro histórico, não formulário: mostra TUDO que foi respondido naquela semana, sem filtrar
+  // por tracking/gênero/ativo. Uma pergunta desativada — ou apagada do template depois — continua
+  // legível; sem rótulo no template, humaniza a própria chave. Ordem = a ordem atual do template
+  // (com o que não está mais no template no fim).
+  function humanizeKey(key) {
+    return String(key).split(/[-_]+/).filter(Boolean).map(function (p) {
+      return p.charAt(0).toUpperCase() + p.slice(1);
+    }).join(" ");
+  }
+  function qaAnswerRows(client, week) {
+    var qa = (week && week.qa) || {};
+    var rows = [], seen = {};
+    function usable(v) { return v != null && String(v).trim() !== ""; }
+    (COACH.checkinTemplate || []).forEach(function (q) {
+      if (q.type === "photos" || seen[q.key] || !usable(qa[q.key])) return;
+      seen[q.key] = true;
+      rows.push({ key: q.key, label: q.label, value: qa[q.key] });
+    });
+    Object.keys(qa).forEach(function (k) {
+      if (seen[k] || !usable(qa[k])) return;
+      seen[k] = true;
+      rows.push({ key: k, label: humanizeKey(k), value: qa[k] });
+    });
+    return rows;
   }
 
   // ================================================================
@@ -1071,6 +1519,11 @@
 
   // V8 §33 — bug de persistência corrigido: o wizard de check-in só mostrava a tela de
   // sucesso, sem gravar nada. Agora atualiza status/metrics/qa da semana e persiste.
+  // V14 §6 — generalizado: o wizard não manda mais campos fixos (weight/adherence/...), manda
+  // `payload.metrics` (o que cada pergunta do template escreveu, pela sua própria `tracks`) e
+  // `payload.qa` (todo o resto). Este função não sabe mais quais perguntas existem — só aplica
+  // o que chegou. cur.metrics só ganha as chaves que o template realmente escreveu essa semana;
+  // o resto da semana (ex.: peso, quando "peso" está desativado) continua com o valor anterior.
   function submitCheckin(clientId, payload) {
     var client = getClient(clientId);
     var cur = currentWeek(client);
@@ -1078,29 +1531,88 @@
     var now = new Date();
     cur.checkin.status = "submitted";
     cur.checkin.submittedAt = now;
-    if (payload.weight != null) cur.metrics.weight = payload.weight;
-    if (payload.adherence != null) cur.metrics.adherence = payload.adherence;
-    if (payload.workouts != null) cur.metrics.workouts = payload.workouts;
-    if (payload.cardio != null) cur.metrics.cardio = payload.cardio;
-    if (payload.water != null) cur.metrics.water = payload.water;
-    if (payload.sleep != null) cur.metrics.sleep = payload.sleep;
+    var metrics = payload.metrics || {};
+    Object.keys(metrics).forEach(function (k) {
+      if (metrics[k] != null) cur.metrics[k] = metrics[k];
+    });
     var actualMap = { water: cur.metrics.water, sleep: cur.metrics.sleep, workouts: cur.metrics.workouts, cardio: cur.metrics.cardio, adherence: cur.metrics.adherence };
     cur.goals.forEach(function (g) {
       if (actualMap[g.key] != null) { g.actual = actualMap[g.key]; g.status = goalStatus(g.actual, g.target, g.mode); }
     });
     cur.qa = Object.assign({}, cur.qa, payload.qa || {});
+    cur._userAuthored = true; cur._userCheckin = true;
+    // transição do ciclo: aguardando -> recebido. Com guarda de ordem, como toda transição:
+    // reenviar o check-in de uma semana que o coach já abriu não pode devolvê-la pra "recebido".
+    if (cycleRank(cycleStatusOf(cur)) < cycleRank(CYCLE_STATUS.CHECKIN_RECEIVED)) {
+      stampCycleStatus(cur, CYCLE_STATUS.CHECKIN_RECEIVED, now);
+    }
+    notify("checkin_received", clientId); // TODO §21 — avisa o coach in-app (+ WhatsApp declarado)
 
     if (global.TracklyStore) {
       TracklyStore.patchClient(clientId, {
-        checkinSubmitted: {
-          weekNumber: cur.weekNumber, submittedAt: now.toISOString(),
-          metrics: { weight: cur.metrics.weight, adherence: cur.metrics.adherence, workouts: cur.metrics.workouts, cardio: cur.metrics.cardio, water: cur.metrics.water, sleep: cur.metrics.sleep },
-          qa: cur.qa
-        }
+        weekContent: weekContentPatchFor(client), // por semana — um 2º check-in não apaga o 1º
+        cycles: cyclePatchFor(client)
       });
     }
   }
 
+  // fotografia completa da máquina de estados do aluno — é o que vai pro localStorage em toda
+  // mutação que mexe no ciclo (mesmo padrão "muta em memória e grava a mesma forma" das outras).
+  function toISO(d) { return d instanceof Date ? d.toISOString() : (d || null); }
+  function cyclePatchFor(client) {
+    var out = {};
+    client.weeks.forEach(function (w) {
+      out[w.weekNumber] = {
+        status: cycleStatusOf(w),
+        start: toISO(w.start), end: toISO(w.end),
+        history: (w.cycleStatusHistory || []).map(function (h) { return { status: h.status, at: toISO(h.at) }; })
+      };
+    });
+    return out;
+  }
+  function goalTargetsOf(week) {
+    var out = {};
+    (week.goals || []).forEach(function (g) { if (g.target != null) out[g.key] = g.target; });
+    return out;
+  }
+  // Conteúdo escrito pelo coach, POR SEMANA. Como o ciclo agora pode fechar várias semanas na
+  // mesma sessão, guardar "a orientação" como campo único do aluno sobrescrevia a anterior e a
+  // semana antiga voltava vazia no reload — cada semana precisa do seu próprio registro.
+  // Só entram semanas tocadas pelo usuário (`_userAuthored`): o texto fictício continua sendo
+  // gerado por data.js, nunca congelado no localStorage.
+  function weekContentPatchFor(client) {
+    var out = {};
+    client.weeks.forEach(function (w) {
+      if (!w._userAuthored) return;
+      out[w.weekNumber] = {
+        // check-in enviado pelo aluno NESTA semana (só o que o usuário mandou; o check-in
+        // fictício continua sendo gerado). Guardar um "último envio" por aluno fazia a semana
+        // anterior voltar do reload como se ninguém tivesse respondido.
+        checkin: w._userCheckin ? {
+          submittedAt: toISO(w.checkin.submittedAt),
+          metrics: { weight: w.metrics.weight, adherence: w.metrics.adherence, workouts: w.metrics.workouts, cardio: w.metrics.cardio, water: w.metrics.water, sleep: w.metrics.sleep },
+          qa: w.qa || {}
+        } : null,
+        orientation: w.orientation || null,
+        focus: w.focusOverride || null,
+        coachNote: w.coachReview ? w.coachReview.note : null,
+        completedAt: toISO(w.orientationSentAt),
+        completedTime: w.orientationSentTime || null,
+        goals: goalTargetsOf(w), // metas em vigor NESTA semana (não "as da última revisão")
+        draft: w.orientationDraft ? {
+          orientation: w.orientationDraft.orientation,
+          focusOverride: w.orientationDraft.focusOverride,
+          nextGoals: w.orientationDraft.nextGoals,
+          note: w.orientationDraft.note,
+          savedAt: toISO(w.orientationDraft.savedAt)
+        } : null
+      };
+    });
+    return out;
+  }
+
+  // Fecha o ciclo da semana em uma única ação: conteúdo da orientação -> `orientation_sent`
+  // (fato registrado na trilha) -> `completed` (estado de repouso) -> próxima semana nasce.
   function completeOrientation(clientId, payload) {
     var client = getClient(clientId);
     var cur = currentWeek(client);
@@ -1116,31 +1628,84 @@
       if (g.key === "adherence") return;
       if (payload.goals && payload.goals[g.key] != null) nextGoals[g.key] = payload.goals[g.key];
     });
+    cur.orientationDraft = null; // o rascunho virou orientação enviada
+    cur._userAuthored = true;
+    stampCycleStatus(cur, CYCLE_STATUS.ORIENTATION_SENT, now);
+    stampCycleStatus(cur, CYCLE_STATUS.COMPLETED, now);
+    notify("orientation_ready", clientId); // TODO §21 — avisa o aluno in-app (+ WhatsApp declarado)
+    var next = ensureNextWeek(client, cur, nextGoals); // as metas recém-definidas já valem pra ela
     if (global.TracklyStore) {
       TracklyStore.patchClient(clientId, {
-        orientation: payload.orientation, focus: payload.focus || null, nextGoals: nextGoals,
-        coachNote: payload.note || null,
-        completedAt: now.toISOString(), completedTime: cur.orientationSentTime
+        weekContent: weekContentPatchFor(client), // por semana — nunca sobrescreve um ciclo anterior
+        cycles: cyclePatchFor(client),
+        nextGoals: nextGoals // legado: só usado quando não existe semana seguinte pra carregar as metas
       });
     }
+    return next;
+  }
+
+  // NOVO (V13) — o coach salva o que escreveu sem enviar pro aluno.
+  // Guarda os MESMOS campos que completeOrientation grava (orientation, focusOverride, nextGoals),
+  // só que dentro de `week.orientationDraft`: enquanto não for enviado, `week.orientation` PRECISA
+  // continuar null — é ele que o aluno vê na home e que needsReview()/clientStage() usam pra saber
+  // que o ciclo ainda está aberto. Não carimba orientationSentAt e não cria a próxima semana.
+  function saveOrientationDraft(clientId, weekNumber, payload) {
+    var client = getClient(clientId);
+    var week = weekNumber != null ? weekByNumber(client, weekNumber) : currentWeek(client);
+    if (!week || week.orientation) return null; // semana já concluída não volta a ser rascunho
+    payload = payload || {};
+    var now = new Date();
+    week.orientationDraft = {
+      orientation: payload.orientation || "",
+      focusOverride: payload.focusOverride || null,
+      nextGoals: payload.nextGoals || {},
+      note: payload.note != null ? payload.note : (week.orientationDraft ? week.orientationDraft.note : null),
+      savedAt: now
+    };
+    week._userAuthored = true;
+    // só é transição na primeira vez que o rascunho aparece; salvar de novo não polui a trilha
+    if (cycleRank(cycleStatusOf(week)) < cycleRank(CYCLE_STATUS.ORIENTATION_DRAFT)) {
+      stampCycleStatus(week, CYCLE_STATUS.ORIENTATION_DRAFT, now);
+    }
+    if (global.TracklyStore) {
+      TracklyStore.patchClient(clientId, {
+        weekContent: weekContentPatchFor(client),
+        cycles: cyclePatchFor(client)
+      });
+    }
+    return week;
   }
 
   function sendReminder(clientId) {
     var now = new Date();
     var client = getClient(clientId);
     client.remindedAt = now; client.remindedTime = fmtTime(now);
+    notify("checkin_overdue", clientId); // TODO §21 — avisa o aluno in-app (+ WhatsApp declarado)
     if (global.TracklyStore) TracklyStore.patchClient(clientId, { remindedAt: now.toISOString(), remindedTime: client.remindedTime });
   }
 
   // V10 — registra que o coach abriu a avaliação (mas ainda não enviou), pra diferenciar
-  // "Avaliar agora" de "Continuar avaliação" em toda a interface sem inventar autosave de rascunho
-  function markReviewOpened(clientId) {
+  // "Avaliar agora" de "Continuar avaliação" em toda a interface.
+  // V13 — é também a transição checkin_received -> under_review. Idempotente: só transiciona
+  // quando a semana está exatamente em `checkin_received`, então reabrir a revisão de uma semana
+  // que já tem rascunho/orientação enviada NUNCA a rebaixa pra "em avaliação".
+  function markUnderReview(clientId, weekNumber) {
     var client = getClient(clientId);
-    var cur = currentWeek(client);
-    if (!cur || cur.checkin.status !== "submitted" || cur.orientation || cur.reviewOpenedAt) return;
-    cur.reviewOpenedAt = new Date();
-    if (global.TracklyStore) TracklyStore.patchClient(clientId, { reviewOpenedAt: cur.reviewOpenedAt.toISOString() });
+    var week = weekNumber != null ? weekByNumber(client, weekNumber) : currentWeek(client);
+    if (!week) return null;
+    if (cycleStatusOf(week) !== CYCLE_STATUS.CHECKIN_RECEIVED) return week;
+    var now = new Date();
+    if (!week.reviewOpenedAt) week.reviewOpenedAt = now;
+    stampCycleStatus(week, CYCLE_STATUS.UNDER_REVIEW, now);
+    if (global.TracklyStore) {
+      TracklyStore.patchClient(clientId, {
+        reviewOpenedAt: week.reviewOpenedAt.toISOString(), reviewOpenedWeek: week.weekNumber,
+        cycles: cyclePatchFor(client)
+      });
+    }
+    return week;
   }
+  function markReviewOpened(clientId) { return markUnderReview(clientId, null); } // nome antigo, mesmo efeito
 
   function slugify(name) {
     var base = name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -1180,14 +1745,9 @@
     client.activatedAt = now;
     if (!client.weeks.length) {
       client.startDate = now;
-      client.weeks = buildWeeks({
-        weeks: 1, anchor: now,
-        weightStart: 75, weightEnd: 75,
-        waistStart: client.tracking.measurements ? 90 : null, waistEnd: client.tracking.measurements ? 90 : null,
-        workoutsGoal: 4, cardioGoal: 2, waterGoal: 3, sleepGoal: 7.5, adherenceGoal: 85,
-        adherence: function () { return 80; }
-      });
+      client.weeks = buildWeeks(firstWeekSeedConfig(now, { waist: client.tracking.measurements }));
       attachQA(client);
+      backfillCycleHistory(client);
     }
     if (global.TracklyStore) {
       TracklyStore.updateManualClient(clientId, { inviteStatus: "active", activatedAt: now.toISOString(), startDate: now.toISOString() });
@@ -1201,49 +1761,197 @@
       objective: "A definir", startDate: m.startDate ? new Date(m.startDate) : null, weeks: [],
       clientStatus: "active", tracking: tracking(), manual: true,
       inviteStatus: m.inviteStatus, invitedAt: m.invitedAt ? new Date(m.invitedAt) : null, activatedAt: m.activatedAt ? new Date(m.activatedAt) : null,
-      remindedAt: m.remindedAt ? new Date(m.remindedAt) : null, remindedTime: m.remindedTime || null
+      remindedAt: m.remindedAt ? new Date(m.remindedAt) : null, remindedTime: m.remindedTime || null,
+      // aluno criado manualmente ainda não tem plano/cobrança — nunca `undefined`, pra todo código
+      // que lê paymentsHistory (dashboard do aluno, financeiro, cliente.html) enxergar um estado
+      // "sem plano ainda" em vez de estourar (TODO §34: estado vazio, não exceção).
+      plan: null, paymentsHistory: [], paymentsEvents: [], subscriptionStatus: null
     };
     if (client.inviteStatus === "active") {
       var now = client.activatedAt || new Date();
-      client.weeks = buildWeeks({
-        weeks: 1, anchor: now,
-        weightStart: 75, weightEnd: 75,
-        waistStart: null, waistEnd: null,
-        workoutsGoal: 4, cardioGoal: 2, waterGoal: 3, sleepGoal: 7.5, adherenceGoal: 85,
-        adherence: function () { return 80; }
-      });
+      client.weeks = buildWeeks(firstWeekSeedConfig(now));
       attachQA(client);
+      backfillCycleHistory(client);
     }
     return client;
   }
 
   // reaplica por cima dos dados fictícios tudo o que o usuário já fez nesta sessão/navegador —
   // orientações enviadas, lembretes, alunos criados na hora. Roda uma vez, no carregamento.
+  // recria as semanas que nasceram do ciclo em outra sessão (completeOrientation -> próxima semana):
+  // o gerador fictício só conhece as semanas originais, então elas precisam voltar na reidratação.
+  function restoreSeededWeeks(client, cycles, weekContent, legacyGoals) {
+    if (!cycles) return;
+    Object.keys(cycles).map(Number).sort(function (a, b) { return a - b; }).forEach(function (n) {
+      if (weekByNumber(client, n)) return;
+      var prev = weekByNumber(client, n - 1);
+      if (!prev) return; // nunca inventa buraco no histórico
+      var meta = cycles[n] || {};
+      var start = meta.start ? new Date(meta.start) : addDays(prev.end, 1);
+      var end = meta.end ? new Date(meta.end) : addDays(start, 6);
+      // metas DAQUELA semana — usar um único conjunto pra todas as semanas restauradas
+      // regravava os alvos errados e remexia no resultado (success/partial/fail) já apurado.
+      var content = weekContent && weekContent[n];
+      var targets = content && content.goals ? content.goals : legacyGoals;
+      var week = seedWeekRecord(n, start, end, prev, targets);
+      week._userAuthored = true;
+      client.weeks.push(week);
+    });
+  }
+
+  // reaplica um check-in enviado pelo aluno numa semana — um lugar só, usado tanto pelo formato
+  // por semana quanto pelo campo único antigo.
+  function applyStoredCheckin(week, stored) {
+    week.checkin.status = "submitted";
+    week.checkin.submittedAt = new Date(stored.submittedAt);
+    Object.assign(week.metrics, stored.metrics);
+    var actualMap = { water: week.metrics.water, sleep: week.metrics.sleep, workouts: week.metrics.workouts, cardio: week.metrics.cardio, adherence: week.metrics.adherence };
+    week.goals.forEach(function (g) {
+      if (actualMap[g.key] != null) { g.actual = actualMap[g.key]; g.status = goalStatus(g.actual, g.target, g.mode); }
+    });
+    week.qa = Object.assign({}, week.qa, stored.qa || {});
+    week._userAuthored = true; week._userCheckin = true;
+    if (cycleRank(cycleStatusOf(week)) < cycleRank(CYCLE_STATUS.CHECKIN_RECEIVED)) {
+      stampCycleStatus(week, CYCLE_STATUS.CHECKIN_RECEIVED, week.checkin.submittedAt);
+    }
+    return week;
+  }
+
+  // conteúdo do coach por semana (orientação, foco, nota, metas, rascunho) + check-in do aluno
+  function restoreWeekContent(client, weekContent) {
+    if (!weekContent) return;
+    Object.keys(weekContent).forEach(function (n) {
+      var week = weekByNumber(client, Number(n));
+      var stored = weekContent[n];
+      if (!week || !stored) return;
+      week._userAuthored = true;
+      if (stored.goals) {
+        // antes da restauração do check-in, pra que goalStatus() seja recalculado contra o alvo certo
+        week.goals.forEach(function (g) { if (stored.goals[g.key] != null) g.target = stored.goals[g.key]; });
+      }
+      if (stored.checkin && week.checkin.status !== "submitted") {
+        applyStoredCheckin(week, stored.checkin);
+      }
+      if (stored.orientation && !week.orientation) {
+        week.orientation = stored.orientation;
+        week.focusOverride = stored.focus || null;
+        if (stored.completedAt) {
+          week.orientationSentAt = new Date(stored.completedAt);
+          week.orientationSentTime = stored.completedTime || fmtTime(week.orientationSentAt);
+        }
+        week.orientationDraft = null;
+        if (cycleRank(cycleStatusOf(week)) < cycleRank(CYCLE_STATUS.COMPLETED)) {
+          var sentAt = week.orientationSentAt || new Date();
+          stampCycleStatus(week, CYCLE_STATUS.ORIENTATION_SENT, sentAt);
+          stampCycleStatus(week, CYCLE_STATUS.COMPLETED, sentAt);
+        }
+      }
+      if (stored.coachNote && !week.coachReview) week.coachReview = { note: stored.coachNote };
+      if (stored.draft && !week.orientation) {
+        week.orientationDraft = {
+          orientation: stored.draft.orientation || "",
+          focusOverride: stored.draft.focusOverride || null,
+          nextGoals: stored.draft.nextGoals || {},
+          note: stored.draft.note || null,
+          savedAt: stored.draft.savedAt ? new Date(stored.draft.savedAt) : null
+        };
+        if (cycleRank(cycleStatusOf(week)) < cycleRank(CYCLE_STATUS.ORIENTATION_DRAFT)) {
+          stampCycleStatus(week, CYCLE_STATUS.ORIENTATION_DRAFT, week.orientationDraft.savedAt || new Date());
+        }
+      }
+    });
+  }
+  // reaplica estado + trilha guardados, sem nunca rebaixar uma semana
+  function restoreCycles(client, cycles) {
+    if (!cycles) return;
+    Object.keys(cycles).forEach(function (n) {
+      var week = weekByNumber(client, Number(n));
+      var stored = cycles[n];
+      if (!week || !stored || !stored.status) return;
+      if (cycleRank(stored.status) < cycleRank(cycleStatusOf(week))) return;
+      week.cycleStatus = stored.status;
+      if (stored.history && stored.history.length) {
+        week.cycleStatusHistory = stored.history.map(function (h) { return { status: h.status, at: new Date(h.at) }; });
+      }
+    });
+  }
+
   function applyStoredOverrides() {
     if (!global.TracklyStore) return;
     var s = TracklyStore.get();
+    restoreNotifications(s.notifications); // lista achatada — não passa pelo loop de CLIENTS abaixo
+    // template do check-in editado pelo coach (coach/checkin-config.html) — sobrescreve o
+    // default só quando existe algo salvo; senão COACH.checkinTemplate/checkinSteps ficam
+    // no default já atribuído acima.
+    if (s.coachSettings) {
+      if (s.coachSettings.checkinTemplate && s.coachSettings.checkinTemplate.length) COACH.checkinTemplate = cloneJSON(s.coachSettings.checkinTemplate);
+      if (s.coachSettings.checkinSteps && s.coachSettings.checkinSteps.length) COACH.checkinSteps = cloneJSON(s.coachSettings.checkinSteps);
+    }
+    // alunos criados manualmente precisam existir em CLIENTS ANTES do loop de patches abaixo —
+    // senão todo patch salvo pra eles (treino, nutrição, orientação, pagamento...) é lido de
+    // `s.clients[c.id]` mas nunca aplicado, porque `c` ainda não existia em CLIENTS nesse momento
+    // (bug real encontrado na validação do item 36: sobrevivia o check-in seed inicial porque
+    // acceptInvite regenera as semanas do zero a cada load, mas qualquer mutação incremental —
+    // protocolo de treino montado, orientação enviada, plano editado — sumia a cada reload).
+    (s.manualClients || []).forEach(function (m) {
+      if (CLIENTS.some(function (c) { return c.id === m.id; })) return;
+      CLIENTS.push(instantiateManualClient(m));
+    });
     CLIENTS.forEach(function (c) {
       var patch = s.clients[c.id];
       if (!patch || !c.weeks.length) return;
-      var cur = currentWeek(c);
-      if (patch.checkinSubmitted && patch.checkinSubmitted.weekNumber === cur.weekNumber && cur.checkin.status !== "submitted") {
-        cur.checkin.status = "submitted";
-        cur.checkin.submittedAt = new Date(patch.checkinSubmitted.submittedAt);
-        Object.assign(cur.metrics, patch.checkinSubmitted.metrics);
-        var actualMap = { water: cur.metrics.water, sleep: cur.metrics.sleep, workouts: cur.metrics.workouts, cardio: cur.metrics.cardio, adherence: cur.metrics.adherence };
-        cur.goals.forEach(function (g) {
-          if (actualMap[g.key] != null) { g.actual = actualMap[g.key]; g.status = goalStatus(g.actual, g.target, g.mode); }
-        });
-        cur.qa = Object.assign({}, cur.qa, patch.checkinSubmitted.qa || {});
-      }
-      if (patch.orientation && !cur.orientation) {
-        cur.orientation = patch.orientation;
-        cur.focusOverride = patch.focus || null;
-        if (patch.completedAt) { cur.orientationSentAt = new Date(patch.completedAt); cur.orientationSentTime = patch.completedTime || fmtTime(cur.orientationSentAt); }
-        if (patch.coachNote) cur.coachReview = { note: patch.coachNote };
-      }
-      if (patch.reviewOpenedAt && !cur.orientation) cur.reviewOpenedAt = new Date(patch.reviewOpenedAt);
       if (patch.nextGoals) c._nextGoals = patch.nextGoals;
+      var baseWeek = currentWeek(c); // última semana gerada — a que os patches ANTIGOS (sem weekNumber) descrevem
+      restoreSeededWeeks(c, patch.cycles, patch.weekContent, patch.nextGoals); // pode empurrar a semana atual pra frente
+      restoreWeekContent(c, patch.weekContent); // metas/orientação por semana, antes de reapurar o check-in
+      var legacy = !patch.weekContent; // estado salvo antes do conteúdo por semana — migra no próximo save
+      var checkinWeek = (legacy && patch.checkinSubmitted) ? weekByNumber(c, patch.checkinSubmitted.weekNumber) : null;
+      if (checkinWeek && checkinWeek.checkin.status !== "submitted") {
+        applyStoredCheckin(checkinWeek, patch.checkinSubmitted);
+      }
+      // --- compatibilidade: estados salvos antes do conteúdo por semana (campos únicos no aluno).
+      // Ao restaurar, a semana é marcada como _userAuthored, então o próximo save já migra
+      // esse conteúdo pro mapa weekContent e ele deixa de ser sobrescrito por ciclos seguintes.
+      var orientationWeek = weekByNumber(c, patch.orientationWeek) || baseWeek;
+      if (legacy && patch.orientation && orientationWeek && !orientationWeek.orientation) {
+        orientationWeek.orientation = patch.orientation;
+        orientationWeek.focusOverride = patch.focus || null;
+        if (patch.completedAt) { orientationWeek.orientationSentAt = new Date(patch.completedAt); orientationWeek.orientationSentTime = patch.completedTime || fmtTime(orientationWeek.orientationSentAt); }
+        if (patch.coachNote) orientationWeek.coachReview = { note: patch.coachNote };
+        orientationWeek.orientationDraft = null;
+        orientationWeek._userAuthored = true;
+        if (cycleRank(cycleStatusOf(orientationWeek)) < cycleRank(CYCLE_STATUS.COMPLETED)) {
+          var sentAt = orientationWeek.orientationSentAt || new Date();
+          stampCycleStatus(orientationWeek, CYCLE_STATUS.ORIENTATION_SENT, sentAt);
+          stampCycleStatus(orientationWeek, CYCLE_STATUS.COMPLETED, sentAt);
+        }
+      }
+      if (legacy && patch.orientationDraft) {
+        var draftWeek = weekByNumber(c, patch.orientationDraft.weekNumber) || baseWeek;
+        if (draftWeek && !draftWeek.orientation) {
+          draftWeek._userAuthored = true;
+          draftWeek.orientationDraft = {
+            orientation: patch.orientationDraft.orientation || "",
+            focusOverride: patch.orientationDraft.focusOverride || null,
+            nextGoals: patch.orientationDraft.nextGoals || {},
+            note: patch.orientationDraft.note || null,
+            savedAt: patch.orientationDraft.savedAt ? new Date(patch.orientationDraft.savedAt) : null
+          };
+          if (cycleRank(cycleStatusOf(draftWeek)) < cycleRank(CYCLE_STATUS.ORIENTATION_DRAFT)) {
+            stampCycleStatus(draftWeek, CYCLE_STATUS.ORIENTATION_DRAFT, draftWeek.orientationDraft.savedAt || new Date());
+          }
+        }
+      }
+      if (patch.reviewOpenedAt) {
+        var reviewWeek = weekByNumber(c, patch.reviewOpenedWeek) || baseWeek;
+        if (reviewWeek && !reviewWeek.orientation) {
+          reviewWeek.reviewOpenedAt = new Date(patch.reviewOpenedAt);
+          if (cycleRank(cycleStatusOf(reviewWeek)) < cycleRank(CYCLE_STATUS.UNDER_REVIEW)) {
+            stampCycleStatus(reviewWeek, CYCLE_STATUS.UNDER_REVIEW, reviewWeek.reviewOpenedAt);
+          }
+        }
+      }
+      restoreCycles(c, patch.cycles); // estado/trilha completos por último — nunca rebaixam
       if (patch.remindedAt) { c.remindedAt = new Date(patch.remindedAt); c.remindedTime = patch.remindedTime; }
       if (patch.workoutHistory) {
         Object.keys(patch.workoutHistory).forEach(function (exId) {
@@ -1253,6 +1961,7 @@
       }
       if (patch.weekWorkoutsDone != null) c._weekWorkoutsDone = patch.weekWorkoutsDone;
       if (patch.workoutProtocol) c.workout = patch.workoutProtocol;
+      if (patch.tracking) c.tracking = patch.tracking;
       if (patch.nutritionPlan) c.nutritionPlan = patch.nutritionPlan;
       if (patch.paymentSettled) {
         var pay = c.paymentsHistory.filter(function (p) { return p.id === patch.paymentSettled.paymentId; })[0];
@@ -1262,10 +1971,23 @@
           pay.method = patch.paymentSettled.method;
         }
       }
-    });
-    (s.manualClients || []).forEach(function (m) {
-      if (CLIENTS.some(function (c) { return c.id === m.id; })) return;
-      CLIENTS.push(instantiateManualClient(m));
+      // TODO §22 — plano editado, situação da assinatura, reembolsos e o log de eventos.
+      if (patch.plan) c.plan = patch.plan;
+      if (patch.subscriptionStatus) c.subscriptionStatus = patch.subscriptionStatus;
+      if (patch.paymentsRefunded) {
+        patch.paymentsRefunded.forEach(function (r) {
+          var refundedPay = c.paymentsHistory.filter(function (p) { return p.id === r.paymentId; })[0];
+          if (refundedPay && refundedPay.status !== "refunded") {
+            refundedPay.status = "refunded";
+            refundedPay.refundedAt = r.refundedAt ? new Date(r.refundedAt) : new Date();
+          }
+        });
+      }
+      if (patch.paymentsEvents) {
+        c.paymentsEvents = patch.paymentsEvents.map(function (e) {
+          return Object.assign({}, e, { timestamp: e.timestamp ? new Date(e.timestamp) : new Date() });
+        });
+      }
     });
   }
   applyStoredOverrides();
@@ -1275,8 +1997,14 @@
   function effectiveGoals(client, week) {
     week = week || currentWeek(client);
     if (!week) return [];
-    var base = trackedGoals(week, client).filter(function (g) { return g.key !== "adherence"; });
-    if (client._nextGoals && week === currentWeek(client)) {
+    // Quando o ciclo daquela semana já foi fechado, as metas em vigor são as da semana SEGUINTE —
+    // ela nasceu justamente com os alvos definidos na revisão. Sem isso, a home do aluno mostrava
+    // as metas antigas ao lado da orientação nova (a semana de referência já não é a atual).
+    var source = week;
+    var next = weekByNumber(client, week.weekNumber + 1);
+    if (next && cycleStatusOf(week) === CYCLE_STATUS.COMPLETED) source = next;
+    var base = trackedGoals(source, client).filter(function (g) { return g.key !== "adherence"; });
+    if (client._nextGoals && source === currentWeek(client)) {
       return base.map(function (g) { return Object.assign({}, g, { target: client._nextGoals[g.key] != null ? client._nextGoals[g.key] : g.target }); });
     }
     return base;
@@ -1287,22 +2015,29 @@
     fmtDate: fmtDate, fmtShort: fmtShort, fmtTime: fmtTime, relativeLabel: relativeLabel, round1: round1, clamp: clamp, avg: avg,
     getClient: getClient,
     currentWeek: currentWeek, needsReview: needsReview, isLate: isLate, suggestOrientation: suggestOrientation,
+    CYCLE_STATUS: CYCLE_STATUS, cycleStatusOf: cycleStatusOf, isNextCheckinDue: isNextCheckinDue, seedWeekRecord: seedWeekRecord,
+    isCheckinOverdue: isCheckinOverdue, checkinOpensOn: checkinOpensOn,
     computeStatus: computeStatus, computeKPIs: computeKPIs, isGoodWeightDelta: isGoodWeightDelta,
     weeksInRange: weeksInRange, buildPeriodSummary: buildPeriodSummary, recentWeeksTable: recentWeeksTable,
     buildCoachMemory: buildCoachMemory, trendLine: trendLine,
     getCheckinWindowStatus: getCheckinWindowStatus, nextOpenDate: nextOpenDate,
-    whatsappUrl: whatsappUrl, checkinNudgeMessage: checkinNudgeMessage,
+    whatsappUrl: whatsappUrl, checkinNudgeMessage: checkinNudgeMessage, checkinReminderMessage: checkinReminderMessage,
     checkinReceivedMessageForCoach: checkinReceivedMessageForCoach, orientationReadyMessageForStudent: orientationReadyMessageForStudent,
     checkInInsights: checkInInsights, focusLabel: focusLabel, focusLabelFromOrientation: focusLabelFromOrientation, focusIntro: focusIntro,
     studentUpdate: studentUpdate, buildWeeklySnapshot: buildWeeklySnapshot, clientStage: clientStage,
-    isTracked: isTracked, trackedGoals: trackedGoals, effectiveGoals: effectiveGoals,
-    CHECKIN_TEMPLATE: CHECKIN_TEMPLATE, CHECKIN_STEPS: CHECKIN_STEPS, checkinTemplateFor: checkinTemplateFor,
-    completeOrientation: completeOrientation, submitCheckin: submitCheckin, sendReminder: sendReminder, markReviewOpened: markReviewOpened,
+    isTracked: isTracked, trackedGoals: trackedGoals, effectiveGoals: effectiveGoals, TRACKING_DEFAULT: TRACKING_DEFAULT,
+    checkinTemplateFor: checkinTemplateFor, saveCheckinTemplate: saveCheckinTemplate,
+    completeOrientation: completeOrientation, submitCheckin: submitCheckin, sendReminder: sendReminder,
+    markReviewOpened: markReviewOpened, markUnderReview: markUnderReview, saveOrientationDraft: saveOrientationDraft,
     createClient: createClient, sendInvite: sendInvite, acceptInvite: acceptInvite,
     EXERCISE_LIBRARY: EXERCISE_LIBRARY, getExercise: getExercise,
     logWorkoutSession: logWorkoutSession, todaysWorkoutDay: todaysWorkoutDay, saveWorkoutProtocol: saveWorkoutProtocol,
+    saveTrackingSettings: saveTrackingSettings,
     todaysMeals: todaysMeals, saveNutritionPlan: saveNutritionPlan,
     paymentProvider: paymentProvider, currentPayment: currentPayment,
-    overduePaymentMessage: overduePaymentMessage, simulatePayment: simulatePayment
+    overduePaymentMessage: overduePaymentMessage, simulatePayment: simulatePayment,
+    savePlan: savePlan, setSubscriptionStatus: setSubscriptionStatus, refundPayment: refundPayment,
+    notify: notify, getNotifications: getNotifications, unreadNotificationCount: unreadNotificationCount,
+    markNotificationRead: markNotificationRead, markAllNotificationsRead: markAllNotificationsRead
   };
 })(window);

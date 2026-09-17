@@ -7,12 +7,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../assets/css/base.css?v=12">
+<link rel="stylesheet" href="../assets/css/base.css?v=14">
 <style>
   .greet { font-size: 14px; color: var(--ink-muted); margin-bottom: 2px; }
   .week-summary { margin: 22px 0 34px; }
   .week-summary .range { font-size: 13px; color: var(--ink-faint); text-align: center; margin-bottom: 4px; }
   .queue-section { margin-bottom: 30px; }
+  .queue-section .section-note { font-size: 12px; color: var(--ink-faint); margin: -4px 0 6px; }
   .all-done { text-align: center; padding: 30px 20px; }
   .all-done svg { color: var(--brand); margin-bottom: 10px; }
   .all-done p { font-size: 14px; margin: 0; }
@@ -36,26 +37,130 @@
         <div class="week-progress-bar" style="max-width:260px;margin:14px auto 0;"><div class="fill" id="week-fill"></div></div>
       </div>
 
-      <div id="queue-received" class="queue-section"></div>
-      <div id="queue-completed" class="queue-section"></div>
-      <div id="queue-awaiting" class="queue-section"></div>
+      <div id="queue-pendencias" class="queue-section"></div>
+      <div id="queue-atencao" class="queue-section"></div>
+      <div id="queue-quiet" class="queue-section"></div>
     </div>
   </main>
 </div>
 
-<script src="../assets/js/storage.js?v=12"></script>
-<script src="../assets/js/data.js?v=12"></script>
+<script src="../assets/js/storage.js?v=13"></script>
+<script src="../assets/js/data.js?v=16"></script>
 <script src="../assets/js/icons.js?v=12"></script>
-<script src="../assets/js/charts.js?v=12"></script>
-<script src="../assets/js/nav.js?v=12"></script>
+<script src="../assets/js/charts.js?v=13"></script>
+<script src="../assets/js/nav.js?v=14"></script>
 <script>
 (function () {
   TracklyNav.mountCoachShell("dashboard");
+  var CS = Trackly.CYCLE_STATUS;
   var active = Trackly.CLIENTS.filter(function (c) { return c.weeks.length > 0; });
 
   var hour = new Date().getHours();
   var greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
   document.getElementById("greet").textContent = greeting + ", " + Trackly.COACH.name.split(" ")[0] + ".";
+
+  // ---------------- a fila da semana ----------------
+  // Esta tela é o TRABALHO da semana, não um painel. Cada aluno cai em exatamente um balde,
+  // derivado do estado guardado do ciclo (CYCLE_STATUS da semana atual), nunca de uma média:
+  //   overdue  — aguarda check-in E o prazo já passou      -> pendência (cobrar)
+  //   received — enviou a atualização, aguarda avaliação   -> pendência (avaliar)
+  //   review   — o coach abriu e está avaliando            -> pendência (continuar)
+  //   draft    — orientação escrita, ainda não enviada     -> pendência (finalizar e enviar)
+  //   done     — orientação enviada / ciclo concluído      -> sem pendência
+  //   awaiting — semana correndo, prazo não venceu         -> sem pendência (não se cobra)
+  // `orientation_sent` e `completed` caem no mesmo balde de propósito: completeOrientation()
+  // carimba os dois no mesmo instante, então nenhuma semana fica em repouso em `orientation_sent`.
+  function bucketOf(c) {
+    var st = Trackly.cycleStatusOf(Trackly.currentWeek(c));
+    if (st === CS.CHECKIN_RECEIVED) return "received";
+    if (st === CS.UNDER_REVIEW) return "review";
+    if (st === CS.ORIENTATION_DRAFT) return "draft";
+    if (st === CS.ORIENTATION_SENT || st === CS.COMPLETED) return "done";
+    return Trackly.isCheckinOverdue(c) ? "overdue" : "awaiting";
+  }
+  var PENDING_BUCKETS = ["overdue", "received", "review", "draft"];
+  function isPending(bucket) { return PENDING_BUCKETS.indexOf(bucket) !== -1; }
+
+  // desde quando ESTE aluno está esperando o coach (ou o prazo dele está vencido) — a fila é
+  // ordenada por isso: quem espera há mais tempo entra primeiro.
+  function waitingSince(c, bucket) {
+    var cur = Trackly.currentWeek(c);
+    if (!cur) return Trackly.ANCHOR;
+    if (bucket === "overdue") return cur.end;
+    return (cur.checkin && cur.checkin.submittedAt) || cur.start;
+  }
+
+  // no máximo 2 destaques por linha — o resto é ruído numa fila de trabalho
+  function statsFor(c) {
+    var u = Trackly.studentUpdate(c), out = [];
+    if (u.weightDelta != null && Math.abs(u.weightDelta) >= 0.1) {
+      out.push('<span style="color:' + (u.weightGood ? "var(--brand)" : "var(--coral)") + ';">Peso ' + (u.weightDelta < 0 ? "↓" : "↑") + " " + Math.abs(u.weightDelta) + "kg</span>");
+    } else if (u.weightDelta != null) {
+      out.push("<span>Peso estável</span>");
+    }
+    if (u.adherenceNow != null) {
+      out.push("<span>Aderência " + u.adherenceNow + "%" + (u.adherenceTrend === "up" ? " ↑" : u.adherenceTrend === "down" ? " ↓" : "") + "</span>");
+    }
+    if (u.sleepTrend === "down") out.push('<span style="color:var(--coral);">Sono ↓</span>');
+    return out.slice(0, 2);
+  }
+
+  function row(c, meta, statsHtml, actionsHtml) {
+    return '<div class="list-row"><span class="avatar lr-lead" style="background:' + TracklyNav.colorFor(c) + '">' + c.initials + "</span>" +
+      '<div class="lr-body"><strong>' + c.name + '</strong><span class="lr-meta">' + meta + "</span>" +
+      (statsHtml ? '<div class="lr-stats">' + statsHtml + "</div>" : "") +
+      '</div><div class="lr-actions">' + actionsHtml + "</div></div>";
+  }
+
+  function pendingRow(c, bucket) {
+    var u = Trackly.studentUpdate(c), cur = Trackly.currentWeek(c);
+    var rel = Trackly.relativeLabel(cur.checkin.submittedAt);
+    if (bucket === "overdue") {
+      var reminded = c.remindedAt;
+      var nudge = reminded
+        ? '<span style="font-size:12px;color:var(--ink-faint);">Cobrado ' + Trackly.relativeLabel(reminded) + "</span>"
+        : (c.phone
+            ? '<a href="' + Trackly.whatsappUrl(c.phone, Trackly.checkinNudgeMessage(c)) + '" target="_blank" rel="noopener" class="btn btn-primary" data-remind="' + c.id + '">Cobrar check-in</a>'
+            : '<button class="btn btn-primary" data-remind="' + c.id + '">Enviar lembrete</button>');
+      return row(c, '<span style="color:var(--coral);font-weight:600;">' + u.label + "</span> · semana " + cur.weekNumber, "",
+        '<a href="cliente.html?id=' + c.id + '" class="btn btn-secondary">Ver aluno</a>' + nudge);
+    }
+    var meta, cta;
+    if (bucket === "received") {
+      meta = "Check-in recebido " + rel + " · aguardando avaliação";
+      cta = "Avaliar agora";
+    } else if (bucket === "review") {
+      meta = "Em avaliação · check-in recebido " + rel;
+      cta = "Continuar avaliação";
+    } else {
+      var saved = cur.orientationDraft && cur.orientationDraft.savedAt;
+      meta = "Aguardando orientação · rascunho salvo " + Trackly.relativeLabel(saved);
+      cta = "Finalizar e enviar";
+    }
+    return row(c, meta, statsFor(c).join(""),
+      '<a href="cliente.html?id=' + c.id + '#avaliacao" class="btn btn-primary">' + cta + "</a>");
+  }
+
+  // "Atenção" não é pendência: nada precisa ser executado, só observado. Quem já está na fila de
+  // pendências não repete aqui — os sinais dele aparecem na própria linha de trabalho.
+  function attentionRow(c, bucket, insights) {
+    var state = bucket === "done" ? "Ciclo concluído" : Trackly.studentUpdate(c).label;
+    return row(c, state,
+      insights.slice(0, 2).map(function (t) { return "<span>" + t + "</span>"; }).join(""),
+      '<a href="cliente.html?id=' + c.id + '" class="btn btn-secondary">Ver aluno</a>');
+  }
+
+  function quietRow(c, bucket) {
+    var u = Trackly.studentUpdate(c);
+    var meta = bucket === "done"
+      ? (ICONS.check + " Ciclo concluído" + (u.completedAtLabel ? " · " + u.completedAtLabel.replace("Orientação enviada ", "") : ""))
+      : u.label;
+    // quinta-feira, janela abre amanhã: lembrete só, nunca cobrança (ver checkinReminderMessage)
+    var remindBtn = (bucket === "awaiting" && Trackly.isNextCheckinDue(c) && c.phone)
+      ? '<a href="' + Trackly.whatsappUrl(c.phone, Trackly.checkinReminderMessage(c)) + '" target="_blank" rel="noopener" class="btn btn-ghost" data-remind-soft="' + c.id + '">Lembrar (abre amanhã)</a>'
+      : "";
+    return row(c, meta, "", remindBtn + '<a href="cliente.html?id=' + c.id + '" class="btn btn-secondary">Ver</a>');
+  }
 
   function render() {
     var snap = Trackly.buildWeeklySnapshot();
@@ -63,58 +168,42 @@
     var weekEnd = new Date(anchorStart); weekEnd.setDate(weekEnd.getDate() + 6);
     document.getElementById("week-range").textContent = "Semana de " + Trackly.fmtShort(anchorStart) + " a " + Trackly.fmtDate(weekEnd).slice(0, 5);
 
-    var received = active.filter(function (c) { return Trackly.clientStage(c) === "checkin_received"; });
-    var completed = active.filter(function (c) { return Trackly.clientStage(c) === "completed"; });
-    var awaiting = active.filter(function (c) { return Trackly.clientStage(c) === "awaiting_checkin"; });
-    var allDone = active.length > 0 && !received.length && !awaiting.length;
+    var pending = [], attention = [], quiet = [];
+    active.forEach(function (c) {
+      var bucket = bucketOf(c);
+      if (isPending(bucket)) { pending.push({ c: c, bucket: bucket }); return; }
+      var insights = Trackly.checkInInsights(c);
+      if (insights.length) attention.push({ c: c, bucket: bucket, insights: insights });
+      else quiet.push({ c: c, bucket: bucket });
+    });
+    pending.sort(function (a, b) { return waitingSince(a.c, a.bucket) - waitingSince(b.c, b.bucket); });
 
+    // progresso da operação semanal — o ciclo do aluno está fechado quando não há pendência nele
+    var settled = active.length - pending.length;
     document.getElementById("week-counter").innerHTML =
-      '<div class="num">' + completed.length + '<span class="of"> de ' + snap.total + '</span></div>' +
-      '<div class="cap">concluídos</div>' +
+      '<div class="num">' + settled + '<span class="of"> de ' + snap.total + "</span></div>" +
+      '<div class="cap">ciclos fechados</div>' +
       '<div class="sub">' +
-        (snap.total - completed.length > 0 ? '<span><b>' + (snap.total - completed.length) + '</b> restante' + (snap.total - completed.length === 1 ? "" : "s") + '</span>' : '') +
-      '</div>';
-    document.getElementById("week-fill").style.width = (snap.total ? Math.round(100 * completed.length / snap.total) : 0) + "%";
+        (pending.length ? "<span><b>" + pending.length + "</b> pendência" + (pending.length === 1 ? "" : "s") + "</span>" : "") +
+        (attention.length ? "<span><b>" + attention.length + "</b> em atenção</span>" : "") +
+      "</div>";
+    document.getElementById("week-fill").style.width = (snap.total ? Math.round(100 * settled / snap.total) : 0) + "%";
 
-    if (allDone) {
-      document.getElementById("queue-received").innerHTML = '<div class="all-done">' + ICONS.check + '<h3 style="font-family:var(--font-display);font-size:17px;margin:0 0 4px;">Acompanhamento da semana concluído</h3><p>Todos os ' + active.length + ' alunos foram revisados.</p></div>';
-      document.getElementById("queue-awaiting").innerHTML = "";
-      document.getElementById("queue-completed").innerHTML = renderCompletedSection(completed);
-      wireCompletedToggle();
-      document.querySelectorAll("[data-remind]").forEach(function (btn) { btn.addEventListener("click", function () { Trackly.sendReminder(btn.getAttribute("data-remind")); TracklyNav.toast("Lembrete enviado"); render(); }); });
-      return;
-    }
+    document.getElementById("queue-pendencias").innerHTML = pending.length
+      ? '<p class="section-label">Pendências · ' + pending.length + "</p>" +
+        '<p class="section-note">Ações que dependem de você agora.</p>' +
+        pending.map(function (p) { return pendingRow(p.c, p.bucket); }).join("")
+      : '<div class="all-done">' + ICONS.check +
+        '<h3 style="font-family:var(--font-display);font-size:17px;margin:0 0 4px;">Nenhuma pendência agora</h3>' +
+        "<p>Os " + active.length + " alunos estão com o ciclo em dia.</p></div>";
 
-    document.getElementById("queue-received").innerHTML = !received.length ? "" : (
-      '<p class="section-label">Para fazer</p>' + received.map(function (c) {
-        var u = Trackly.studentUpdate(c), color = TracklyNav.colorFor(c), st = Trackly.computeStatus(c);
-        var stats = [];
-        if (u.weightDelta != null && Math.abs(u.weightDelta) >= 0.1) stats.push('<span style="color:' + (u.weightGood ? "var(--brand)" : "var(--coral)") + ';">Peso ' + (u.weightDelta < 0 ? "↓" : "↑") + ' ' + Math.abs(u.weightDelta) + 'kg</span>');
-        else if (u.weightDelta != null) stats.push('<span>Peso estável</span>');
-        stats.push('<span>Aderência ' + u.adherenceNow + '%' + (u.adherenceTrend === "up" ? " ↑" : u.adherenceTrend === "down" ? " ↓" : "") + '</span>');
-        if (u.sleepTrend === "down") stats.push('<span style="color:var(--coral);">Sono ↓</span>');
-        var ctaLabel = st.code === "progress" ? "Continuar avaliação" : "Avaliar agora";
-        return '<div class="list-row"><span class="avatar lr-lead" style="background:' + color + '">' + c.initials + '</span>' +
-          '<div class="lr-body"><strong>' + c.name + '</strong><span class="lr-meta">' + st.label + ' · ' + u.label + '</span><div class="lr-stats">' + stats.join("") + '</div></div>' +
-          '<div class="lr-actions"><a href="revisar.html?id=' + c.id + '" class="btn btn-primary">' + ctaLabel + '</a></div></div>';
-      }).join("")
-    );
+    document.getElementById("queue-atencao").innerHTML = attention.length
+      ? '<p class="section-label">Atenção · ' + attention.length + "</p>" +
+        '<p class="section-note">Sem ação pendente — só padrões que valem uma olhada.</p>' +
+        attention.map(function (a) { return attentionRow(a.c, a.bucket, a.insights); }).join("")
+      : "";
 
-    document.getElementById("queue-completed").innerHTML = renderCompletedSection(completed);
-
-    document.getElementById("queue-awaiting").innerHTML = !awaiting.length ? "" : (
-      '<p class="section-label">Aguardando aluno</p>' + awaiting.map(function (c) {
-        var color = TracklyNav.colorFor(c), u = Trackly.studentUpdate(c);
-        var reminded = c.remindedAt;
-        return '<div class="list-row"><span class="avatar lr-lead" style="background:' + color + '">' + c.initials + '</span>' +
-          '<div class="lr-body"><strong>' + c.name + '</strong><span class="lr-meta">' + u.label + '</span></div>' +
-          '<div class="lr-actions">' +
-            '<a href="cliente.html?id=' + c.id + '" class="btn btn-secondary">Ver aluno</a>' +
-            (reminded ? '<span style="font-size:12px;color:var(--ink-faint);">Cobrado ' + Trackly.relativeLabel(reminded) + '</span>' :
-              (c.phone ? '<a href="' + Trackly.whatsappUrl(c.phone, Trackly.checkinNudgeMessage(c)) + '" target="_blank" rel="noopener" class="btn btn-ghost" data-remind="' + c.id + '">Cobrar check-in</a>' : '<button class="btn btn-ghost" data-remind="' + c.id + '">Enviar lembrete</button>')) +
-          '</div></div>';
-      }).join("")
-    );
+    document.getElementById("queue-quiet").innerHTML = renderQuietSection(quiet);
 
     document.querySelectorAll("[data-remind]").forEach(function (btn) {
       btn.addEventListener("click", function () {
@@ -123,36 +212,43 @@
         render();
       });
     });
-    wireCompletedToggle();
+    // "Lembrar (abre amanhã)" (quinta-feira) não passa por sendReminder — não é cobrança de
+    // check-in atrasado, é o aviso de que a janela abre amanhã (evento próprio: checkin_reminder).
+    document.querySelectorAll("[data-remind-soft]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        Trackly.notify("checkin_reminder", btn.getAttribute("data-remind-soft"));
+        TracklyNav.toast("Lembrete enviado");
+        TracklyNav.refreshNotifBadge("notif-bell-coach", "coach");
+      });
+    });
+    wireQuietToggle();
   }
 
-  function renderCompletedSection(completed) {
-    if (!completed.length) return "";
+  // trabalho feito e semanas ainda correndo ficam recolhidos: existem, mas não competem com a fila
+  function renderQuietSection(quiet) {
+    if (!quiet.length) return "";
     return (
-      '<div class="list-row" id="completed-toggle" tabindex="0" role="button" aria-expanded="false" style="cursor:pointer;">' +
-        '<div class="lr-lead" style="color:var(--brand);">' + ICONS.check + '</div>' +
-        '<div class="lr-body"><strong>' + completed.length + ' concluído' + (completed.length === 1 ? "" : "s") + '</strong><span class="lr-meta">Avaliações concluídas esta semana</span></div>' +
-        '<div class="lr-actions"><span style="font-size:12.5px;color:var(--brand);font-weight:600;">Ver concluídos</span></div>' +
-      '</div>' +
-      '<div id="completed-list" style="display:none;">' + completed.map(function (c) {
-        var u = Trackly.studentUpdate(c), color = TracklyNav.colorFor(c);
-        var whenLabel = u.completedAtLabel ? u.completedAtLabel.replace("Orientação enviada ", "") : "";
-        return '<div class="list-row"><span class="avatar lr-lead" style="background:' + color + '">' + c.initials + '</span>' +
-          '<div class="lr-body"><strong>' + c.name + '</strong><span class="lr-meta">' + ICONS.check + ' Avaliação concluída' + (whenLabel ? " · " + whenLabel : "") + '</span></div>' +
-          '<div class="lr-actions"><a href="cliente.html?id=' + c.id + '" class="btn btn-secondary">Ver</a></div></div>';
-      }).join("") + '</div>'
+      '<div class="list-row" id="quiet-toggle" tabindex="0" role="button" aria-expanded="false" style="cursor:pointer;">' +
+        '<div class="lr-lead" style="color:var(--brand);">' + ICONS.check + "</div>" +
+        '<div class="lr-body"><strong>' + quiet.length + " sem pendência</strong>" +
+          '<span class="lr-meta">Ciclos concluídos e semanas em andamento</span></div>' +
+        '<div class="lr-actions"><span style="font-size:12.5px;color:var(--brand);font-weight:600;">Ver lista</span></div>' +
+      "</div>" +
+      '<div id="quiet-list" style="display:none;">' +
+        quiet.map(function (q) { return quietRow(q.c, q.bucket); }).join("") +
+      "</div>"
     );
   }
 
-  function wireCompletedToggle() {
-    var ct = document.getElementById("completed-toggle");
+  function wireQuietToggle() {
+    var ct = document.getElementById("quiet-toggle");
     if (!ct) return;
     function toggle() {
-      var list = document.getElementById("completed-list");
+      var list = document.getElementById("quiet-list");
       var open = list.style.display !== "none";
       list.style.display = open ? "none" : "block";
       ct.setAttribute("aria-expanded", String(!open));
-      ct.querySelector(".lr-actions span").textContent = open ? "Ver concluídos" : "Ocultar";
+      ct.querySelector(".lr-actions span").textContent = open ? "Ver lista" : "Ocultar";
     }
     ct.addEventListener("click", toggle);
     ct.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });

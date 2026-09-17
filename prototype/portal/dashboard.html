@@ -7,25 +7,34 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../assets/css/base.css?v=12">
+<link rel="stylesheet" href="../assets/css/base.css?v=14">
+<link rel="stylesheet" href="../assets/css/portal.css?v=14">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#FBF7F0">
+<link rel="icon" href="../assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="../assets/icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Trackly">
 <style>
-  .cta-card { background: var(--brand-tint); border: 1px solid var(--brand-tint-strong); border-radius: var(--radius-lg); padding: 22px; margin-bottom: 24px; }
+  .cta-card { background: var(--brand-tint); border: 1px solid var(--brand-tint-strong); border-radius: var(--radius-lg); padding: 22px; margin-bottom: 20px; }
   .cta-card p.t { font-size: 15px; font-weight: 700; margin: 0 0 4px; }
   .cta-card p.s { font-size: 13px; color: var(--ink-muted); margin: 0 0 16px; }
-  .greet { padding: 4px 0 14px; font-size: 15px; color: var(--ink-muted); }
-  .focus-hero { padding: 2px 0 4px; }
+  .focus-hero { margin-bottom: 22px; }
   .focus-hero .eyebrow { margin-bottom: 8px; }
-  .focus-hero h1 { font-family: var(--font-display); font-size: clamp(1.3rem, 1.1rem + 1vw, 1.5625rem); margin: 0 0 10px; font-weight: 600; line-height: 1.2; }
-  .focus-hero p { font-size: 13.5px; color: var(--ink-muted); line-height: 1.55; margin: 0 0 24px; }
-  .msg-card { border-left: 3px solid var(--brand); }
+  .focus-hero h1 { font-family: var(--font-display); margin: 0 0 10px; font-weight: 600; line-height: 1.15; }
+  .focus-hero p { font-size: 13.5px; color: var(--ink-muted); line-height: 1.55; margin: 0; }
+  .msg-card { margin-bottom: 24px; }
   .msg-card .who { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
   .msg-card .who .name { font-size: 12.5px; font-weight: 600; }
   .msg-card .who .role { font-size: 11px; color: var(--ink-faint); }
-  .msg-card p.txt { font-size: 14.5px; line-height: 1.6; margin: 0; color: var(--ink); }
+  .msg-card p.txt { margin: 0; }
+  .section-plain h2 { font-size: 15px; font-weight: 700; margin: 0 0 12px; }
   .progress-row { display: flex; gap: 28px; margin-bottom: 16px; flex-wrap: wrap; }
   .today-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 24px; }
-  .today-mini { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 14px 15px; background: var(--surface); display: block; }
-  .today-mini .ic { width: 28px; height: 28px; border-radius: 8px; background: var(--brand-tint); color: var(--brand); display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+  .today-mini { border-radius: var(--radius-md); padding: 15px 16px; background: var(--surface); display: block; }
+  .today-mini .ic { width: 30px; height: 30px; border-radius: 9px; background: var(--brand-tint); color: var(--brand); display: flex; align-items: center; justify-content: center; margin-bottom: 12px; }
   .today-mini .label { font-size: 10.5px; color: var(--ink-faint); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; }
   .today-mini .title { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
   .today-mini .sub { font-size: 11.5px; color: var(--ink-muted); }
@@ -36,11 +45,13 @@
 <div class="portal">
   <div class="portal-top" id="shell-portal-top"></div>
   <div class="portal-inner">
-    <p class="greet" id="greet"></p>
+    <div class="greet-block">
+      <p class="hello" id="greet"></p>
+      <p class="date" id="today-date"></p>
+    </div>
 
+    <div id="pay-alert"></div>
     <div id="checkin-cta"></div>
-
-    <div class="today-row" id="today-row"></div>
 
     <div class="focus-hero">
       <p class="eyebrow">Seu foco esta semana</p>
@@ -48,28 +59,30 @@
       <p id="focus-sentence"></p>
     </div>
 
-    <div class="stack" id="goals-list" style="gap:10px; margin-bottom:26px;"></div>
-
     <div class="section-h"><h2>Mensagem do seu coach</h2></div>
-    <div class="card card-pad msg-card" style="margin-bottom:28px;" id="message-block"></div>
+    <div class="card card-pad msg-card" id="message-block"></div>
+
+    <div class="today-row" id="today-row"></div>
 
     <div class="section-h"><h2>Seu progresso</h2><a id="evo-link">ver evolução</a></div>
-    <div class="card card-pad" style="margin-bottom:16px;">
+    <div class="section-plain" style="margin-bottom:26px;">
       <div class="progress-row" id="progress-row"></div>
       <div id="mini-chart"></div>
     </div>
 
-    <div class="section-h"><h2>Status da semana</h2></div>
-    <div class="card card-pad" id="status-card"></div>
+    <div class="section-plain">
+      <h2>Sua semana</h2>
+      <div id="status-card"></div>
+    </div>
   </div>
   <div id="shell-bottom-nav"></div>
 </div>
 
-<script src="../assets/js/storage.js?v=12"></script>
-<script src="../assets/js/data.js?v=12"></script>
+<script src="../assets/js/storage.js?v=13"></script>
+<script src="../assets/js/data.js?v=16"></script>
 <script src="../assets/js/icons.js?v=12"></script>
-<script src="../assets/js/charts.js?v=12"></script>
-<script src="../assets/js/nav.js?v=12"></script>
+<script src="../assets/js/charts.js?v=13"></script>
+<script src="../assets/js/nav.js?v=14"></script>
 <script>
 (function () {
   var params = new URLSearchParams(location.search);
@@ -83,12 +96,21 @@
 
   var hour = new Date().getHours();
   var greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
-  document.getElementById("greet").textContent = greeting + ", " + firstName + " 👋";
+  document.getElementById("greet").textContent = greeting + ", " + firstName;
+  document.getElementById("today-date").textContent = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
   document.getElementById("evo-link").href = "evolucao.html?client=" + client.id;
 
   var win = Trackly.getCheckinWindowStatus();
   var nextOpen = Trackly.nextOpenDate();
   var nextOpenLabel = nextOpen.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+
+  // pagamento só aparece na home quando exige atenção (V13 §34) — o resto fica em Conta/Pagamento
+  var pay = Trackly.currentPayment(client);
+  if (pay && pay.status === "overdue") {
+    document.getElementById("pay-alert").innerHTML =
+      '<div class="pay-alert">' + ICONS.warn + '<span>Pagamento em atraso</span>' +
+      '<a href="pagamento.html?client=' + client.id + '" class="btn btn-secondary" style="padding:7px 14px;">Pagar</a></div>';
+  }
 
   if (pending) {
     if (win === "reminder") {
@@ -102,7 +124,7 @@
         '<div class="cta-card">' +
         '<p class="t">Seu check-in está disponível</p>' +
         '<p class="s">Conte como foi sua semana — leva menos de 3 minutos.</p>' +
-        '<a href="checkin.html?client=' + client.id + '" class="btn btn-primary">Começar check-in</a>' +
+        '<a href="checkin.html?client=' + client.id + '" class="btn btn-primary btn-block">Fazer check-in</a>' +
         '</div>';
     } else {
       document.getElementById("checkin-cta").innerHTML =
@@ -111,6 +133,12 @@
         '<p class="s" style="margin-bottom:0;">O período de atualização desta semana terminou. Próximo check-in: ' + nextOpenLabel + '.</p>' +
         '</div>';
     }
+  } else if (Trackly.needsReview(client)) {
+    document.getElementById("checkin-cta").innerHTML =
+      '<div class="cta-card" style="display:flex;align-items:center;gap:12px;">' +
+      '<span style="color:var(--brand);flex:none;">' + ICONS.check + '</span>' +
+      '<div><p class="t" style="margin-bottom:2px;">Check-in enviado</p><p class="s" style="margin-bottom:0;">Seu coach vai revisar sua atualização.</p></div>' +
+      '</div>';
   }
 
   var todayMini = [];
@@ -155,18 +183,13 @@
     : "Assim que seu coach revisar seu check-in, seu foco da semana aparece aqui.";
 
   var goalIcons = { water: ICONS.drop, sleep: ICONS.moon, workouts: ICONS.dumbbell, cardio: ICONS.run };
-  document.getElementById("goals-list").innerHTML = Trackly.effectiveGoals(client, refWeek).map(function (g) {
-    return (
-      '<div class="list-row">' +
-      '<span class="lr-lead" style="width:32px;height:32px;border-radius:9px;background:var(--brand-tint);color:var(--brand);display:flex;align-items:center;justify-content:center;">' + goalIcons[g.key] + '</span>' +
-      '<div class="lr-body"><strong>' + g.label + '</strong></div>' +
-      '<div class="lr-actions mono" style="color:var(--ink-muted);">' + g.target + (g.unit === "%" ? "%" : (" " + g.unit)) + '</div>' +
-      '</div>'
-    );
+  var goalsHtml = Trackly.effectiveGoals(client, refWeek).map(function (g) {
+    return '<span class="wc-goal">' + goalIcons[g.key] + '<span>' + g.label + ': ' + g.target + (g.unit === "%" ? "%" : (" " + g.unit)) + '</span></span>';
   }).join("");
 
   document.getElementById("message-block").innerHTML = refWeek.orientation
-    ? ('<div class="who"><span class="avatar" style="width:28px;height:28px;font-size:11px;">' + Trackly.COACH.initials + '</span><div><div class="name">' + Trackly.COACH.name + '</div><div class="role">' + Trackly.COACH.role + '</div></div></div><p class="txt">' + refWeek.orientation + '</p>')
+    ? ('<div class="who"><span class="avatar" style="width:28px;height:28px;font-size:11px;">' + Trackly.COACH.initials + '</span><div><div class="name">' + Trackly.COACH.name + '</div><div class="role">' + Trackly.COACH.role + '</div></div></div><p class="txt">' + refWeek.orientation + '</p>' +
+        (goalsHtml ? '<div class="wc-goals" style="margin-top:14px;">' + goalsHtml + '</div>' : ''))
     : '<p class="txt" style="color:var(--ink-faint);">Assim que seu coach revisar seu check-in, a mensagem da semana aparece aqui.</p>';
 
   var kpi = Trackly.computeKPIs(client);
@@ -193,6 +216,13 @@
     return '<div class="row' + (r.done ? "" : " pending-row") + '"><span class="mark ' + (r.done ? "done" : "pending") + '">' + (r.done ? ICONS.check : "") + '</span><span>' + r.label + '</span></div>';
   }).join("") + '</div>';
 })();
+</script>
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(function () {});
+    });
+  }
 </script>
 </body>
 </html>

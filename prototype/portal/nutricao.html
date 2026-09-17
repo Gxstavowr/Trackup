@@ -7,20 +7,25 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../assets/css/base.css?v=12">
+<link rel="stylesheet" href="../assets/css/base.css?v=14">
+<link rel="stylesheet" href="../assets/css/portal.css?v=14">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#FBF7F0">
+<link rel="icon" href="../assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="../assets/icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Trackly">
 <style>
   .nt-head { padding: 2px 0 4px; }
   .nt-head h1 { font-family: var(--font-display); font-size: clamp(1.25rem, 1.05rem + 1vw, 1.5rem); margin: 6px 0 6px; font-weight: 600; }
   .nt-head .meta { font-size: 13px; color: var(--ink-muted); }
-  .meal-item { border: 1px solid var(--line); border-radius: var(--radius-md); margin-bottom: 12px; overflow: hidden; background: var(--surface); }
-  .meal-item-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; }
-  .meal-item-head .time { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); width: 46px; flex: none; }
-  .meal-item-head .n { flex: 1; font-size: 14.5px; font-weight: 700; }
-  .meal-item-head .kcal { font-size: 12px; color: var(--ink-faint); }
-  .meal-item-head .chev { color: var(--ink-faint); transition: transform .16s; flex: none; margin-left: 4px; }
-  .meal-item.open .chev { transform: rotate(90deg); }
-  .meal-item-body { display: none; padding: 0 16px 18px; }
-  .meal-item.open .meal-item-body { display: block; animation: fadein .18s ease; }
+  .meal-row { border-radius: var(--radius-md); margin-bottom: 10px; padding: 14px 16px; cursor: pointer; }
+  .meal-row .time { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); width: 46px; flex: none; }
+  .meal-row .n { flex: 1; font-size: 14.5px; font-weight: 700; }
+  .meal-row .kcal { font-size: 12px; }
+  .meal-row .chev { color: var(--ink-faint); flex: none; margin-left: 4px; }
   .mi-block { margin-bottom: 14px; }
   .mi-block:last-child { margin-bottom: 0; }
   .mi-label { font-size: 10.5px; color: var(--ink-faint); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; }
@@ -48,11 +53,11 @@
   <div id="shell-bottom-nav"></div>
 </div>
 
-<script src="../assets/js/storage.js?v=12"></script>
-<script src="../assets/js/data.js?v=12"></script>
+<script src="../assets/js/storage.js?v=13"></script>
+<script src="../assets/js/data.js?v=16"></script>
 <script src="../assets/js/icons.js?v=12"></script>
-<script src="../assets/js/charts.js?v=12"></script>
-<script src="../assets/js/nav.js?v=12"></script>
+<script src="../assets/js/charts.js?v=13"></script>
+<script src="../assets/js/nav.js?v=14"></script>
 <script>
 (function () {
   var params = new URLSearchParams(location.search);
@@ -69,7 +74,9 @@
   document.getElementById("plan-name").textContent = client.nutritionPlan.planName;
   document.getElementById("plan-meta").textContent = meals.length + " refeições · ~" + totalKcal + " kcal no dia";
 
-  document.getElementById("meals-list").innerHTML = meals.map(function (meal, i) {
+  // detalhe da refeição abre no drawer compartilhado (mesmo padrão do Histórico) — mais
+  // próximo de um app real do que um acordeão que empilha tudo na mesma tela (V13 §42).
+  function mealDrawerBody(meal) {
     var itemsHtml = meal.items.map(function (item) {
       return '<div class="mi-item-row"><span>' + item.food + '</span><span class="q">' + item.qty + '</span></div>';
     }).join("");
@@ -80,31 +87,42 @@
       }).join("") + '</div>'
     ) : "";
     return (
-      '<div class="meal-item' + (i === 0 ? " open" : "") + '" data-meal-item="' + i + '">' +
-        '<div class="meal-item-head">' +
-          '<span class="time">' + meal.time + '</span>' +
-          '<span class="n">' + meal.name + '</span>' +
-          '<span class="kcal">' + meal.macros.kcal + ' kcal</span>' +
-          '<span class="chev">' + ICONS.chevronR + '</span>' +
-        '</div>' +
-        '<div class="meal-item-body">' +
-          '<div class="mi-block"><div class="mi-label">Itens</div>' + itemsHtml + '</div>' +
-          subsHtml +
-          '<div class="mi-block"><div class="mi-label">Macros</div><div class="mi-macros">' +
-            '<div class="item"><div class="l">Proteína</div><div class="v">' + meal.macros.protein + 'g</div></div>' +
-            '<div class="item"><div class="l">Carbo</div><div class="v">' + meal.macros.carbs + 'g</div></div>' +
-            '<div class="item"><div class="l">Gordura</div><div class="v">' + meal.macros.fat + 'g</div></div>' +
-            '<div class="item"><div class="l">Kcal</div><div class="v">' + meal.macros.kcal + '</div></div>' +
-          '</div></div>' +
-        '</div>' +
+      '<div class="drawer-title">' + meal.name + '</div><div class="drawer-sub">' + meal.time + '</div>' +
+      '<div class="mi-block"><div class="mi-label">Itens</div>' + itemsHtml + '</div>' +
+      subsHtml +
+      '<div class="mi-block"><div class="mi-label">Macros</div><div class="mi-macros">' +
+        '<div class="item"><div class="l">Proteína</div><div class="v">' + meal.macros.protein + 'g</div></div>' +
+        '<div class="item"><div class="l">Carbo</div><div class="v">' + meal.macros.carbs + 'g</div></div>' +
+        '<div class="item"><div class="l">Gordura</div><div class="v">' + meal.macros.fat + 'g</div></div>' +
+        '<div class="item"><div class="l">Kcal</div><div class="v">' + meal.macros.kcal + '</div></div>' +
+      '</div></div>'
+    );
+  }
+
+  document.getElementById("meals-list").innerHTML = meals.map(function (meal, i) {
+    return (
+      '<div class="meal-row list-row" data-meal="' + i + '" tabindex="0" role="button">' +
+        '<span class="time">' + meal.time + '</span>' +
+        '<span class="n">' + meal.name + '</span>' +
+        '<span class="kcal mono">' + meal.macros.kcal + ' kcal</span>' +
+        '<span class="chev">' + ICONS.chevronR + '</span>' +
       '</div>'
     );
   }).join("");
 
-  document.querySelectorAll(".meal-item-head").forEach(function (h) {
-    h.addEventListener("click", function () { h.closest(".meal-item").classList.toggle("open"); });
+  document.querySelectorAll(".meal-row").forEach(function (row) {
+    function open() { TracklyNav.openDrawer(mealDrawerBody(meals[parseInt(row.getAttribute("data-meal"), 10)])); }
+    row.addEventListener("click", open);
+    row.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
   });
 })();
+</script>
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(function () {});
+    });
+  }
 </script>
 </body>
 </html>

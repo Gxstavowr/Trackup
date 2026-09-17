@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../assets/css/base.css?v=12">
+<link rel="stylesheet" href="../assets/css/base.css?v=14">
 <style>
   .protocol-name-field { max-width: 420px; margin-bottom: 26px; }
   .day-card { margin-bottom: 18px; }
@@ -32,10 +32,13 @@
   .ex-head-row { display: grid; grid-template-columns: 1.6fr .6fr .6fr .7fr .6fr 1.3fr auto; gap: 8px; margin-bottom: 2px; }
   .save-indicator { font-size: 12px; color: var(--brand); font-weight: 600; opacity: 0; transition: opacity .2s; }
   .save-indicator.show { opacity: 1; }
+  /* label inline por campo, só visível quando a grade colapsa (mesmo padrão de cliente.html) — TODO §30 */
+  .ex-mobile-label { display: none; }
   @media (max-width: 768px) {
     .ex-row, .ex-head-row { grid-template-columns: 1fr; }
     .ex-head-row { display: none; }
     .ex-row { gap: 6px; padding: 14px 0; }
+    .ex-mobile-label { display: block; font-size: 10.5px; color: var(--ink-faint); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; }
   }
 </style>
 </head>
@@ -67,11 +70,11 @@
   </main>
 </div>
 
-<script src="../assets/js/storage.js?v=12"></script>
-<script src="../assets/js/data.js?v=12"></script>
+<script src="../assets/js/storage.js?v=13"></script>
+<script src="../assets/js/data.js?v=16"></script>
 <script src="../assets/js/icons.js?v=12"></script>
-<script src="../assets/js/charts.js?v=12"></script>
-<script src="../assets/js/nav.js?v=12"></script>
+<script src="../assets/js/charts.js?v=13"></script>
+<script src="../assets/js/nav.js?v=14"></script>
 <script>
 (function () {
   var params = new URLSearchParams(location.search);
@@ -115,12 +118,12 @@
         '<div class="ex-col-label">Descanso</div><div class="ex-col-label">RIR</div><div class="ex-col-label">Observações</div><div></div></div>';
       var exRows = day.exercises.map(function (ex, ei) {
         return '<div class="ex-row" data-day="' + di + '" data-ex="' + ei + '">' +
-          '<select data-field="exerciseId">' + exerciseOptions(ex.exerciseId) + '</select>' +
-          '<input type="number" min="1" data-field="sets" value="' + ex.sets + '">' +
-          '<input type="text" data-field="reps" value="' + ex.reps + '" placeholder="12">' +
-          '<input type="number" min="0" step="15" data-field="restSec" value="' + ex.restSec + '">' +
-          '<input type="number" min="0" max="5" data-field="rir" value="' + (ex.rir == null ? "" : ex.rir) + '" placeholder="—">' +
-          '<input type="text" data-field="notes" value="' + (ex.notes || "").replace(/"/g, "&quot;") + '" placeholder="opcional">' +
+          '<div><span class="ex-mobile-label">Exercício</span><select data-field="exerciseId">' + exerciseOptions(ex.exerciseId) + '</select></div>' +
+          '<div><span class="ex-mobile-label">Séries</span><input type="number" min="1" data-field="sets" value="' + ex.sets + '"></div>' +
+          '<div><span class="ex-mobile-label">Reps</span><input type="text" data-field="reps" value="' + ex.reps + '" placeholder="12"></div>' +
+          '<div><span class="ex-mobile-label">Descanso (s)</span><input type="number" min="0" step="15" data-field="restSec" value="' + ex.restSec + '"></div>' +
+          '<div><span class="ex-mobile-label">RIR</span><input type="number" min="0" max="5" data-field="rir" value="' + (ex.rir == null ? "" : ex.rir) + '" placeholder="—"></div>' +
+          '<div><span class="ex-mobile-label">Observações</span><input type="text" data-field="notes" value="' + (ex.notes || "").replace(/"/g, "&quot;") + '" placeholder="opcional"></div>' +
           '<div class="ex-mini-actions">' +
             '<button class="icon-btn" data-dup-ex title="Duplicar exercício">' + ICONS.plate + '</button>' +
             '<button class="icon-btn danger" data-del-ex title="Remover exercício">' + ICONS.close + '</button>' +

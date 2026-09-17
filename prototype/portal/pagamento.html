@@ -7,7 +7,16 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../assets/css/base.css?v=12">
+<link rel="stylesheet" href="../assets/css/base.css?v=14">
+<link rel="stylesheet" href="../assets/css/portal.css?v=14">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#FBF7F0">
+<link rel="icon" href="../assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="../assets/icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Trackly">
 <style>
   .pg-head { padding: 2px 0 4px; }
   .pg-head h1 { font-family: var(--font-display); font-size: clamp(1.25rem, 1.05rem + 1vw, 1.5rem); margin: 6px 0 6px; font-weight: 600; }
@@ -45,11 +54,11 @@
   <div id="shell-bottom-nav"></div>
 </div>
 
-<script src="../assets/js/storage.js?v=12"></script>
-<script src="../assets/js/data.js?v=12"></script>
+<script src="../assets/js/storage.js?v=13"></script>
+<script src="../assets/js/data.js?v=16"></script>
 <script src="../assets/js/icons.js?v=12"></script>
-<script src="../assets/js/charts.js?v=12"></script>
-<script src="../assets/js/nav.js?v=12"></script>
+<script src="../assets/js/charts.js?v=13"></script>
+<script src="../assets/js/nav.js?v=14"></script>
 <script>
 (function () {
   var params = new URLSearchParams(location.search);
@@ -59,6 +68,8 @@
 
   var statusLabel = { paid: "Pago", pending: "Pendente", overdue: "Atrasado", cancelled: "Cancelado", refunded: "Estornado" };
   var statusPill = { paid: "pill-ok", pending: "pill-warn", overdue: "pill-late", cancelled: "pill", refunded: "pill" };
+  // situação da ASSINATURA (TODO §22) — só leitura aqui; quem define é o coach em cliente.html.
+  var subStatusLabel = { active: "Ativa", paused: "Pausada", cancelled: "Cancelada" };
   var methodLabel = { pix: "PIX", cartao: "Cartão", boleto: "Boleto" };
   var selectedMethod = "pix";
 
@@ -66,7 +77,22 @@
   function periodLabel(p) { return { monthly: "mensal", quarterly: "trimestral", semiannual: "semestral", annual: "anual" }[p] || p; }
 
   function renderPlanCard() {
+    // aluno recém-aceito pode ainda não ter plano cadastrado pelo coach — estado vazio em vez de
+    // presumir client.plan/pay sempre presentes (TODO §34).
+    if (!client.plan) {
+      document.getElementById("plan-card").innerHTML = '<div class="empty-state" style="padding:20px 4px;"><h3 style="font-size:15px;">Nenhum plano cadastrado</h3><p>Seu coach ainda não configurou sua assinatura — volte aqui assim que ela estiver pronta.</p></div>';
+      return;
+    }
     var pay = Trackly.currentPayment(client);
+    if (!pay) {
+      document.getElementById("plan-card").innerHTML =
+        '<div class="plan-summary">' +
+          '<div class="name">' + client.plan.name + '</div>' +
+          '<div class="price">' + fmtMoney(client.plan.priceCents) + '</div>' +
+          '<div class="period">cobrança ' + periodLabel(client.plan.period) + '</div>' +
+        '</div>';
+      return;
+    }
     var needsPay = pay.status === "pending" || pay.status === "overdue";
     document.getElementById("plan-card").innerHTML =
       '<div class="plan-summary">' +
@@ -74,6 +100,7 @@
         '<div class="price">' + fmtMoney(client.plan.priceCents) + '</div>' +
         '<div class="period">cobrança ' + periodLabel(client.plan.period) + '</div>' +
         '<span class="pill ' + statusPill[pay.status] + '"><span class="dot"></span>' + statusLabel[pay.status] + '</span>' +
+        '<p style="font-size:12px;color:var(--ink-faint);margin:10px 0 0;">Assinatura: ' + (subStatusLabel[client.subscriptionStatus] || client.subscriptionStatus || "Ativa") + '</p>' +
       '</div>' +
       (needsPay ? (
         '<div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--line);">' +
@@ -104,15 +131,22 @@
   }
 
   function renderHistory() {
-    var rows = client.paymentsHistory.slice().reverse();
-    document.getElementById("hist-card").innerHTML = rows.map(function (p) {
+    var rows = (client.paymentsHistory || []).slice().reverse();
+    document.getElementById("hist-card").innerHTML = rows.length ? rows.map(function (p) {
       return '<div class="hist-row"><span class="d">' + Trackly.fmtShort(p.dueDate) + '</span><span class="v">' + fmtMoney(p.amountCents) + '</span><span class="pill ' + statusPill[p.status] + '"><span class="dot"></span>' + statusLabel[p.status] + '</span></div>';
-    }).join("");
+    }).join("") : '<div class="empty-state" style="padding:24px 4px;"><h3 style="font-size:15px;">Nenhum pagamento ainda</h3></div>';
   }
 
   renderPlanCard();
   renderHistory();
 })();
+</script>
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(function () {});
+    });
+  }
 </script>
 </body>
 </html>

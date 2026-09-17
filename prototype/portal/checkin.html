@@ -7,7 +7,16 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../assets/css/base.css?v=12">
+<link rel="stylesheet" href="../assets/css/base.css?v=14">
+<link rel="stylesheet" href="../assets/css/portal.css?v=14">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#FBF7F0">
+<link rel="icon" href="../assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="../assets/icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Trackly">
 <style>
   .ci-head { padding: 4px 0 18px; }
   .ci-head .wk-tag { font-size: 11.5px; font-weight: 700; color: var(--brand); background: var(--brand-tint); display: inline-block; padding: 4px 10px; border-radius: 999px; margin-bottom: 10px; }
@@ -18,6 +27,8 @@
   .step-indicator .row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
   .step-indicator .count { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-faint); }
   .step-indicator .label { font-size: 14px; font-weight: 700; }
+  .save-indicator { font-size: 11.5px; color: var(--brand); font-weight: 600; opacity: 0; transition: opacity .2s; }
+  .save-indicator.show { opacity: 1; }
 
   .step-panel { display: none; }
   .step-panel.active { display: block; animation: fadein .18s ease; }
@@ -27,7 +38,7 @@
   .range-wrap input[type="range"] { width: 100%; accent-color: var(--brand); margin-top: 10px; }
   .range-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
   .stepper { display: flex; align-items: center; gap: 14px; }
-  .stepper button { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface); font-size: 18px; font-weight: 600; color: var(--ink); }
+  .stepper button { width: 48px; height: 48px; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--surface); font-size: 20px; font-weight: 600; color: var(--ink); }
   .stepper .sv { flex: 1; text-align: center; font-family: var(--font-mono); font-size: 22px; font-weight: 600; }
   .stepper-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 8px; }
   .stepper-row .stepper { width: auto; }
@@ -37,7 +48,12 @@
   .confirm-wrap p { color: var(--ink-muted); font-size: 13.5px; max-width: 280px; margin: 0 auto 24px; }
   .upload-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 
-  .wizard-nav { display: flex; gap: 10px; margin-top: 26px; }
+  /* position+z-index acima do .bottom-nav fixo (z-index:40, base.css) — sem isso, num passo
+     curto o wizard-nav cai atrás da barra inferior fixa antes do usuário rolar até o fim, e o
+     clique em "Continuar"/"Voltar" acerta o item da nav embaixo em vez do botão (achado ao vivo
+     na validação do item 36: o clique automatizado repetidamente "vazava" pra Nutrição). */
+  .wizard-nav { display: flex; gap: 10px; margin-top: 26px; position: relative; z-index: 41; }
+  .wizard-nav .btn { padding: 15px 18px; font-size: 15px; border-radius: var(--radius-md); }
   .wizard-nav .btn-primary { flex: 1; }
 </style>
 </head>
@@ -52,11 +68,11 @@
   <div id="shell-bottom-nav"></div>
 </div>
 
-<script src="../assets/js/storage.js?v=12"></script>
-<script src="../assets/js/data.js?v=12"></script>
+<script src="../assets/js/storage.js?v=13"></script>
+<script src="../assets/js/data.js?v=16"></script>
 <script src="../assets/js/icons.js?v=12"></script>
-<script src="../assets/js/charts.js?v=12"></script>
-<script src="../assets/js/nav.js?v=12"></script>
+<script src="../assets/js/charts.js?v=13"></script>
+<script src="../assets/js/nav.js?v=14"></script>
 <script>
 (function () {
   var params = new URLSearchParams(location.search);
@@ -80,69 +96,116 @@
     return;
   }
 
-  var steps = Trackly.CHECKIN_STEPS;
+  // V14 §6 — o formulário não conhece mais as perguntas de cor: lê o template do coach
+  // (checkinTemplateFor já filtra por ativo/gênero/tracking) e monta cada passo a partir dele.
+  // Cada `type` sabe renderizar a si mesmo; passos sem nenhuma pergunta visível somem do wizard.
   var current = 1;
   var workoutsAuto = !!client.workout;
-  var state = { treinos: workoutsAuto ? (client._weekWorkoutsDone || 0) : 0, cardio: 0 };
+  var questions = Trackly.checkinTemplateFor(client);
+  var state = {};
+  questions.forEach(function (q) {
+    if (q.type === "stepper") state[q.key] = (q.tracks === "workouts" && workoutsAuto) ? (client._weekWorkoutsDone || 0) : 0;
+  });
 
-  var stepPanels = {
-    1: '<div class="field"><label>Peso atual</label><input type="number" step="0.1" id="f-peso" placeholder="ex.: 81.5" inputmode="decimal"><p class="hint">em quilos, medido em jejum se possível</p></div>' +
-      (Trackly.isTracked(client, "photos") ? (
-      '<div class="field" style="margin-bottom:0;"><label>Fotos de evolução</label><div class="upload-grid-3">' +
+  function qLabel(q) { return q.formLabel || q.label; }
+  function renderNumber(q) {
+    return '<div class="field"><label>' + qLabel(q) + '</label><input type="number" step="0.1" id="f-' + q.key + '" placeholder="' + (q.placeholder || "") + '" inputmode="decimal">' +
+      (q.hint ? '<p class="hint">' + q.hint + '</p>' : "") + '</div>';
+  }
+  function renderPhotos(q) {
+    return '<div class="field"><label>' + qLabel(q) + '</label><div class="upload-grid-3">' +
       ["front", "back", "side"].map(function (a) {
         var names = { front: "Frente", back: "Costas", side: "Lateral" };
         return '<label class="upload-slot" data-angle="' + a + '">' + ICONS.camera + '<span>' + names[a] + '</span><input type="file" accept="image/*" style="display:none;" data-angle-input="' + a + '"></label>';
-      }).join("") + '</div><p class="hint">Use sempre o mesmo local e roupa — facilita comparar sua evolução.</p></div>'
-      ) : ""),
-
-    2: '<div class="field"><label>Como foi a dieta?</label>' +
-      '<div class="range-wrap"><div class="rv" id="dieta-val">8</div><input type="range" min="0" max="10" step="1" value="8" id="f-dieta">' +
+      }).join("") + '</div>' + (q.hint ? '<p class="hint">' + q.hint + '</p>' : "") + '</div>';
+  }
+  function renderScaleText(q) {
+    return '<div class="field"><label>' + qLabel(q) + '</label>' +
+      '<div class="range-wrap"><div class="rv" id="' + q.key + '-val">8</div><input type="range" min="0" max="10" step="1" value="8" id="f-' + q.key + '">' +
       '<div class="range-labels"><span>0 — nada</span><span>10 — perfeito</span></div></div>' +
-      '<textarea id="f-dieta-txt" rows="2" placeholder="Em uma frase, como foi seguir o plano essa semana?"></textarea></div>' +
-      '<div class="field"><label>Fez a refeição livre? Se sim, qual dia e o que comeu?</label><textarea id="f-refeicao" rows="2" placeholder="Ex.: sim, sábado à noite — pizza."></textarea></div>' +
-      '<div class="field" style="margin-bottom:0;"><label>Houve beliscos de comida fora do plano?</label><textarea id="f-beliscos" rows="2" placeholder="Ex.: não / sim, doce à tarde em dois dias."></textarea></div>',
+      '<textarea id="f-' + q.key + '-txt" rows="2" placeholder="' + (q.placeholder || "") + '"></textarea></div>';
+  }
+  function renderText(q) {
+    var label = qLabel(q) + (q.optionalNote ? ' <span style="font-weight:400;color:var(--ink-faint);">' + q.optionalNote + '</span>' : "");
+    var control = q.multiline === false
+      ? '<input type="text" id="f-' + q.key + '" placeholder="' + (q.placeholder || "") + '">'
+      : '<textarea id="f-' + q.key + '" rows="2" placeholder="' + (q.placeholder || "") + '"></textarea>';
+    return '<div class="field"><label>' + label + '</label>' + control + (q.hint ? '<p class="hint">' + q.hint + '</p>' : "") + '</div>';
+  }
+  function renderStepper(q) {
+    if (q.tracks === "workouts" && workoutsAuto) {
+      return '<div class="field"><label>' + qLabel(q) + '</label>' +
+        '<div class="resumo-strip" style="padding:2px 0;"><div class="item"><div class="value" style="font-size:clamp(1.2rem, 1.05rem + 0.7vw, 1.625rem);">' + state[q.key] + '</div><div class="label">registrados automaticamente pelo app</div></div></div>' +
+        '<p class="hint">Contabilizado a partir dos treinos que você concluiu na aba Treino — nada pra digitar aqui.</p></div>';
+    }
+    return '<div class="field"><div class="stepper-row"><label style="margin:0;">' + qLabel(q) + '</label><div class="stepper" style="flex:none;"><button type="button" data-step="' + q.key + '" data-d="-1">−</button><div class="sv" id="' + q.key + '-val" style="width:34px;">' + state[q.key] + '</div><button type="button" data-step="' + q.key + '" data-d="1">+</button></div></div></div>';
+  }
+  function renderYesNo(q) {
+    return '<div class="field"><label>' + qLabel(q) + '</label><div class="yn-row" id="f-' + q.key + '"><div class="yn-opt" data-v="sim">Sim</div><div class="yn-opt sel" data-v="nao">Não</div></div></div>';
+  }
+  function renderNumberText(q) {
+    return '<div class="field"><label>' + qLabel(q) + '</label>' +
+      '<input type="number" step="0.1" id="f-' + q.key + '" placeholder="' + (q.placeholder || "") + '" inputmode="decimal" style="margin-bottom:8px;">' +
+      '<textarea id="f-' + q.key + '-txt" rows="2" placeholder="' + (q.textPlaceholder || "") + '"></textarea></div>';
+  }
+  var RENDERERS = { number: renderNumber, photos: renderPhotos, "scale+text": renderScaleText, text: renderText, stepper: renderStepper, yesno: renderYesNo, "number+text": renderNumberText };
 
-    3: (workoutsAuto ? (
-      '<div class="field"><label>Treinos realizados</label>' +
-      '<div class="resumo-strip" style="padding:2px 0;"><div class="item"><div class="value" style="font-size:clamp(1.2rem, 1.05rem + 0.7vw, 1.625rem);">' + state.treinos + '</div><div class="label">registrados automaticamente pelo app</div></div></div>' +
-      '<p class="hint">Contabilizado a partir dos treinos que você concluiu na aba Treino — nada pra digitar aqui.</p></div>'
-    ) : (
-      '<div class="field"><div class="stepper-row"><label style="margin:0;">Treinos realizados</label><div class="stepper" style="flex:none;"><button type="button" data-step="treinos" data-d="-1">−</button><div class="sv" id="treinos-val" style="width:34px;">0</div><button type="button" data-step="treinos" data-d="1">+</button></div></div></div>'
-    )) +
-      '<div class="field"><label>Como foi sua performance nos treinos?</label><textarea id="f-performance" rows="2" placeholder="Força, disposição, evolução de carga..."></textarea></div>' +
-      (Trackly.isTracked(client, "cardio") ? (
-      '<div class="field"><div class="stepper-row"><label style="margin:0;">Sessões de cardio</label><div class="stepper" style="flex:none;"><button type="button" data-step="cardio" data-d="-1">−</button><div class="sv" id="cardio-val" style="width:34px;">0</div><button type="button" data-step="cardio" data-d="1">+</button></div></div></div>' +
-      '<div class="field" style="margin-bottom:0;"><label>Como foi o cardio? Tempo, dias e tipo.</label><textarea id="f-cardio-txt" rows="2" placeholder="Ex.: 3x, 30min, esteira."></textarea></div>'
-      ) : ""),
-
-    4: (client.gender === "f" ? '<div class="field"><label>Está no período menstrual?</label><div class="yn-row" id="f-periodo"><div class="yn-opt" data-v="sim">Sim</div><div class="yn-opt sel" data-v="nao">Não</div></div></div>' : "") +
-      (Trackly.isTracked(client, "water") ? '<div class="field"><label>Quantos litros de água você tomou por dia, em média?</label><input type="number" step="0.1" id="f-agua" placeholder="ex.: 2.8" inputmode="decimal"></div>' : "") +
-      (Trackly.isTracked(client, "sleep") ? '<div class="field"><label>Como foi seu sono?</label><input type="number" step="0.1" id="f-sono" placeholder="média de horas por noite, ex.: 7.2" inputmode="decimal" style="margin-bottom:8px;"><textarea id="f-sono-txt" rows="2" placeholder="Regular? Alguma noite mal dormida?"></textarea></div>' : "") +
-      (Trackly.isTracked(client, "digestion") ? '<div class="field"><label>Como foi sua digestão? Idas ao banheiro e estufamento.</label><textarea id="f-digestao" rows="2"></textarea></div>' : "") +
-      (Trackly.isTracked(client, "emotional") ? '<div class="field"><label>Como está seu emocional?</label><textarea id="f-emocional" rows="2"></textarea></div>' : "") +
-      '<div class="field"><label>Uso de substâncias/medicamentos <span style="font-weight:400;color:var(--ink-faint);">(quando aplicável)</span></label><textarea id="f-substancias" rows="2"></textarea></div>' +
-      '<div class="field" style="margin-bottom:0;"><label>Último exame enviado <span style="font-weight:400;color:var(--ink-faint);">(quando aplicável)</span></label><input type="text" id="f-exame" placeholder="Ex.: exame de sangue, semana 12"></div>'
-  };
+  // só entram no wizard os passos que sobraram com ao menos uma pergunta visível pra este aluno
+  var steps = Trackly.COACH.checkinSteps.filter(function (s) { return questions.some(function (q) { return q.step === s.n; }); });
+  var stepPanels = {};
+  steps.forEach(function (s) {
+    var htmls = questions.filter(function (q) { return q.step === s.n; })
+      .map(function (q) { return (RENDERERS[q.type] || renderText)(q); });
+    if (htmls.length) htmls[htmls.length - 1] = htmls[htmls.length - 1].replace('<div class="field">', '<div class="field" style="margin-bottom:0;">');
+    stepPanels[s.n] = htmls.join("");
+  });
 
   document.getElementById("ci-form").innerHTML =
     '<div class="ci-head"><span class="wk-tag">SEMANA ' + week.weekNumber + '</span>' +
     '<h1>Como foi sua semana?</h1><p>Leva menos de 3 minutos. Responda com sinceridade — é isso que ajuda seu coach a te orientar melhor.</p></div>' +
     '<div class="step-indicator">' +
-      '<div class="row"><span class="count" id="step-count"></span><span class="label" id="step-label"></span></div>' +
+      '<div class="row"><span class="count" id="step-count"></span><span class="label" id="step-label"></span><span class="save-indicator" id="save-indicator">✓ Salvo</span></div>' +
       '<div class="step-bar" id="step-bar"></div>' +
     '</div>' +
     steps.map(function (s) { return '<div class="step-panel" data-step-panel="' + s.n + '">' + stepPanels[s.n] + '</div>'; }).join("") +
+    '<p class="field-error" id="step-error" style="display:none;margin:0 0 14px;"></p>' +
     '<div class="wizard-nav" id="wizard-nav"></div>';
+
+  // valida as perguntas marcadas "Obrigatória" pelo coach (checkin-config.html) antes de avançar
+  // de passo/enviar — até aqui a flag `required` era só salva, sem nenhum efeito no formulário do
+  // aluno (TODO §34: estado de erro faltando). Só os tipos com uma noção clara de "vazio" entram
+  // na checagem — stepper/yesno sempre têm um valor padrão, fotos não tem persistência.
+  function isQuestionEmpty(q) {
+    if (q.type === "text") { var t = document.getElementById("f-" + q.key); return !t || !t.value.trim(); }
+    if (q.type === "number" || q.type === "number+text") { var n = document.getElementById("f-" + q.key); return !n || n.value === "" || isNaN(parseFloat(n.value)); }
+    if (q.type === "scale+text") { var s = document.getElementById("f-" + q.key + "-txt"); return !s || !s.value.trim(); }
+    return false;
+  }
+  function validateStep(stepN) {
+    var missing = questions.filter(function (q) { return q.step === stepN && q.required && isQuestionEmpty(q); });
+    var errEl = document.getElementById("step-error");
+    if (!missing.length) { errEl.style.display = "none"; return true; }
+    errEl.textContent = missing.length === 1 ? "Essa pergunta é obrigatória — responda antes de continuar." : "Há perguntas obrigatórias sem resposta — responda antes de continuar.";
+    errEl.style.display = "block";
+    missing.forEach(function (q) {
+      var el = document.getElementById("f-" + q.key + (q.type === "scale+text" ? "-txt" : ""));
+      if (el) el.style.borderColor = "var(--coral)";
+    });
+    errEl.scrollIntoView({ block: "nearest" });
+    return false;
+  }
 
   function renderNav() {
     document.getElementById("step-count").textContent = current + " de " + steps.length;
     document.getElementById("step-label").textContent = steps[current - 1].label;
     document.getElementById("step-bar").innerHTML = '<div class="step-dots">' + steps.map(function (s) { return '<div class="sd' + (s.n <= current ? " done" : "") + '"></div>'; }).join("") + '</div>';
     document.querySelectorAll(".step-panel").forEach(function (p) { p.classList.toggle("active", parseInt(p.getAttribute("data-step-panel"), 10) === current); });
+    document.getElementById("step-error").style.display = "none";
     document.getElementById("wizard-nav").innerHTML =
       (current > 1 ? '<button class="btn btn-secondary" id="btn-back">Voltar</button>' : "") +
       '<button class="btn btn-primary" id="btn-next">' + (current === steps.length ? "Enviar check-in" : "Continuar") + '</button>';
     document.getElementById("btn-next").addEventListener("click", function () {
+      if (!validateStep(steps[current - 1].n)) return;
       if (current === steps.length) { submit(); return; }
       current++; renderNav(); window.scrollTo(0, 0);
     });
@@ -151,7 +214,11 @@
   }
   renderNav();
 
-  document.getElementById("f-dieta").addEventListener("input", function (e) { document.getElementById("dieta-val").textContent = e.target.value; });
+  questions.forEach(function (q) {
+    if (q.type !== "scale+text") return;
+    var rangeEl = document.getElementById("f-" + q.key);
+    if (rangeEl) rangeEl.addEventListener("input", function (e) { document.getElementById(q.key + "-val").textContent = e.target.value; });
+  });
   document.querySelectorAll('[data-step]').forEach(function (btn) {
     btn.addEventListener("click", function () {
       var key = btn.getAttribute("data-step"), d = parseInt(btn.getAttribute("data-d"), 10);
@@ -159,15 +226,17 @@
       document.getElementById(key + "-val").textContent = state[key];
     });
   });
-  var periodoEl = document.getElementById("f-periodo");
-  if (periodoEl) {
-    periodoEl.querySelectorAll(".yn-opt").forEach(function (opt) {
+  questions.forEach(function (q) {
+    if (q.type !== "yesno") return;
+    var wrap = document.getElementById("f-" + q.key);
+    if (!wrap) return;
+    wrap.querySelectorAll(".yn-opt").forEach(function (opt) {
       opt.addEventListener("click", function () {
-        periodoEl.querySelectorAll(".yn-opt").forEach(function (o) { o.classList.remove("sel"); });
+        wrap.querySelectorAll(".yn-opt").forEach(function (o) { o.classList.remove("sel"); });
         opt.classList.add("sel");
       });
     });
-  }
+  });
   document.querySelectorAll('[data-angle-input]').forEach(function (input) {
     input.addEventListener("change", function (e) {
       var slot = input.closest(".upload-slot");
@@ -182,37 +251,129 @@
     });
   });
 
-  function submit() {
-    var qaPayload = {
-      dieta: document.getElementById("f-dieta-txt").value.trim(),
-      refeicaoLivre: document.getElementById("f-refeicao").value.trim(),
-      beliscos: document.getElementById("f-beliscos").value.trim(),
-      performanceTreino: document.getElementById("f-performance").value.trim()
-    };
-    if (Trackly.isTracked(client, "cardio")) qaPayload.cardioDetalhe = document.getElementById("f-cardio-txt").value.trim();
-    var periodoSelEl = document.getElementById("f-periodo");
-    if (periodoSelEl) qaPayload.periodoMenstrual = periodoSelEl.querySelector(".yn-opt.sel").getAttribute("data-v") === "sim" ? "Sim." : "Não.";
-    var sonoTxtEl = document.getElementById("f-sono-txt");
-    if (sonoTxtEl) qaPayload.sono = sonoTxtEl.value.trim();
-    if (Trackly.isTracked(client, "digestion")) qaPayload.digestao = document.getElementById("f-digestao").value.trim();
-    if (Trackly.isTracked(client, "emotional")) qaPayload.emocional = document.getElementById("f-emocional").value.trim();
-    qaPayload.substancias = document.getElementById("f-substancias").value.trim();
-    var exameEl = document.getElementById("f-exame");
-    if (exameEl && exameEl.value.trim()) qaPayload.exame = exameEl.value.trim();
-
-    var dietaScore = parseInt(document.getElementById("f-dieta").value, 10);
-    var pesoEl = document.getElementById("f-peso");
-    var aguaEl = document.getElementById("f-agua");
-    var sonoEl = document.getElementById("f-sono");
-    Trackly.submitCheckin(client.id, {
-      weight: Trackly.isTracked(client, "weight") ? (parseFloat(pesoEl.value) || cur.metrics.weight) : null,
-      adherence: Trackly.clamp(dietaScore * 10, 0, 100),
-      workouts: Trackly.isTracked(client, "workouts") ? state.treinos : null,
-      cardio: Trackly.isTracked(client, "cardio") ? state.cardio : null,
-      water: (aguaEl && Trackly.isTracked(client, "water")) ? (parseFloat(aguaEl.value) || cur.metrics.water) : null,
-      sleep: (sonoEl && Trackly.isTracked(client, "sleep")) ? (parseFloat(sonoEl.value) || cur.metrics.sleep) : null,
-      qa: qaPayload
+  // rascunho local (brief TODO §18 — "permitir salvar automaticamente"): nunca chama
+  // Trackly.submitCheckin nem toca o ciclo, é só o formulário sobrevivendo a um reload/troca de
+  // aba antes do envio de verdade. Some assim que o check-in é enviado ou concluído por outra via.
+  var DRAFT_KEY = "trackly_checkin_draft_" + client.id + "_" + week.weekNumber;
+  function collectDraft() {
+    var fields = {};
+    questions.forEach(function (q) {
+      if (q.type === "yesno") {
+        var wrap = document.getElementById("f-" + q.key);
+        var sel = wrap && wrap.querySelector(".yn-opt.sel");
+        fields[q.key] = sel ? sel.getAttribute("data-v") : null;
+        return;
+      }
+      var el = document.getElementById("f-" + q.key);
+      if (el && "value" in el) fields[q.key] = el.value;
+      var txtEl = document.getElementById("f-" + q.key + "-txt");
+      if (txtEl) fields[q.key + "-txt"] = txtEl.value;
     });
+    return { fields: fields, state: state };
+  }
+  function restoreDraft() {
+    var raw;
+    try { raw = localStorage.getItem(DRAFT_KEY); } catch (e) { return; }
+    if (!raw) return;
+    var draft;
+    try { draft = JSON.parse(raw); } catch (e) { return; }
+    if (draft.state) Object.keys(draft.state).forEach(function (k) { if (state[k] != null) state[k] = draft.state[k]; });
+    questions.forEach(function (q) {
+      if (q.type === "stepper") {
+        var sv = document.getElementById(q.key + "-val");
+        if (sv) sv.textContent = state[q.key];
+        return;
+      }
+      if (q.type === "yesno") {
+        var wrap = document.getElementById("f-" + q.key);
+        var v = draft.fields && draft.fields[q.key];
+        if (wrap && v) wrap.querySelectorAll(".yn-opt").forEach(function (o) { o.classList.toggle("sel", o.getAttribute("data-v") === v); });
+        return;
+      }
+      var el = document.getElementById("f-" + q.key);
+      if (el && draft.fields && draft.fields[q.key] != null) {
+        el.value = draft.fields[q.key];
+        if (q.type === "scale+text") { var d = document.getElementById(q.key + "-val"); if (d) d.textContent = el.value; }
+      }
+      var txtEl = document.getElementById("f-" + q.key + "-txt");
+      if (txtEl && draft.fields && draft.fields[q.key + "-txt"] != null) txtEl.value = draft.fields[q.key + "-txt"];
+    });
+  }
+  var draftSaveTimer;
+  function scheduleDraftSave() {
+    clearTimeout(draftSaveTimer);
+    draftSaveTimer = setTimeout(function () {
+      try { localStorage.setItem(DRAFT_KEY, JSON.stringify(collectDraft())); } catch (e) {}
+      var ind = document.getElementById("save-indicator");
+      if (ind) { ind.classList.add("show"); setTimeout(function () { ind.classList.remove("show"); }, 1200); }
+    }, 400);
+  }
+  restoreDraft();
+  var ciForm = document.getElementById("ci-form");
+  ciForm.addEventListener("input", scheduleDraftSave);
+  ciForm.addEventListener("change", scheduleDraftSave);
+  // limpa o destaque de erro assim que o aluno começa a corrigir o campo obrigatório
+  ciForm.addEventListener("input", function (e) {
+    if (e.target && e.target.style) e.target.style.borderColor = "";
+    document.getElementById("step-error").style.display = "none";
+  });
+  ciForm.addEventListener("click", function (e) {
+    if (e.target.closest("[data-step]") || e.target.closest(".yn-opt")) scheduleDraftSave();
+  });
+
+  // V14 §6 — a coleta não conhece mais campos fixos: cada pergunta do template sabe, pelo seu
+  // `type`, onde a resposta deveria ir — em `metrics[tracks]` (quando produz um número que
+  // alimenta uma métrica) ou em `qa[key]` (todo o resto, sempre em texto livre). Fotos ficam
+  // só de preview — o protótipo não tem backend de arquivo, igual antes.
+  function fallbackMetric(tracks) { return cur.metrics[tracks] != null ? cur.metrics[tracks] : null; }
+  function submit() {
+    var metrics = {}, qa = {};
+    questions.forEach(function (q) {
+      switch (q.type) {
+        case "number": {
+          var el = document.getElementById("f-" + q.key);
+          var v = el ? parseFloat(el.value) : NaN;
+          if (q.tracks) { var mv = isNaN(v) ? fallbackMetric(q.tracks) : v; if (mv != null) metrics[q.tracks] = mv; }
+          else if (!isNaN(v)) qa[q.key] = v;
+          break;
+        }
+        case "stepper": {
+          var sv = state[q.key] != null ? state[q.key] : 0;
+          if (q.tracks) metrics[q.tracks] = sv; else qa[q.key] = sv;
+          break;
+        }
+        case "scale+text": {
+          var rangeEl = document.getElementById("f-" + q.key);
+          var scoreVal = rangeEl ? parseInt(rangeEl.value, 10) : null;
+          if (q.tracks && scoreVal != null) metrics[q.tracks] = Trackly.clamp(scoreVal * 10, 0, 100);
+          var txtEl = document.getElementById("f-" + q.key + "-txt");
+          if (txtEl) qa[q.key] = txtEl.value.trim();
+          break;
+        }
+        case "number+text": {
+          var numEl = document.getElementById("f-" + q.key);
+          var nv = numEl ? parseFloat(numEl.value) : NaN;
+          if (q.tracks) { var nmv = isNaN(nv) ? fallbackMetric(q.tracks) : nv; if (nmv != null) metrics[q.tracks] = nmv; }
+          var t2 = document.getElementById("f-" + q.key + "-txt");
+          if (t2) qa[q.key] = t2.value.trim();
+          break;
+        }
+        case "yesno": {
+          var ynEl = document.getElementById("f-" + q.key);
+          if (ynEl) { var sel = ynEl.querySelector(".yn-opt.sel"); qa[q.key] = (sel && sel.getAttribute("data-v") === "sim") ? "Sim." : "Não."; }
+          break;
+        }
+        case "text": {
+          var tEl = document.getElementById("f-" + q.key);
+          if (tEl) qa[q.key] = tEl.value.trim();
+          break;
+        }
+        default: break; // photos — sem persistência, só preview local
+      }
+    });
+
+    Trackly.submitCheckin(client.id, { metrics: metrics, qa: qa });
+    try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
 
     document.getElementById("ci-form").style.display = "none";
     var el = document.getElementById("ci-confirm");
@@ -227,6 +388,13 @@
       '<a href="dashboard.html?client=' + client.id + '" class="btn btn-primary">Voltar ao início</a></div>';
   }
 })();
+</script>
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(function () {});
+    });
+  }
 </script>
 </body>
 </html>

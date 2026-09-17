@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../assets/css/base.css?v=12">
+<link rel="stylesheet" href="../assets/css/base.css?v=14">
 <style>
   .review-wrap { max-width: 640px; }
   .review-head { margin-bottom: 22px; }
@@ -51,11 +51,11 @@
   </main>
 </div>
 
-<script src="../assets/js/storage.js?v=12"></script>
-<script src="../assets/js/data.js?v=12"></script>
+<script src="../assets/js/storage.js?v=13"></script>
+<script src="../assets/js/data.js?v=16"></script>
 <script src="../assets/js/icons.js?v=12"></script>
-<script src="../assets/js/charts.js?v=12"></script>
-<script src="../assets/js/nav.js?v=12"></script>
+<script src="../assets/js/charts.js?v=13"></script>
+<script src="../assets/js/nav.js?v=14"></script>
 <script>
 (function () {
   var params = new URLSearchParams(location.search);
@@ -73,10 +73,13 @@
       '<a href="cliente.html?id=' + client.id + '" class="btn btn-secondary">Ver perfil do cliente</a></div>';
     return;
   }
-  Trackly.markReviewOpened(client.id);
+  // abrir esta tela é a transição checkin_received -> under_review do ciclo (idempotente:
+  // uma semana que já tem rascunho ou orientação enviada nunca volta pra "em avaliação")
+  Trackly.markUnderReview(client.id, cur.weekNumber);
   var evalStatus = Trackly.computeStatus(client);
   var qa = cur.qa || {};
-  var suggestedFocus = Trackly.focusLabel(client);
+  var draft = cur.orientationDraft || null; // rascunho salvo antes (mesma semana), se houver
+  var suggestedFocus = draft && draft.focusOverride ? draft.focusOverride : Trackly.focusLabel(client);
 
   var qaKeyTracks = { cardioDetalhe: "cardio", performanceTreino: "workouts", digestao: "digestion", emocional: "emotional" };
   var qaLabels = [
@@ -94,7 +97,8 @@
 
   var goalIcons = { water: ICONS.drop, sleep: ICONS.moon, workouts: ICONS.dumbbell, cardio: ICONS.run };
   var goalFieldsHtml = Trackly.trackedGoals(cur, client).filter(function (g) { return g.key !== "adherence"; }).map(function (g) {
-    return '<div class="m-field"><label>' + goalIcons[g.key] + g.label + (g.unit && g.unit !== "sessões" ? " (" + g.unit + ")" : "") + '</label><input type="number" step="' + (g.key === "workouts" || g.key === "cardio" ? "1" : "0.1") + '" value="' + g.target + '" data-key="' + g.key + '"></div>';
+    var draftTarget = draft && draft.nextGoals && draft.nextGoals[g.key] != null ? draft.nextGoals[g.key] : g.target;
+    return '<div class="m-field"><label>' + goalIcons[g.key] + g.label + (g.unit && g.unit !== "sessões" ? " (" + g.unit + ")" : "") + '</label><input type="number" step="' + (g.key === "workouts" || g.key === "cardio" ? "1" : "0.1") + '" value="' + draftTarget + '" data-key="' + g.key + '"></div>';
   }).join("");
 
   var photoAngles = [["front", "FRENTE"], ["back", "COSTAS"], ["side_l", "LAT."]];
@@ -256,7 +260,7 @@
 
     '<div style="margin-bottom:26px;">' +
       '<p class="section-label">Notas do coach</p>' +
-      '<textarea id="coach-note-input" rows="2" placeholder="Algo que não cabe nos números? (opcional, só você vê)" style="width:100%;border:1px solid var(--line-strong);border-radius:var(--radius-sm);padding:10px 13px;font-family:var(--font-body);font-size:13.5px;background:var(--surface);color:var(--ink);resize:vertical;">' + (cur.coachReview && cur.coachReview.note ? cur.coachReview.note : "") + '</textarea>' +
+      '<textarea id="coach-note-input" rows="2" placeholder="Algo que não cabe nos números? (opcional, só você vê)" style="width:100%;border:1px solid var(--line-strong);border-radius:var(--radius-sm);padding:10px 13px;font-family:var(--font-body);font-size:13.5px;background:var(--surface);color:var(--ink);resize:vertical;">' + ((draft && draft.note) || (cur.coachReview && cur.coachReview.note) || "") + '</textarea>' +
     '</div>' +
 
     '<div class="card card-pad" style="margin-bottom:18px;">' +
@@ -265,7 +269,8 @@
       '<label style="font-size:11.5px;font-weight:600;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:8px;">Foco da semana</label>' +
       '<input type="text" class="focus-input" id="focus-input" placeholder="Ex.: melhorar consistência do sono" value="' + suggestedFocus + '">' +
       '<label style="font-size:11.5px;font-weight:600;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:8px;">Orientação</label>' +
-      '<div class="field" style="margin-bottom:0;"><textarea id="orientation-input" rows="4" placeholder="Ex.: manter alimentação atual, aumentar água para 3L/dia, dormir pelo menos 7h30...">' + Trackly.suggestOrientation(client) + '</textarea></div>' +
+      '<div class="field" style="margin-bottom:0;"><textarea id="orientation-input" rows="4" placeholder="Ex.: manter alimentação atual, aumentar água para 3L/dia, dormir pelo menos 7h30...">' + (draft && draft.orientation ? draft.orientation : Trackly.suggestOrientation(client)) + '</textarea></div>' +
+      (draft ? '<p class="card-sub" id="draft-hint" style="margin:12px 0 0;">Rascunho salvo ' + Trackly.relativeLabel(draft.savedAt) + ' — ' + client.name.split(" ")[0] + ' ainda não recebeu nada.</p>' : '') +
     '</div>' +
 
     '<div class="card card-pad" style="margin-bottom:22px;">' +
@@ -276,7 +281,10 @@
       '</div>' +
     '</div>' +
 
-    '<button class="btn btn-primary btn-lg" id="send-orientation">Enviar orientação</button>';
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">' +
+      '<button class="btn btn-primary btn-lg" id="send-orientation">Enviar orientação</button>' +
+      '<button class="btn btn-secondary" id="save-draft">Salvar rascunho</button>' +
+    '</div>';
 
   document.getElementById("qa-toggle").addEventListener("click", function () {
     this.classList.toggle("open");
@@ -334,16 +342,40 @@
     angleTabsEl.querySelectorAll("button").forEach(function (b) { b.classList.toggle("active", b.getAttribute("data-angle") === angleState.angle); });
   }
 
-  document.getElementById("send-orientation").addEventListener("click", function () {
+  function readGoalInputs() {
     var goals = {};
     document.querySelectorAll("#metas-editor input[data-key]").forEach(function (input) {
       goals[input.getAttribute("data-key")] = parseFloat(input.value);
     });
+    return goals;
+  }
+
+  // Salvar sem enviar: o ciclo vai pra orientation_draft e o aluno continua sem ver nada.
+  document.getElementById("save-draft").addEventListener("click", function () {
+    Trackly.saveOrientationDraft(client.id, cur.weekNumber, {
+      orientation: document.getElementById("orientation-input").value.trim(),
+      focusOverride: document.getElementById("focus-input").value.trim() || null,
+      nextGoals: readGoalInputs(),
+      note: document.getElementById("coach-note-input").value.trim() || null
+    });
+    var hint = document.getElementById("draft-hint");
+    if (!hint) {
+      hint = document.createElement("p");
+      hint.className = "card-sub";
+      hint.id = "draft-hint";
+      hint.style.margin = "12px 0 0";
+      document.getElementById("orientation-input").closest(".card").appendChild(hint);
+    }
+    hint.textContent = "Rascunho salvo agora — " + client.name.split(" ")[0] + " ainda não recebeu nada.";
+    TracklyNav.toast("Rascunho salvo");
+  });
+
+  document.getElementById("send-orientation").addEventListener("click", function () {
     Trackly.completeOrientation(client.id, {
       focus: document.getElementById("focus-input").value.trim(),
       orientation: document.getElementById("orientation-input").value.trim(),
       note: document.getElementById("coach-note-input").value.trim(),
-      goals: goals
+      goals: readGoalInputs()
     });
 
     document.getElementById("review-body").style.display = "none";

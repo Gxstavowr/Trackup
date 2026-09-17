@@ -7,7 +7,16 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../assets/css/base.css?v=12">
+<link rel="stylesheet" href="../assets/css/base.css?v=14">
+<link rel="stylesheet" href="../assets/css/portal.css?v=14">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#FBF7F0">
+<link rel="icon" href="../assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="../assets/icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Trackly">
 <style>
   .journey-card { text-align: center; padding: 6px 0 20px; }
   .journey-card .weeks { font-size: 12.5px; color: var(--ink-faint); font-weight: 600; letter-spacing: .03em; margin-bottom: 14px; }
@@ -56,11 +65,11 @@
   <div id="shell-bottom-nav"></div>
 </div>
 
-<script src="../assets/js/storage.js?v=12"></script>
-<script src="../assets/js/data.js?v=12"></script>
+<script src="../assets/js/storage.js?v=13"></script>
+<script src="../assets/js/data.js?v=16"></script>
 <script src="../assets/js/icons.js?v=12"></script>
-<script src="../assets/js/charts.js?v=12"></script>
-<script src="../assets/js/nav.js?v=12"></script>
+<script src="../assets/js/charts.js?v=13"></script>
+<script src="../assets/js/nav.js?v=14"></script>
 <script>
 (function () {
   var params = new URLSearchParams(location.search);
@@ -72,9 +81,9 @@
 
   var kpi = Trackly.computeKPIs(client);
   var journeyItems = [
-    { l: "Peso", v: kpi.weightStart + "kg", now: kpi.weightNow + "kg" },
-    kpi.waistNow != null ? { l: "Cintura", v: kpi.waistStart + "cm", now: kpi.waistNow + "cm" } : null,
-    { l: "Aderência média", now: kpi.adherenceAvg + "%" }
+    Trackly.isTracked(client, "weight") ? { l: "Peso", v: kpi.weightStart + "kg", now: kpi.weightNow + "kg" } : null,
+    Trackly.isTracked(client, "measurements") && kpi.waistNow != null ? { l: "Cintura", v: kpi.waistStart + "cm", now: kpi.waistNow + "cm" } : null,
+    Trackly.isTracked(client, "adherence") ? { l: "Aderência média", now: kpi.adherenceAvg + "%" } : null
   ].filter(Boolean);
   document.getElementById("journey").innerHTML =
     '<div class="weeks">' + kpi.weeksElapsed + ' SEMANAS DE ACOMPANHAMENTO</div>' +
@@ -91,17 +100,27 @@
       b.addEventListener("click", function () { state.range = b.getAttribute("data-r"); render(); });
     });
 
-    var lastW = weeks[weeks.length - 1], prevW = weeks.length > 1 ? weeks[weeks.length - 2] : null;
-    var wkDelta = prevW ? Trackly.round1(lastW.metrics.weight - prevW.metrics.weight) : 0;
-    document.getElementById("weight-hero").innerHTML =
-      '<div class="hero-stat"><div class="value">' + lastW.metrics.weight + '<span class="unit">kg</span></div>' +
-      (prevW ? '<div class="delta" style="color:' + (Trackly.isGoodWeightDelta(client, wkDelta) ? "var(--brand)" : "var(--coral)") + ';">' + (wkDelta <= 0 ? "↓" : "↑") + ' ' + Math.abs(wkDelta) + 'kg esta semana</div>' : '') +
-      '</div>' +
-      (function () { var t = Trackly.trendLine(client); return t ? '<p style="font-size:13px;color:var(--ink-muted);margin:8px 0 0;">' + t + '</p>' : ""; })();
-    document.getElementById("chart-weight").innerHTML = Charts.lineChart({
-      data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.weight }; }),
-      height: 260, color: color, unit: "kg", maxXLabels: 6
-    });
+    // "esta semana" usa a última semana com check-in de verdade, não a última semana do
+    // período — quando o ciclo já avançou pra uma semana nova ainda pendente, ela só tem
+    // placeholders (peso copiado, aderência nula, tudo zerado), e usá-la aqui produzia
+    // "null%"/deltas quebrados nos chips (achado ao vivo na validação do item 36).
+    var submittedInRange = weeks.filter(function (w) { return w.metrics.adherence != null; });
+    var lastW = submittedInRange.length ? submittedInRange[submittedInRange.length - 1] : weeks[weeks.length - 1];
+    var prevW = submittedInRange.length > 1 ? submittedInRange[submittedInRange.length - 2] : null;
+    var weightTracked = Trackly.isTracked(client, "weight");
+    document.getElementById("weight-chart-card").style.display = weightTracked ? "" : "none";
+    if (weightTracked) {
+      var wkDelta = prevW ? Trackly.round1(lastW.metrics.weight - prevW.metrics.weight) : 0;
+      document.getElementById("weight-hero").innerHTML =
+        '<div class="hero-stat"><div class="value">' + lastW.metrics.weight + '<span class="unit">kg</span></div>' +
+        (prevW ? '<div class="delta" style="color:' + (Trackly.isGoodWeightDelta(client, wkDelta) ? "var(--brand)" : "var(--coral)") + ';">' + (wkDelta <= 0 ? "↓" : "↑") + ' ' + Math.abs(wkDelta) + 'kg esta semana</div>' : '') +
+        '</div>' +
+        (function () { var t = Trackly.trendLine(client, state.range); return t ? '<p style="font-size:13px;color:var(--ink-muted);margin:8px 0 0;">' + t + '</p>' : ""; })();
+      document.getElementById("chart-weight").innerHTML = Charts.lineChart({
+        data: weeks.map(function (w) { return { label: "S" + w.weekNumber, value: w.metrics.weight }; }),
+        height: 260, color: color, unit: "kg", maxXLabels: 6
+      });
+    }
 
     // Outros indicadores — sem gráfico próprio, só o essencial (valor + variação), pra não
     // "criar vários gráficos apenas pra preencher espaço" (brief V12 §25-26).
@@ -143,9 +162,9 @@
         '<div class="period-card">' +
         '<div class="weeks" style="text-align:left;margin-bottom:0;">' + period.weeksCount + ' SEMANAS SELECIONADAS</div>' +
         '<div class="period-stats">' +
-          '<div class="item"><div class="l">Peso</div><div class="v">' + (period.weightDelta > 0 ? "+" : "") + period.weightDelta + 'kg</div></div>' +
-          (period.waistDelta != null ? '<div class="item"><div class="l">Cintura</div><div class="v">' + (period.waistDelta > 0 ? "+" : "") + period.waistDelta + 'cm</div></div>' : '<div class="item"><div class="l">Aderência</div><div class="v">' + period.adherenceAvg + '%</div></div>') +
-          '<div class="item"><div class="l">Treinos</div><div class="v">' + period.workoutsTotal + '/' + period.workoutsGoalTotal + '</div></div>' +
+          (Trackly.isTracked(client, "weight") ? '<div class="item"><div class="l">Peso</div><div class="v">' + (period.weightDelta > 0 ? "+" : "") + period.weightDelta + 'kg</div></div>' : "") +
+          (Trackly.isTracked(client, "measurements") && period.waistDelta != null ? '<div class="item"><div class="l">Cintura</div><div class="v">' + (period.waistDelta > 0 ? "+" : "") + period.waistDelta + 'cm</div></div>' : (Trackly.isTracked(client, "adherence") ? '<div class="item"><div class="l">Aderência</div><div class="v">' + period.adherenceAvg + '%</div></div>' : "")) +
+          (Trackly.isTracked(client, "workouts") ? '<div class="item"><div class="l">Treinos</div><div class="v">' + period.workoutsTotal + '/' + period.workoutsGoalTotal + '</div></div>' : "") +
           (Trackly.isTracked(client, "sleep") ? '<div class="item"><div class="l">Sono médio</div><div class="v">' + period.sleepAvg + 'h</div></div>' : "") +
         '</div>' +
         '<p class="period-narrative"><strong>O que mudou</strong>' + period.narrative + '</p>' +
@@ -241,6 +260,13 @@
   }
   renderCompare();
 })();
+</script>
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(function () {});
+    });
+  }
 </script>
 </body>
 </html>

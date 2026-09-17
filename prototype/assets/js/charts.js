@@ -170,7 +170,10 @@
     if (tipEl) return tipEl;
     tipEl = document.createElement("div");
     tipEl.className = "chart-tooltip";
-    document.body.appendChild(tipEl);
+    // mesmo caso do drawer/toast em nav.js: precisa herdar os tokens de .portal (tema
+    // claro do aluno), senão o tooltip sai com as cores do tema escuro do coach — TODO §30
+    var portalRoot = document.querySelector(".portal");
+    (portalRoot || document.body).appendChild(tipEl);
     return tipEl;
   }
   function showTip(target, x, y) {

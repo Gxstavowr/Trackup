@@ -7,25 +7,29 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../assets/css/base.css?v=12">
+<link rel="stylesheet" href="../assets/css/base.css?v=14">
+<link rel="stylesheet" href="../assets/css/portal.css?v=14">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#FBF7F0">
+<link rel="icon" href="../assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="../assets/icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Trackly">
 <style>
   .wt-head { padding: 2px 0 4px; }
   .wt-head h1 { font-family: var(--font-display); font-size: clamp(1.25rem, 1.05rem + 1vw, 1.5rem); margin: 6px 0 6px; font-weight: 600; }
   .wt-head .meta { font-size: 13px; color: var(--ink-muted); }
-  .ex-preview-row { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--line); }
+  .ex-preview-row { display: flex; align-items: center; gap: 12px; padding: 14px 4px; border-bottom: 1px solid var(--line); }
   .ex-preview-row:last-child { border-bottom: none; }
-  .ex-preview-row .n { font-size: 14px; font-weight: 600; flex: 1; }
+  .ex-preview-row .n { font-size: 14.5px; font-weight: 600; flex: 1; }
   .ex-preview-row .t { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); }
-  .ex-card { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 16px 16px 18px; margin-bottom: 12px; background: var(--surface); }
-  .ex-card .n { font-size: 15px; font-weight: 700; margin-bottom: 3px; }
-  .ex-card .target { font-size: 12.5px; color: var(--ink-muted); margin-bottom: 10px; }
-  .ex-card .last { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-faint); background: var(--surface-sunken); border-radius: 999px; padding: 4px 10px; margin-bottom: 12px; }
-  .ex-card .last b { color: var(--ink-muted); font-weight: 600; }
-  .ex-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .ex-inputs .field { margin-bottom: 0; }
   .ex-inputs label { font-size: 11.5px; }
-  .ex-card .obs { font-size: 12.5px; color: var(--ink-faint); margin-top: 10px; font-style: italic; }
-  .ex-card.done { border-color: var(--brand-tint-strong); background: var(--brand-tint); }
+  .ex-step .obs { font-size: 12.5px; color: var(--ink-faint); margin: -8px 0 18px; font-style: italic; }
+  .ex-back { display: inline-flex; align-items: center; gap: 4px; background: none; border: none; color: var(--ink-faint); font-size: 12.5px; font-weight: 600; padding: 0; cursor: pointer; margin-bottom: 10px; }
+  .ex-back svg { transform: rotate(180deg); }
   .done-banner { text-align: center; padding: 36px 10px 20px; }
   .done-banner .icon { width: clamp(46px, 14vw, 56px); height: clamp(46px, 14vw, 56px); border-radius: 50%; background: var(--brand-tint); color: var(--brand); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
   .done-banner h2 { font-family: var(--font-display); font-size: 21px; margin: 0 0 6px; }
@@ -52,11 +56,11 @@
   <div id="shell-bottom-nav"></div>
 </div>
 
-<script src="../assets/js/storage.js?v=12"></script>
-<script src="../assets/js/data.js?v=12"></script>
+<script src="../assets/js/storage.js?v=13"></script>
+<script src="../assets/js/data.js?v=16"></script>
 <script src="../assets/js/icons.js?v=12"></script>
-<script src="../assets/js/charts.js?v=12"></script>
-<script src="../assets/js/nav.js?v=12"></script>
+<script src="../assets/js/charts.js?v=13"></script>
+<script src="../assets/js/nav.js?v=14"></script>
 <script>
 (function () {
   var params = new URLSearchParams(location.search);
@@ -79,66 +83,75 @@
 
   function renderPreview() {
     document.getElementById("preview-block").innerHTML =
-      '<div class="card card-pad" style="margin-bottom:18px;">' +
-        day.exercises.map(function (ex) {
-          var meta = Trackly.getExercise(ex.exerciseId);
-          return '<div class="ex-preview-row"><span class="n">' + meta.name + '</span><span class="t">' + ex.sets + '×' + ex.reps + (ex.rir != null ? ' · RIR ' + ex.rir : '') + '</span></div>';
-        }).join("") +
-      '</div>' +
-      '<button class="btn btn-primary btn-block btn-lg" id="start-btn">Começar treino</button>';
+      day.exercises.map(function (ex) {
+        var meta = Trackly.getExercise(ex.exerciseId);
+        return '<div class="ex-preview-row"><span class="n">' + meta.name + '</span><span class="t">' + ex.sets + '×' + ex.reps + (ex.rir != null ? ' · RIR ' + ex.rir : '') + '</span></div>';
+      }).join("") +
+      '<button class="btn btn-primary btn-block btn-lg" id="start-btn" style="margin-top:20px;">Começar treino</button>';
     document.getElementById("start-btn").addEventListener("click", function () {
       document.getElementById("preview-block").style.display = "none";
       document.getElementById("exec-block").style.display = "block";
-      renderExec();
+      step = 0;
+      renderStep();
     });
   }
 
-  function renderExec() {
+  // execução — um exercício por tela (V13 §10-11): mais próximo de um app real do que
+  // uma ficha inteira com inputs; os mesmos dados (carga/reps por exercício) continuam
+  // indo pro mesmo `entries`, e o fechamento chama exatamente o mesmo logWorkoutSession.
+  var step = 0;
+  function renderStep() {
+    var ex = day.exercises[step];
+    var meta = Trackly.getExercise(ex.exerciseId);
+    var last = lastFor(ex.exerciseId);
+    var saved = entries[ex.exerciseId];
+
     document.getElementById("exec-block").innerHTML =
-      day.exercises.map(function (ex, i) {
-        var meta = Trackly.getExercise(ex.exerciseId);
-        var last = lastFor(ex.exerciseId);
-        return (
-          '<div class="ex-card" data-ex-card="' + i + '">' +
-            '<div class="n">' + meta.name + '</div>' +
-            '<div class="target">' + ex.sets + ' séries × ' + ex.reps + ' reps' + (ex.rir != null ? ' · RIR ' + ex.rir : '') + ' · ' + ex.restSec + 's descanso</div>' +
-            (last ? '<div class="last">' + ICONS.trend + '<span>última vez: <b>' + last.lastLoad + 'kg × ' + last.lastReps + '</b></span></div>' : '<div class="last">Sem registro anterior</div>') +
-            '<div class="ex-inputs">' +
-              '<div class="field"><label>Carga hoje (kg)</label><input type="number" min="0" step="0.5" data-load="' + i + '" placeholder="' + (last ? last.lastLoad : "0") + '"></div>' +
-              '<div class="field"><label>Reps hoje</label><input type="number" min="0" data-reps="' + i + '" placeholder="' + (last ? last.lastReps : ex.reps) + '"></div>' +
-            '</div>' +
-            (ex.notes ? '<p class="obs">' + ex.notes + '</p>' : '') +
-          '</div>'
-        );
-      }).join("") +
-      '<button class="btn btn-primary btn-block btn-lg" id="finish-btn" style="margin-top:6px;">Concluir treino</button>';
+      '<div class="ex-dots">' + day.exercises.map(function (_, i) {
+        return '<div class="d' + (i < step ? " done" : i === step ? " current" : "") + '"></div>';
+      }).join("") + '</div>' +
+      (step > 0 ? '<button class="ex-back" id="ex-back">' + ICONS.chevronR + '<span>Anterior</span></button>' : '') +
+      '<div class="ex-step">' +
+        '<div class="ex-progress">EXERCÍCIO ' + (step + 1) + ' DE ' + day.exercises.length + '</div>' +
+        '<div class="ex-name">' + meta.name + '</div>' +
+        '<div class="ex-target">' + ex.sets + ' séries × ' + ex.reps + ' reps' + (ex.rir != null ? ' · RIR ' + ex.rir : '') + '</div>' +
+        '<div class="ex-rest">Descanso ' + ex.restSec + 's</div>' +
+        (last ? '<div class="ex-last">' + ICONS.trend + '<span>última vez: <b>' + last.lastLoad + 'kg × ' + last.lastReps + '</b></span></div>' : '') +
+        '<div class="ex-inputs">' +
+          '<div class="field"><label>Carga hoje (kg)</label><input type="number" min="0" step="0.5" inputmode="decimal" id="ex-load" value="' + (saved.load != null ? saved.load : "") + '" placeholder="' + (last ? last.lastLoad : "0") + '"></div>' +
+          '<div class="field"><label>Reps hoje</label><input type="number" min="0" inputmode="numeric" id="ex-reps" value="' + (saved.reps != null ? saved.reps : "") + '" placeholder="' + (last ? last.lastReps : ex.reps) + '"></div>' +
+        '</div>' +
+        (ex.notes ? '<p class="obs">' + ex.notes + '</p>' : '') +
+        '<button class="btn btn-primary btn-block btn-lg" id="ex-done">' + (step === day.exercises.length - 1 ? "Concluir treino" : "Concluído — próximo") + '</button>' +
+      '</div>';
 
-    day.exercises.forEach(function (ex, i) {
-      var loadEl = document.querySelector('[data-load="' + i + '"]');
-      var repsEl = document.querySelector('[data-reps="' + i + '"]');
-      loadEl.addEventListener("input", function () { entries[ex.exerciseId].load = loadEl.value === "" ? null : parseFloat(loadEl.value); markDone(i); });
-      repsEl.addEventListener("input", function () { entries[ex.exerciseId].reps = repsEl.value === "" ? null : parseInt(repsEl.value, 10); markDone(i); });
-    });
-    function markDone(i) {
-      var card = document.querySelector('[data-ex-card="' + i + '"]');
-      var ex = day.exercises[i];
-      card.classList.toggle("done", entries[ex.exerciseId].load != null && entries[ex.exerciseId].reps != null);
-    }
+    var backBtn = document.getElementById("ex-back");
+    if (backBtn) backBtn.addEventListener("click", function () { step--; renderStep(); });
 
-    document.getElementById("finish-btn").addEventListener("click", function () {
-      var payload = day.exercises.map(function (ex) {
-        return { exerciseId: ex.exerciseId, load: entries[ex.exerciseId].load, reps: entries[ex.exerciseId].reps };
-      });
-      Trackly.logWorkoutSession(client.id, day.id, payload);
-      document.getElementById("exec-block").style.display = "none";
-      document.getElementById("done-block").style.display = "block";
-      document.getElementById("done-block").innerHTML =
-        '<div class="done-banner">' +
-          '<div class="icon">' + ICONS.check + '</div>' +
-          '<h2>Treino registrado!</h2>' +
-          '<p>Seu progresso foi salvo e já entra na sua semana de acompanhamento.</p>' +
-        '</div>';
+    document.getElementById("ex-done").addEventListener("click", function () {
+      var loadVal = document.getElementById("ex-load").value;
+      var repsVal = document.getElementById("ex-reps").value;
+      entries[ex.exerciseId].load = loadVal === "" ? null : parseFloat(loadVal);
+      entries[ex.exerciseId].reps = repsVal === "" ? null : parseInt(repsVal, 10);
+      if (step < day.exercises.length - 1) { step++; renderStep(); }
+      else finishWorkout();
     });
+  }
+
+  function finishWorkout() {
+    var payload = day.exercises.map(function (ex) {
+      return { exerciseId: ex.exerciseId, load: entries[ex.exerciseId].load, reps: entries[ex.exerciseId].reps };
+    });
+    Trackly.logWorkoutSession(client.id, day.id, payload);
+    document.getElementById("exec-block").style.display = "none";
+    document.getElementById("done-block").style.display = "block";
+    document.getElementById("done-block").innerHTML =
+      '<div class="done-banner">' +
+        '<div class="icon">' + ICONS.check + '</div>' +
+        '<h2>Treino registrado!</h2>' +
+        '<p>Seu progresso foi salvo e já entra na sua semana de acompanhamento.</p>' +
+        '<a href="dashboard.html?client=' + client.id + '" class="btn btn-secondary" style="margin-top:18px;">Voltar ao início</a>' +
+      '</div>';
   }
 
   var otherDays = client.workout.days.filter(function (d) { return d.id !== day.id; });
@@ -158,6 +171,13 @@
 
   renderPreview();
 })();
+</script>
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(function () {});
+    });
+  }
 </script>
 </body>
 </html>
