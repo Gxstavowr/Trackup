@@ -278,6 +278,62 @@ Two things block or de-risk almost everything else and should come first regardl
 
 ---
 
+---
+
+## Addendum (2026-09-17) — refresh for MASTER TODO — EVOLUÇÃO DO TRACKLY, item 1
+
+Everything above is the original audit from before the previous TODO's items 6-38 were built and
+verified live (see `ARCHITECTURE.md`'s V13-V18 changelog and the git log for the full list — photo
+comparison, multi-channel notifications in-app layer, editable payments/subscriptions, student PWA
+manifest+service worker, a full responsive pass, empty/error states, and an end-to-end integration
+pass that found and fixed 4 real cross-cutting bugs). Most of items 21/22/30/33/34/36 in the *old*
+audit's numbered list (§21-§38 above) moved from "not started"/"partial" to "satisfied" as a result.
+This addendum answers item 1 of the *new* master TODO specifically — preserve/reuse vs. rebuild —
+without repeating the file-by-file inventory above, which is still accurate for structure/routes.
+
+**What should be preserved as-is (works well, don't rebuild):** the weekly-cycle state machine
+(`cycleStatus`/`cycleStatusHistory` in `data.js`), the check-in→review→orientation→next-week loop,
+the coach-memory/insight functions (`buildCoachMemory`, `checkInInsights`, `trendLine` — genuinely
+good, rule-based, honest about their data-minimum gates), the drawer/toast/compare-slider shared
+components in `base.css`, and the WhatsApp deep-link message builders. These are product logic and
+UX decisions, not implementation debt — a visual or architectural refactor should carry them
+forward, not redo them.
+
+**Mocks / localStorage / simulated behavior (all of it lives in `assets/js/data.js` and
+`assets/js/storage.js`)**: the 4 seed clients and all their weeks are procedurally generated
+(`buildWeeks()`); every mutation (check-in submit, orientation, workout/nutrition edits, payments,
+notifications) is persisted via `TracklyStore.patchClient()` to a single `trackly_v4_state`
+localStorage key and re-merged on load via `applyStoredOverrides()`. `paymentProvider.charge/refund`
+are explicit no-op stubs. Push/e-mail notification channels are marked `"declared"`, never sent.
+This is the entire surface item 2-5 (real backend) needs to replace — see the "camada de dados"
+note in `ARCHITECTURE.md` (`lib/repository.ts` is already planned as the seam: swap the mock
+implementation for a real one behind the same function signatures, screens don't change).
+
+**Duplication worth collapsing (relevant to item 33):** `data.js` is 2043 lines and mixes three
+concerns that should eventually separate — (a) seed/mock data generation, (b) business logic
+(status computation, KPI/trend calculation, the notification/payment event dispatchers), and
+(c) the localStorage persistence bridge. Coach-side pages (`coach/cliente.html` alone is ~2000
+lines) build every panel's HTML via large string-concatenation render functions
+(`renderPagamentos()`, `renderTreino()`, `renderFotos()`, etc.) repeated with only small variations
+across `coach/cliente.html` and the standalone `coach/treino.html`/`coach/nutricao.html` pages —
+the standalone builder pages and the in-profile tabs duplicate nearly identical rendering logic
+for the same workout/nutrition editors. The `.hero-stat`/`.list-row`/`.compare-slider`/`.card-pad`
+CSS components are already well-factored and reused correctly — that part doesn't need rework.
+
+**Reusable-component candidates for a real componentized frontend:** the stat-chip row, the
+compare-slider (photo/metric before-after), the week-history drawer body, the empty-state block,
+and the plan/subscription edit form are each duplicated 2-4 times across coach/portal pages with
+copy-pasted markup-building functions — natural candidates to become actual reusable
+functions/components once item 33's refactor happens.
+
+**Dependency note before restructuring nav/IA (items 6-13):** `coach/cliente.html`'s tab router
+reads `location.hash` for deep-linking (`#avaliacao`, `#pagamentos`, etc.) — several other pages
+link directly to those hashes (`coach/dashboard.html`, `coach/clientes.html`, `coach/revisar.html`'s
+"Ver histórico"). Any nav/IA restructuring must keep those hash targets working or update every
+inbound link in the same pass, or those links will silently land on the wrong tab.
+
+---
+
 ## Appendix: files read (all in full)
 
 Coach: `coach/dashboard.html`, `coach/clientes.html`, `coach/cliente.html`, `coach/revisar.html`, `coach/treino.html`, `coach/nutricao.html`, `coach/financeiro.html`

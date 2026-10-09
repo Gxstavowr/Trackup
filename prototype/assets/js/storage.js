@@ -9,14 +9,45 @@
   "use strict";
   var KEY = "trackly_v4_state";
 
+  // Dados que NUNCA vão pro localStorage (regra do projeto): dados pessoais (e-mail/telefone) e
+  // histórico de transações financeiras. Removidos aqui, na única porta de escrita/leitura — vale
+  // pra qualquer chamador e também limpa o que já estava salvo antes desta regra.
+  var PERSONAL_FIELDS = ["email", "phone", "cpf", "address"];
+  var FINANCIAL_FIELDS = ["paymentSettled", "paymentsRefunded", "paymentsEvents", "paymentsHistory"];
+
+  function omit(obj, fields) {
+    if (!obj || typeof obj !== "object") return obj;
+    var out = Object.assign({}, obj);
+    fields.forEach(function (f) { delete out[f]; });
+    return out;
+  }
+  function sanitize(state) {
+    var s = Object.assign({}, state);
+    if (Array.isArray(s.manualClients)) {
+      s.manualClients = s.manualClients.map(function (c) { return omit(c, PERSONAL_FIELDS); });
+    }
+    if (s.clients && typeof s.clients === "object") {
+      var clients = {};
+      Object.keys(s.clients).forEach(function (id) {
+        clients[id] = omit(s.clients[id], PERSONAL_FIELDS.concat(FINANCIAL_FIELDS));
+      });
+      s.clients = clients;
+    }
+    return s;
+  }
+
   function load() {
     try {
       var raw = localStorage.getItem(KEY);
-      return raw ? JSON.parse(raw) : {};
+      if (!raw) return {};
+      var parsed = JSON.parse(raw);
+      var clean = sanitize(parsed);
+      if (JSON.stringify(clean) !== raw) localStorage.setItem(KEY, JSON.stringify(clean)); // limpa dado antigo
+      return clean;
     } catch (e) { return {}; }
   }
   function save(state) {
-    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* localStorage indisponível — degrada pra sessão em memória */ }
+    try { localStorage.setItem(KEY, JSON.stringify(sanitize(state))); } catch (e) { /* localStorage indisponível — degrada pra sessão em memória */ }
   }
 
   function get() {

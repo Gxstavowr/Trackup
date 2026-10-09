@@ -13,24 +13,77 @@ real vai ter. Quando Node estiver disponível, o plano abaixo (stack de produç�
 o app Next.js real, reaproveitando o design system (`prototype/assets/css/tokens.css`) e o
 modelo de dados (schema abaixo) quase 1:1.
 
-## Stack de produção (alvo)
+## Decisão de arquitetura (final — item 2 do master TODO)
+
+**Supabase (Postgres + Auth + Storage), nunca Firebase.** Decisão definitiva, não revisitada a
+cada sessão: Postgres relacional encaixa melhor no modelo já desenhado abaixo (semanas, ciclos,
+métricas por semana — tudo relacional com chaves estrangeiras claras, não documentos aninhados);
+Row Level Security dá isolamento multi-tenant no próprio banco (não em código de aplicação, que
+é o requisito de segurança do item 35); Auth+Storage+Postgres do Supabase cobrem tudo que o
+produto precisa sem misturar dois provedores. Nenhuma parte do produto deve rodar em paralelo
+sobre Firebase — se algum protótipo ou experimento tiver usado Firebase em algum momento, deve
+ser removido, não mantido "por via das dúvidas".
 
 - **Frontend/Backend**: Next.js (App Router) + TypeScript — SSR para o dashboard do coach,
-  client components para os fluxos interativos (check-in, gráficos).
-- **Banco**: PostgreSQL.
-- **Auth**: Supabase Auth (email/senha + magic link). Duas roles: `coach`, `client`.
+  client components para os fluxos interativos (check-in, gráficos). Server Actions do Next.js
+  são a "camada de funções de backend" (criar orientação, registrar pagamento, disparar
+  notificação) — sem uma camada de functions separada (Supabase Edge Functions só entram se
+  algo precisar rodar fora do ciclo de vida de uma requisição Next, ex.: webhook de pagamento).
+- **Banco**: PostgreSQL (Supabase).
+- **Auth**: Supabase Auth (email/senha + magic link). Duas roles: `coach`, `client`. Sessão
+  persistente via cookie do Supabase Auth Helpers; cada rota do dashboard/portal verifica a
+  role no servidor antes de renderizar (nunca só no cliente — item 35: "não confiar somente em
+  verificações JavaScript").
 - **Isolamento multi-tenant**: toda tabela de negócio carrega `account_id`. Row Level Security
   no Postgres garante que uma query nunca vaza dados entre contas — isso é tratado como
   requisito de arquitetura desde o dia 1 (seção 18 do brief: dados são de saúde/condicionamento
   físico), não como algo pra adicionar depois.
 - **Storage**: Supabase Storage (fotos de evolução, um bucket privado por conta, path
-  `account_id/client_id/...`).
+  `account_id/client_id/...`, URLs assinadas com expiração curta — nunca um bucket público).
 - **Gráficos**: Recharts.
 - **UI**: Tailwind CSS + componentes próprios (sem lib de componentes genérica — a identidade
-  visual é o diferencial, ver design tokens).
+  visual é o diferencial, ver design tokens e a seção de identidade visual abaixo).
 - **Camada de dados**: `lib/repository.ts` — todo acesso a dado passa por funções
   (`getClients(accountId)`, `getCheckIns(clientId)`, ...). Hoje a implementação pode ser mock,
   depois Postgres via Prisma/Drizzle — as telas não mudam.
+
+### Schema SQL pronto pra rodar
+
+`supabase/migrations/0001_init.sql` já implementa o modelo de dados completo abaixo (check-in,
+treino, nutrição, pagamentos, notificações) com RLS habilitado em toda tabela desde a criação —
+basta `supabase db push` assim que o projeto existir (ver bloqueio abaixo). Nada disso foi rodado
+contra um banco real ainda.
+
+### Bloqueio real: provisionamento (registrado em "Tasks for Gustavo")
+
+Esta decisão é só o desenho — nada disso pode ser *implementado* de verdade nesta máquina hoje:
+não há projeto Supabase criado (precisa de conta + criação do projeto + chaves de API), e não há
+Node.js instalado (`node`/`npm` não existem neste ambiente), pré-requisito pro Next.js real
+existir como código executável. Até esses dois itens serem resolvidos pelo usuário, o trabalho
+possível é: schema SQL pronto pra rodar assim que o projeto existir, a camada `lib/repository.ts`
+como *interface* (specs de função, ainda sobre o mock atual), e tudo que não depende de backend
+(IA/UX, identidade visual, refino do protótipo estático).
+
+### Estratégia de migração do localStorage → dados reais
+
+1. **Schema primeiro** (ver `Modelo de dados` abaixo) — criar as tabelas reais no Postgres antes
+   de tocar em qualquer tela.
+2. **`lib/repository.ts` como a única porta de entrada pro dado**, em ambos os lados: hoje o
+   protótipo estático já segue essa disciplina informalmente (todo acesso a dado passa por
+   funções expostas em `Trackly`/`TracklyStore` — nunca leitura direta de `localStorage` nas
+   páginas). Migrar é trocar a IMPLEMENTAÇÃO dessas funções (de ler `localStorage`/array
+   em memória pra fazer query no Postgres via Supabase client), mantendo a mesma assinatura —
+   as telas não sabem a diferença.
+3. **Sem migração de dado real**: os 4 clientes fictícios e seus dados são só demonstração —
+   não existe base de usuários reais em produção pra migrar hoje. "Migração" aqui significa
+   trocar a fonte de dados do protótipo, não preservar linhas específicas de um `localStorage`
+   de alguém.
+4. **Preservar comportamento durante a transição**: o protótipo estático continua existindo e
+   funcionando em paralelo enquanto o app Next.js é construído — nenhuma tela do protótipo deve
+   ser removida ou quebrada até o equivalente real estar no ar e verificado. As duas versões não
+   compartilham dado (o protótipo é só localStorage local), então não há risco de uma migração
+   malfeita corromper nada; o risco real é regressão de comportamento/UX entre as duas versões,
+   por isso o modelo de dados abaixo é desenhado pra espelhar 1:1 o que `data.js` já faz.
 
 ## Modelo de dados
 
@@ -287,6 +340,12 @@ Nada disso é uma reorganização possível dentro de HTML/CSS/JS estático — 
 qual a seção "Stack de produção" já existe neste documento. O protótipo intencionalmente
 não simula autenticação (simular login sem backend real ensinaria o hábito errado: dar a
 sensação de que "tem login" quando não tem controle de acesso nenhum por trás).
+
+### LGPD (app real)
+
+Consentimento versionado, direitos do titular e trilha de evidência estão documentados em
+`docs/lgpd.md` (inventário de dados, papéis controlador/operador, suboperadores, retenção e
+pendências). Migration: `supabase/migrations/0010_lgpd_consent_and_rights.sql`.
 
 ## Inventário de telas do MVP
 

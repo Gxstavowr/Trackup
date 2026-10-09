@@ -10,7 +10,7 @@
  *
  * Versionamento: segue o mesmo padrão manual de "?v=NN" já usado nos
  * <link>/<script> das páginas — bump o número abaixo quando os assets
- * mudarem de versão (hoje: css v14, storage.js v13, data.js v16, icons.js
+ * mudarem de versão (hoje: css v15, storage.js v13, data.js v16, icons.js
  * v12, charts.js v13, nav.js v14). Lembrete pra próxima mudança: bumpar
  * CACHE_VERSION junto, senão o SW continua servindo os bytes antigos pro
  * navigator mesmo com o arquivo já atualizado no disco (foi exatamente o
@@ -19,7 +19,7 @@
  */
 "use strict";
 
-var CACHE_VERSION = "trackly-portal-v7";
+var CACHE_VERSION = "trackly-portal-v8";
 
 /* Shell do portal — HTML, CSS, JS, manifest e ícones. Caminhos relativos a
  * este arquivo (portal/sw.js), incluindo as mesmas query strings "?v=NN"
@@ -34,8 +34,8 @@ var PRECACHE_URLS = [
   "./conta.html",
   "./pagamento.html",
   "./manifest.json",
-  "../assets/css/base.css?v=14",
-  "../assets/css/portal.css?v=14",
+  "../assets/css/base.css?v=15",
+  "../assets/css/portal.css?v=15",
   "../assets/js/storage.js?v=13",
   "../assets/js/data.js?v=16",
   "../assets/js/icons.js?v=12",

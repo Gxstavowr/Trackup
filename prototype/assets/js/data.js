@@ -131,6 +131,29 @@
     return CYCLE_STATUS.CHECKIN_RECEIVED;
   }
   function cycleStatusOf(week) { return week ? (week.cycleStatus || deriveCycleStatus(week)) : CYCLE_STATUS.AWAITING_CHECKIN; }
+
+  // V18 §9 — vocabulário canônico de status OPERACIONAL (nunca financeiro): um rótulo humano fixo
+  // por estágio do ciclo, usado em todo pill/label de "avaliação" (dashboard, roster, perfil do
+  // aluno, área de Avaliações). Existe pra nenhuma tela inventar sua própria variação de texto pro
+  // mesmo estágio — a UI toda lê daqui, não escreve string solta.
+  var CYCLE_STATUS_LABEL = {};
+  CYCLE_STATUS_LABEL[CYCLE_STATUS.AWAITING_CHECKIN] = "Aguardando check-in";
+  CYCLE_STATUS_LABEL[CYCLE_STATUS.CHECKIN_RECEIVED] = "Avaliação pendente";
+  CYCLE_STATUS_LABEL[CYCLE_STATUS.UNDER_REVIEW] = "Em avaliação";
+  CYCLE_STATUS_LABEL[CYCLE_STATUS.ORIENTATION_DRAFT] = "Orientação em rascunho";
+  CYCLE_STATUS_LABEL[CYCLE_STATUS.ORIENTATION_SENT] = "Ciclo concluído";
+  CYCLE_STATUS_LABEL[CYCLE_STATUS.COMPLETED] = "Ciclo concluído";
+  function cycleStatusLabel(status) { return CYCLE_STATUS_LABEL[status] || ""; }
+
+  // conta alunos com uma avaliação esperando o coach agora (check-in recebido, em avaliação ou
+  // orientação em rascunho) — usado pelo badge de "Avaliações" na navegação (V18 §7).
+  function pendingAssessmentsCount() {
+    return CLIENTS.filter(function (c) { return c.weeks.length > 0; }).filter(function (c) {
+      var st = cycleStatusOf(currentWeek(c));
+      return st === CYCLE_STATUS.CHECKIN_RECEIVED || st === CYCLE_STATUS.UNDER_REVIEW || st === CYCLE_STATUS.ORIENTATION_DRAFT;
+    }).length;
+  }
+
   function weekByNumber(client, n) { return client.weeks.filter(function (w) { return w.weekNumber === n; })[0] || null; }
 
   function buildWeeks(cfg) {
@@ -1007,14 +1030,16 @@
     }
     var cur = currentWeek(client);
     if (isLate(client)) {
+      // "Aguardando check-in" é o rótulo canônico dos dois casos (atrasado ou dentro do prazo) —
+      // a urgência continua distinguível pela cor do pill (late = coral) e pelo `reason`/meta.
       if (isCheckinOverdue(client)) {
-        return { code: "late", label: "Check-in atrasado", reason: "Check-in da semana " + cur.weekNumber + " ainda não foi enviado (previsto para " + fmtShort(cur.end) + ")." };
+        return { code: "late", label: cycleStatusLabel(CYCLE_STATUS.AWAITING_CHECKIN), reason: "Check-in da semana " + cur.weekNumber + " está atrasado — ainda não foi enviado (previsto para " + fmtShort(cur.end) + ")." };
       }
       // semana ainda correndo (inclusive a que nasceu agora do ciclo): não é atraso, não se cobra.
       // `code` próprio pra que nenhuma tela pinte de vermelho nem ofereça "Cobrar check-in".
       var opensAt = checkinOpensOn(cur);
       return {
-        code: "waiting", label: "Aguardando check-in",
+        code: "waiting", label: cycleStatusLabel(CYCLE_STATUS.AWAITING_CHECKIN),
         reason: APP_DATE < opensAt
           ? ("Check-in da semana " + cur.weekNumber + " abre " + fmtShort(opensAt) + ".")
           : ("Check-in da semana " + cur.weekNumber + " está aberto até " + fmtShort(cur.end) + ".")
@@ -1022,10 +1047,13 @@
     }
     if (needsReview(client)) {
       var st = cycleStatusOf(cur);
-      if (st === CYCLE_STATUS.UNDER_REVIEW || st === CYCLE_STATUS.ORIENTATION_DRAFT) {
-        return { code: "progress", label: "Em avaliação", reason: "Avaliação de " + client.name.split(" ")[0] + " em andamento — ainda não enviada." };
+      if (st === CYCLE_STATUS.UNDER_REVIEW) {
+        return { code: "progress", label: cycleStatusLabel(st), reason: "Avaliação de " + client.name.split(" ")[0] + " em andamento — ainda não enviada." };
       }
-      return { code: "review", label: "Aguardando avaliação", reason: "Check-in da semana " + cur.weekNumber + " recebido " + relativeLabel(cur.checkin.submittedAt) + " — ainda sem avaliação." };
+      if (st === CYCLE_STATUS.ORIENTATION_DRAFT) {
+        return { code: "progress", label: cycleStatusLabel(st), reason: "Orientação de " + client.name.split(" ")[0] + " já tem rascunho salvo — ainda não enviada." };
+      }
+      return { code: "review", label: cycleStatusLabel(CYCLE_STATUS.CHECKIN_RECEIVED), reason: "Check-in da semana " + cur.weekNumber + " recebido " + relativeLabel(cur.checkin.submittedAt) + " — ainda sem avaliação." };
     }
     var recent = client.weeks.slice(-4).filter(function (w) { return w.metrics.adherence != null; });
     if (recent.length >= 2) {
@@ -1757,7 +1785,7 @@
   function instantiateManualClient(m) {
     var client = {
       id: m.id, name: m.name, initials: m.initials, colorVar: m.colorVar, gender: m.gender,
-      email: m.email, phone: m.phone,
+      email: m.email || "", phone: m.phone || "",
       objective: "A definir", startDate: m.startDate ? new Date(m.startDate) : null, weeks: [],
       clientStatus: "active", tracking: tracking(), manual: true,
       inviteStatus: m.inviteStatus, invitedAt: m.invitedAt ? new Date(m.invitedAt) : null, activatedAt: m.activatedAt ? new Date(m.activatedAt) : null,
@@ -2015,7 +2043,8 @@
     fmtDate: fmtDate, fmtShort: fmtShort, fmtTime: fmtTime, relativeLabel: relativeLabel, round1: round1, clamp: clamp, avg: avg,
     getClient: getClient,
     currentWeek: currentWeek, needsReview: needsReview, isLate: isLate, suggestOrientation: suggestOrientation,
-    CYCLE_STATUS: CYCLE_STATUS, cycleStatusOf: cycleStatusOf, isNextCheckinDue: isNextCheckinDue, seedWeekRecord: seedWeekRecord,
+    CYCLE_STATUS: CYCLE_STATUS, cycleStatusOf: cycleStatusOf, cycleStatusLabel: cycleStatusLabel, pendingAssessmentsCount: pendingAssessmentsCount,
+    isNextCheckinDue: isNextCheckinDue, seedWeekRecord: seedWeekRecord,
     isCheckinOverdue: isCheckinOverdue, checkinOpensOn: checkinOpensOn,
     computeStatus: computeStatus, computeKPIs: computeKPIs, isGoodWeightDelta: isGoodWeightDelta,
     weeksInRange: weeksInRange, buildPeriodSummary: buildPeriodSummary, recentWeeksTable: recentWeeksTable,

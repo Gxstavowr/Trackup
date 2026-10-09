@@ -15,7 +15,7 @@
 }
 .lp-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand); }
 .lp-hero h1 {
-  font-family: var(--font-display); font-size: clamp(1.9rem, 1.3rem + 2.6vw, 3.25rem); line-height: 1.06; font-weight: 600;
+  font-family: var(--font-display); font-size: clamp(1.9rem, 1.3rem + 2.6vw, 3.25rem); line-height: 1.06; font-weight: 700;
   letter-spacing: -.02em; margin: 0 0 20px; max-width: 620px;
 }
 .lp-hero h1 em { font-style: normal; color: var(--brand); }

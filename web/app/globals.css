@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+/* Trackly — design tokens (migrados 1:1 de prototype/assets/css/tokens.css, V19).
+   Paleta dark premium: fundo quase preto, grafite para superfícies, off-white quente
+   para texto principal, cinza quente para texto secundário, champagne como accent
+   único, vermelho queimado reservado a erro/atraso. Ver ARCHITECTURE.md. */
+
+:root {
+  /* superfícies */
+  --paper: #0a0a09;
+  --surface: #17170f;
+  --surface-sunken: #121210;
+  --surface-raised-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 8px 20px -16px rgba(0, 0, 0, 0.55);
+
+  /* tinta */
+  --ink: #f3eee4;
+  --ink-muted: #a79c8a;
+  --ink-faint: #8f8575; /* >= 4,5:1 sobre --paper (5,45) e --surface (4,96) */
+  --line: #26241e;
+  --line-strong: #37332b;
+
+  /* marca — amarelo/champagne, cor de destaque única do produto */
+  --brand: #c9a463;
+  --brand-deep: #dcb979;
+  --brand-dark: #2b2112;
+  --brand-tint: rgba(201, 164, 99, 0.14);
+  --brand-tint-strong: rgba(201, 164, 99, 0.26);
+  --on-accent: #17130a;
+
+  /* atenção / metas */
+  --gold: #dd9a46;
+  --gold-tint: rgba(221, 154, 70, 0.14);
+
+  /* alerta — vermelho queimado, reservado a erro/atraso */
+  --coral: #c1502e;
+  --coral-tint: rgba(193, 80, 46, 0.14);
+  /* Variante clara do coral, só para uso como TEXTO sobre --paper/--surface ou sobre
+     --coral-tint (item 36 do TODO — pendências de contraste). O --coral "escuro" acima não
+     chega a 4,5:1 nesses fundos (medido: ~4,20:1 sobre --paper, ~3,82:1 sobre --surface,
+     ~3,36:1 sobre --coral-tint em --surface) — mesma tonalidade/saturação, só mais claro.
+     --coral continua o certo pra fundo/borda (--coral-tint, border-coral, bg-coral etc.). */
+  --coral-text: #d77356; /* medido: 6,11:1 sobre --paper · 5,56:1 sobre --surface */
+  /* Texto sobre fundo SÓLIDO --coral (ex.: contador do sino) — --on-accent (calibrado pro
+     --brand, claro) não chega a 4,5:1 aqui (medido 3,93:1); precisa de um texto quase branco. */
+  --on-coral: #fffdfb; /* medido: 4,65:1 sobre --coral */
+
+  /* status semânticos */
+  --ok: var(--brand);
+  --ok-tint: var(--brand-tint);
+  --warn: var(--gold);
+  --warn-tint: var(--gold-tint);
+  --late: var(--coral);
+  --late-tint: var(--coral-tint);
+  --late-text: var(--coral-text);
+
+  /* tipografia — --font-display/--font-body/--font-mono são injetadas por next/font
+     (app/layout.tsx, via Fraunces/Inter/IBM_Plex_Mono de next/font/google), não
+     redeclaradas aqui, para não competir com o fallback real do next/font. */
+
+  /* escala */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --sidebar-w: clamp(13.75rem, 4vw + 12rem, 15.5rem);
+
+  /* escala de espaçamento */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* tipografia fluida */
+  --text-hero: clamp(1.65rem, 1.35rem + 1.3vw, 2.125rem);
+  --text-counter: clamp(2.4rem, 1.7rem + 3vw, 3.5rem);
+  --text-label: clamp(0.66rem, 0.62rem + 0.15vw, 0.72rem);
+
+  /* clientes — cor de identidade em gráficos/avatares (ciclo) */
+  --c1: #c9a463;
+  --c2: #dd9a46;
+  --c3: #a99be0;
+  --c4: #6fb3de;
+}
+
+/* Expõe os tokens acima como utilitários/tema do Tailwind v4 (config via CSS,
+   não tailwind.config.ts — é o formato nativo desta versão do Tailwind).
+   Ex.: bg-paper, bg-surface, text-ink, text-ink-muted, border-line, text-coral. */
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
+
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-brand: var(--brand);
+  --color-brand-deep: var(--brand-deep);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-tint: var(--brand-tint);
+  --color-brand-tint-strong: var(--brand-tint-strong);
+  --color-on-accent: var(--on-accent);
+
+  --color-gold: var(--gold);
+  --color-gold-tint: var(--gold-tint);
+  --color-coral: var(--coral);
+  --color-coral-tint: var(--coral-tint);
+  --color-coral-text: var(--coral-text);
+  --color-on-coral: var(--on-coral);
+
+  --color-ok: var(--ok);
+  --color-ok-tint: var(--ok-tint);
+  --color-warn: var(--warn);
+  --color-warn-tint: var(--warn-tint);
+  --color-late: var(--late);
+  --color-late-tint: var(--late-tint);
+  --color-late-text: var(--late-text);
+
+  --color-c1: var(--c1);
+  --color-c2: var(--c2);
+  --color-c3: var(--c3);
+  --color-c4: var(--c4);
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
+
+  /* --text-* cai no namespace de font-size do Tailwind v4 (gera as utilities
+     text-hero/text-counter/text-label). */
+  --text-hero: var(--text-hero);
+  --text-counter: var(--text-counter);
+  --text-label: var(--text-label);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+}

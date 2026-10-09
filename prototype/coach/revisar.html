@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../assets/css/base.css?v=14">
+<link rel="stylesheet" href="../assets/css/base.css?v=15">
 <style>
   .review-wrap { max-width: 640px; }
   .review-head { margin-bottom: 22px; }
@@ -102,7 +102,7 @@
   }).join("");
 
   var photoAngles = [["front", "FRENTE"], ["back", "COSTAS"], ["side_l", "LAT."]];
-  var hue = client.colorVar === "--c1" ? 155 : client.colorVar === "--c2" ? 32 : client.colorVar === "--c3" ? 265 : 205;
+  var hue = client.colorVar === "--c1" ? 38 : client.colorVar === "--c2" ? 32 : client.colorVar === "--c3" ? 265 : 205;
   var photosHtml = photoAngles.map(function (a, i) {
     return '<div class="mini-photo" style="background:hsl(' + hue + ',' + (26 + i * 4) + '%,' + (26 + i * 5) + '%);">' + a[1] + '</div>';
   }).join("");

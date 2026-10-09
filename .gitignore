@@ -1,3 +1,8 @@
 prototype.zip
 Thumbs.db
 .DS_Store
+
+# cache local da CLI do Supabase
+supabase/.temp/
+# dumps de snapshot de testes de navegador
+web/eval-*.yml

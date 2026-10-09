@@ -23,13 +23,24 @@
   }
 
   function coachShell(root, active, client) {
+    // ordem fixa do fluxo principal (V18 §6): Acompanhamento -> Avaliações -> Alunos -> Financeiro.
+    // Configurações fica fora daqui de propósito — só é alcançável pelo chip do coach no rodapé,
+    // nunca como item deste grupo (não é fluxo operacional).
     var items = [
       { key: "dashboard", label: "Acompanhamento", href: root + "coach/dashboard.html", icon: I.grid },
+      { key: "avaliacoes", label: "Avaliações", href: root + "coach/avaliacoes.html", icon: I.clipboard },
       { key: "clientes", label: "Alunos", href: root + "coach/clientes.html", icon: I.users },
       { key: "financeiro", label: "Financeiro", href: root + "coach/financeiro.html", icon: I.wallet }
     ];
+    // badge de pendências de avaliação (V18 §7) — mesmo padrão visual do sino de notificações
+    // (.notif-badge), só que ancorado no próprio item de nav em vez do botão do sino.
+    var pendingAssessments = (global.Trackly && Trackly.pendingAssessmentsCount) ? Trackly.pendingAssessmentsCount() : 0;
     var nav = items.map(function (it) {
-      return '<a href="' + it.href + '" class="nav-item' + (it.key === active ? " active" : "") + '">' + it.icon + "<span>" + it.label + "</span></a>";
+      var badge = "";
+      if (it.key === "avaliacoes" && pendingAssessments > 0) {
+        badge = '<span class="notif-badge" style="position:absolute;top:6px;right:8px;">' + (pendingAssessments > 9 ? "9+" : pendingAssessments) + '</span>';
+      }
+      return '<a href="' + it.href + '" class="nav-item' + (it.key === active ? " active" : "") + '" style="position:relative;">' + it.icon + "<span>" + it.label + "</span>" + badge + "</a>";
     }).join("");
 
     var clientJump = "";

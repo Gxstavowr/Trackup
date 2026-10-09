@@ -8,8 +8,8 @@
   "orientation": "portrait-primary",
   "lang": "pt-BR",
   "dir": "ltr",
-  "background_color": "#FBF7F0",
-  "theme_color": "#FBF7F0",
+  "background_color": "#0A0A09",
+  "theme_color": "#0A0A09",
   "categories": ["health", "fitness", "lifestyle"],
   "icons": [
     { "src": "../assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },

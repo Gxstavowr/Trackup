@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avaliações — Trackly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/base.css?v=15">
+<style>
+  .aval-stats { display: flex; gap: 36px; flex-wrap: wrap; margin: 18px 0 30px; }
+  .queue-section { margin-bottom: 30px; }
+  .queue-section .section-note { font-size: 12px; color: var(--ink-faint); margin: -4px 0 6px; }
+  .all-done { text-align: center; padding: 30px 20px; }
+  .all-done svg { color: var(--brand); margin-bottom: 10px; }
+  .all-done p { font-size: 14px; margin: 0; }
+</style>
+</head>
+<body data-root="../">
+<div id="shell-demo"></div>
+<div class="shell">
+  <div id="shell-sidebar"></div>
+  <main class="main">
+    <div class="main-inner">
+      <button class="mobile-menu-btn" id="mobile-menu-btn">☰</button>
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">Avaliações</p>
+          <h1>Avaliações</h1>
+          <p id="week-sub" class="card-sub"></p>
+        </div>
+      </div>
+
+      <div class="aval-stats" id="aval-stats"></div>
+
+      <div id="aval-body"></div>
+      <div id="aval-done" class="queue-section"></div>
+    </div>
+  </main>
+</div>
+
+<script src="../assets/js/storage.js?v=13"></script>
+<script src="../assets/js/data.js?v=17"></script>
+<script src="../assets/js/icons.js?v=12"></script>
+<script src="../assets/js/charts.js?v=13"></script>
+<script src="../assets/js/nav.js?v=15"></script>
+<script>
+(function () {
+  TracklyNav.mountCoachShell("avaliacoes");
+  var CS = Trackly.CYCLE_STATUS;
+  var active = Trackly.CLIENTS.filter(function (c) { return c.weeks.length > 0; });
+
+  // Esta página é a área de primeira classe da AVALIAÇÃO (TODO §7) — só os estágios do ciclo que
+  // envolvem o trabalho de avaliar entram aqui (check-in recebido / em avaliação / orientação em
+  // rascunho / concluída). "Aguardando check-in" (o aluno ainda não respondeu) é assunto do
+  // Acompanhamento (TODO §8), não desta página — aqui o coach já tem o que avaliar em mãos.
+  function bucketOf(c) {
+    var st = Trackly.cycleStatusOf(Trackly.currentWeek(c));
+    if (st === CS.CHECKIN_RECEIVED) return "received";
+    if (st === CS.UNDER_REVIEW) return "review";
+    if (st === CS.ORIENTATION_DRAFT) return "draft";
+    if (st === CS.ORIENTATION_SENT || st === CS.COMPLETED) return "done";
+    return "awaiting";
+  }
+
+  function waitingSince(c) {
+    var cur = Trackly.currentWeek(c);
+    return (cur.checkin && cur.checkin.submittedAt) || cur.start;
+  }
+
+  function row(c, meta, actionsHtml) {
+    return '<div class="list-row"><span class="avatar lr-lead" style="background:' + TracklyNav.colorFor(c) + '">' + c.initials + "</span>" +
+      '<div class="lr-body"><strong>' + c.name + '</strong><span class="lr-meta">' + meta + "</span></div>" +
+      '<div class="lr-actions">' + actionsHtml + "</div></div>";
+  }
+
+  function assessmentRow(c, bucket) {
+    var cur = Trackly.currentWeek(c);
+    var rel = Trackly.relativeLabel(cur.checkin.submittedAt);
+    var openLink = '<a href="cliente.html?id=' + c.id + '#avaliacao" class="btn btn-primary">';
+    var viewLink = '<a href="cliente.html?id=' + c.id + '" class="btn btn-secondary">Ver aluno</a>';
+    if (bucket === "received") {
+      return row(c, Trackly.cycleStatusLabel(CS.CHECKIN_RECEIVED) + " · recebido " + rel, openLink + "Avaliar agora</a>" + viewLink);
+    }
+    if (bucket === "review") {
+      return row(c, Trackly.cycleStatusLabel(CS.UNDER_REVIEW) + " · check-in recebido " + rel, openLink + "Continuar avaliação</a>" + viewLink);
+    }
+    var saved = cur.orientationDraft && cur.orientationDraft.savedAt;
+    return row(c, Trackly.cycleStatusLabel(CS.ORIENTATION_DRAFT) + " · rascunho salvo " + Trackly.relativeLabel(saved), openLink + "Finalizar e enviar</a>" + viewLink);
+  }
+
+  function doneRow(c) {
+    var cur = Trackly.currentWeek(c);
+    var meta = Trackly.cycleStatusLabel(CS.COMPLETED) + (cur.orientationSentAt ? " · orientação enviada " + Trackly.relativeLabel(cur.orientationSentAt) : "");
+    return row(c, meta, '<a href="cliente.html?id=' + c.id + '" class="btn btn-secondary">Ver aluno</a>');
+  }
+
+  function sectionHtml(title, count, note, bodyHtml) {
+    return '<div class="queue-section"><p class="section-label">' + title + " · " + count + "</p>" +
+      '<p class="section-note">' + note + "</p>" + bodyHtml + "</div>";
+  }
+
+  function render() {
+    var anchorEnd = Trackly.ANCHOR; var anchorStart = new Date(anchorEnd); anchorStart.setDate(anchorStart.getDate() - anchorStart.getDay() + 1);
+    var weekEnd = new Date(anchorStart); weekEnd.setDate(weekEnd.getDate() + 6);
+    document.getElementById("week-sub").textContent = "Avaliações da semana de " + Trackly.fmtShort(anchorStart) + " a " + Trackly.fmtDate(weekEnd).slice(0, 5) + ".";
+
+    var received = [], review = [], draft = [], done = [];
+    active.forEach(function (c) {
+      var b = bucketOf(c);
+      if (b === "received") received.push(c);
+      else if (b === "review") review.push(c);
+      else if (b === "draft") draft.push(c);
+      else if (b === "done") done.push(c);
+    });
+    [received, review, draft, done].forEach(function (list) { list.sort(function (a, b) { return waitingSince(a) - waitingSince(b); }); });
+
+    document.getElementById("aval-stats").innerHTML = [
+      ["Concluídas", done.length],
+      ["Aguardando avaliação", received.length],
+      ["Em andamento", review.length],
+      ["Aguardando orientação", draft.length]
+    ].map(function (s) { return '<div class="hero-stat sm"><div class="value">' + s[1] + '</div><div class="label">' + s[0] + '</div></div>'; }).join("");
+
+    var pendingTotal = received.length + review.length + draft.length;
+    document.getElementById("aval-body").innerHTML = pendingTotal
+      ? (
+        (received.length ? sectionHtml("Aguardando avaliação", received.length, "Check-in recebido — ainda sem avaliação aberta.", received.map(function (c) { return assessmentRow(c, "received"); }).join("")) : "") +
+        (review.length ? sectionHtml("Em andamento", review.length, "Avaliação aberta, ainda não enviada.", review.map(function (c) { return assessmentRow(c, "review"); }).join("")) : "") +
+        (draft.length ? sectionHtml("Aguardando orientação", draft.length, "Orientação escrita em rascunho, ainda não enviada.", draft.map(function (c) { return assessmentRow(c, "draft"); }).join("")) : "")
+      )
+      : '<div class="all-done">' + ICONS.check +
+        '<h3 style="font-family:var(--font-display);font-size:17px;margin:0 0 4px;">Nenhuma avaliação pendente</h3>' +
+        '<p>Todo check-in recebido esta semana já foi avaliado.</p></div>';
+
+    document.getElementById("aval-done").innerHTML = renderDoneSection(done);
+    wireDoneToggle();
+  }
+
+  // avaliações concluídas ficam recolhidas por padrão — existem como registro, mas não competem
+  // com o que ainda precisa de ação (mesmo padrão do "sem pendência" do Acompanhamento).
+  function renderDoneSection(done) {
+    if (!done.length) return "";
+    return (
+      '<div class="list-row" id="done-toggle" tabindex="0" role="button" aria-expanded="false" style="cursor:pointer;">' +
+        '<div class="lr-lead" style="color:var(--brand);">' + ICONS.check + "</div>" +
+        '<div class="lr-body"><strong>' + done.length + " concluída" + (done.length === 1 ? "" : "s") + "</strong>" +
+          '<span class="lr-meta">Ciclos desta semana já com orientação enviada</span></div>' +
+        '<div class="lr-actions"><span style="font-size:12.5px;color:var(--brand);font-weight:600;">Ver lista</span></div>' +
+      "</div>" +
+      '<div id="done-list" style="display:none;">' + done.map(doneRow).join("") + "</div>"
+    );
+  }
+
+  function wireDoneToggle() {
+    var ct = document.getElementById("done-toggle");
+    if (!ct) return;
+    function toggle() {
+      var list = document.getElementById("done-list");
+      var open = list.style.display !== "none";
+      list.style.display = open ? "none" : "block";
+      ct.setAttribute("aria-expanded", String(!open));
+      ct.querySelector(".lr-actions span").textContent = open ? "Ver lista" : "Ocultar";
+    }
+    ct.addEventListener("click", toggle);
+    ct.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
