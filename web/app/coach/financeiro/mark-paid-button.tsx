@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { markPaymentPaidAction, type MarkPaidState } from "./actions";
-import { BUTTON_PRIMARY } from "./ui";
+import { BUTTON_OUTLINE, BUTTON_PRIMARY } from "./ui";
 
 /**
  * "Marcar como pago" — Server Action real (`actions.ts`), com verificação de sessão/role/posse
@@ -12,9 +12,12 @@ import { BUTTON_PRIMARY } from "./ui";
 export default function MarkPaidButton({
   paymentId,
   clientName,
+  secondary = false,
 }: {
   paymentId: string;
   clientName: string;
+  /** Em Atrasados o primário é "Cobrar pagamento"; aqui vira contorno. */
+  secondary?: boolean;
 }) {
   const [state, formAction, pending] = useActionState<MarkPaidState, FormData>(
     markPaymentPaidAction,
@@ -24,7 +27,7 @@ export default function MarkPaidButton({
   return (
     <form action={formAction} className="flex flex-col gap-1 sm:items-end">
       <input type="hidden" name="paymentId" value={paymentId} />
-      <button type="submit" disabled={pending} className={BUTTON_PRIMARY}>
+      <button type="submit" disabled={pending} className={secondary ? BUTTON_OUTLINE : BUTTON_PRIMARY}>
         {pending ? "Registrando…" : "Marcar como pago"}
         <span className="sr-only"> — pagamento de {clientName}</span>
       </button>

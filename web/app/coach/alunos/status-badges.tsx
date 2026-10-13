@@ -1,6 +1,7 @@
 import type { ClientPaymentStatus } from "@/lib/repository";
 import type { PaymentStatus } from "@/lib/finance/metrics";
-import { BADGE_BASE, StateBadge } from "../avaliacoes/evaluation-ui";
+import { Badge } from "@/components/ui/badge";
+import { SITUATION_META } from "@/lib/evaluation-situation";
 import PaymentBadge from "../financeiro/payment-badge";
 import { TRACKING_LABEL, type TrackingState } from "./student-situation";
 
@@ -30,9 +31,7 @@ const PAYMENT_TO_FINANCE: Record<Exclude<ClientPaymentStatus, "sem_assinatura">,
 export function PaymentStatusBadge({ status }: { status: ClientPaymentStatus }) {
   if (status === "sem_assinatura") {
     return (
-      <span className={`${BADGE_BASE} inline-flex w-fit whitespace-nowrap bg-surface-sunken text-ink-muted`}>
-        Sem assinatura
-      </span>
+      <Badge tone="neutral" className="whitespace-nowrap">Sem assinatura</Badge>
     );
   }
   return <PaymentBadge status={PAYMENT_TO_FINANCE[status]} />;
@@ -48,19 +47,21 @@ export function TrackingStatusBadge({ state, late = false }: { state: TrackingSt
     case "pending":
     case "in_progress":
     case "draft":
-    case "done":
-      return <StateBadge state={state} />;
-    case "awaiting_checkin":
-      return late ? (
-        <span className={`${BADGE_BASE} whitespace-nowrap bg-late-tint text-late-text`}>{TRACKING_LABEL[state]}</span>
-      ) : (
-        <StateBadge state={state} />
-      );
+    case "done": {
+      const key = { pending: "review_pending", in_progress: "review_in_progress", draft: "awaiting_orientation", done: "done" } as const;
+      const meta = SITUATION_META[key[state]];
+      return <Badge tone={meta.tone} dot className="whitespace-nowrap">{meta.label}</Badge>;
+    }
+    case "awaiting_checkin": {
+      // Mesmo nome e tom do /coach e /coach/avaliacoes (SITUATION_META).
+      const meta = SITUATION_META[late ? "checkin_late" : "checkin_waiting"];
+      return <Badge tone={meta.tone} dot className="whitespace-nowrap">{meta.label}</Badge>;
+    }
     case "invite_pending":
-      return <span className={`${BADGE_BASE} whitespace-nowrap bg-surface-sunken text-ink-muted`}>{TRACKING_LABEL[state]}</span>;
+      return <Badge tone="neutral" className="whitespace-nowrap">{TRACKING_LABEL[state]}</Badge>;
     case "invite_sent":
-      return <span className={`${BADGE_BASE} whitespace-nowrap bg-warn-tint text-warn`}>{TRACKING_LABEL[state]}</span>;
+      return <Badge tone="warning" className="whitespace-nowrap">{TRACKING_LABEL[state]}</Badge>;
     case "paused":
-      return <span className={`${BADGE_BASE} whitespace-nowrap bg-surface-sunken text-ink-muted`}>{TRACKING_LABEL[state]}</span>;
+      return <Badge tone="neutral" className="whitespace-nowrap">{TRACKING_LABEL[state]}</Badge>;
   }
 }

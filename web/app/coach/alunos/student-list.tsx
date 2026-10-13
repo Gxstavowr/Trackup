@@ -1,25 +1,25 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import { BUTTON_GHOST } from "../avaliacoes/evaluation-ui";
-import ClientRow from "./client-row";
-import { FilterIcon, SearchIcon } from "./icons";
+import { Button } from "@/components/ui/button";
+import Icon from "@/components/ui/icon";
+import ClientRow, { LIST_GRID_XL, ROW_SUBGRID_XL } from "./client-row";
 import {
   DEFAULT_CONTROLS,
   PAYMENT_FILTER_LABEL,
   PAYMENT_FILTER_ORDER,
   TRACKING_FILTER_ORDER,
   TRACKING_LABEL,
+  GROUP_LABEL,
   filterAndSort,
+  groupOf,
   hasActiveFilters,
   type ListControls,
   type SortKey,
   type StudentEntry,
 } from "./student-situation";
-
-const CONTROL =
-  "min-h-11 w-full rounded-md border border-line bg-surface-sunken px-3 text-sm text-ink outline-none transition-colors focus:border-brand";
-const CONTROL_LABEL = "font-mono text-label uppercase tracking-wide text-ink-faint";
+import { inputClass, selectClass } from "@/components/ui/field";
+import { EmptyState } from "@/components/ui/empty-state";
 
 const SORT_LABEL: Record<SortKey, string> = {
   urgency: "Necessidade de ação",
@@ -42,98 +42,100 @@ export default function StudentList({ entries }: { entries: StudentEntry[] }) {
   const visible = useMemo(() => filterAndSort(entries, controls), [entries, controls]);
   const needsActionTotal = useMemo(() => entries.filter((e) => e.needsAction).length, [entries]);
   const filtersOn = hasActiveFilters(controls);
-  const anyMissingData = entries.some((e) => e.age == null || e.heightCm == null || !e.objective);
   const grouped = controls.sort === "urgency";
+
+  const clearFilters = () => setControls((c) => ({ ...DEFAULT_CONTROLS, sort: c.sort }));
+  const select = `${selectClass} min-h-11 md:min-h-10 text-sm`;
 
   return (
     <div className="flex flex-col gap-4">
-      <section aria-label="Buscar e filtrar alunos" className="flex flex-col gap-3">
-        <label className="relative block">
-          <span className="sr-only">Buscar aluno por nome, e-mail ou objetivo</span>
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint">
-            <SearchIcon />
-          </span>
-          <input
-            type="search"
-            value={controls.query}
-            onChange={(e) => set("query", e.target.value)}
-            placeholder="Buscar por nome, e-mail ou objetivo"
-            autoComplete="off"
-            className={`${CONTROL} pl-10`}
-          />
-        </label>
-
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <label className="flex flex-col gap-1">
-            <span className={CONTROL_LABEL}>Acompanhamento</span>
-            <select
-              value={controls.tracking}
-              onChange={(e) => set("tracking", e.target.value as ListControls["tracking"])}
-              className={CONTROL}
-            >
-              <option value="all">Todas</option>
-              {TRACKING_FILTER_ORDER.map((state) => (
-                <option key={state} value={state}>
-                  {TRACKING_LABEL[state]}
-                </option>
-              ))}
-            </select>
+      <section aria-label="Buscar e filtrar alunos" className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-2.5">
+          <label className="relative block">
+            <span className="sr-only">Buscar aluno por nome, e-mail ou objetivo</span>
+            <Icon
+              name="search"
+              size={18}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint"
+            />
+            <input
+              type="search"
+              value={controls.query}
+              onChange={(e) => set("query", e.target.value)}
+              placeholder="Buscar por nome, e-mail ou objetivo"
+              autoComplete="off"
+              className={`${inputClass} pl-10 md:min-h-10`}
+            />
           </label>
 
-          <label className="flex flex-col gap-1">
-            <span className={CONTROL_LABEL}>Financeiro</span>
-            <select
-              value={controls.payment}
-              onChange={(e) => set("payment", e.target.value as ListControls["payment"])}
-              className={CONTROL}
-            >
-              <option value="all">Todas</option>
-              {PAYMENT_FILTER_ORDER.map((status) => (
-                <option key={status} value={status}>
-                  {PAYMENT_FILTER_LABEL[status]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="grid grid-cols-2 gap-2.5 lg:flex">
+            <label className="lg:w-52">
+              <span className="sr-only">Filtrar por situação do acompanhamento</span>
+              <select
+                value={controls.tracking}
+                onChange={(e) => set("tracking", e.target.value as ListControls["tracking"])}
+                className={select}
+              >
+                <option value="all">Situação</option>
+                {TRACKING_FILTER_ORDER.map((state) => (
+                  <option key={state} value={state}>
+                    {TRACKING_LABEL[state]}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <label className="col-span-2 flex flex-col gap-1 sm:col-span-1">
-            <span className={CONTROL_LABEL}>Ordenar por</span>
-            <select
-              value={controls.sort}
-              onChange={(e) => set("sort", e.target.value as SortKey)}
-              className={CONTROL}
-            >
-              {(Object.keys(SORT_LABEL) as SortKey[]).map((key) => (
-                <option key={key} value={key}>
-                  {SORT_LABEL[key]}
-                </option>
-              ))}
-            </select>
-          </label>
+            <label className="lg:w-48">
+              <span className="sr-only">Filtrar por situação financeira</span>
+              <select
+                value={controls.payment}
+                onChange={(e) => set("payment", e.target.value as ListControls["payment"])}
+                className={select}
+              >
+                <option value="all">Financeiro</option>
+                {PAYMENT_FILTER_ORDER.map((status) => (
+                  <option key={status} value={status}>
+                    {PAYMENT_FILTER_LABEL[status]}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="col-span-2 lg:col-span-1 lg:w-64">
+              <span className="sr-only">Ordenar por</span>
+              <select
+                value={controls.sort}
+                onChange={(e) => set("sort", e.target.value as SortKey)}
+                className={select}
+              >
+                {(Object.keys(SORT_LABEL) as SortKey[]).map((key) => (
+                  <option key={key} value={key}>
+                    Ordem: {SORT_LABEL[key]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <button
             type="button"
             aria-pressed={controls.onlyNeedsAction}
             onClick={() => set("onlyNeedsAction", !controls.onlyNeedsAction)}
-            className={`inline-flex min-h-11 items-center gap-2 rounded-md border px-4 text-sm font-medium transition-colors ${
+            className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand active:translate-y-px md:min-h-9 ${
               controls.onlyNeedsAction
                 ? "border-brand bg-brand-tint text-brand"
-                : "border-line text-ink hover:border-line-strong"
+                : "border-line text-ink-muted hover:border-line-strong hover:text-ink"
             }`}
           >
-            <FilterIcon />
+            <Icon name="filter" size={16} />
             Só quem precisa da minha ação ({needsActionTotal})
           </button>
           {filtersOn && (
-            <button
-              type="button"
-              onClick={() => setControls((c) => ({ ...DEFAULT_CONTROLS, sort: c.sort }))}
-              className="inline-flex min-h-11 items-center rounded-md px-3 text-sm text-ink-muted underline-offset-4 hover:text-ink hover:underline"
-            >
+            <Button variant="tertiary" size="sm" onClick={clearFilters}>
               Limpar filtros
-            </button>
+            </Button>
           )}
           <p role="status" aria-live="polite" className="ml-auto text-sm text-ink-muted">
             {visible.length === entries.length
@@ -144,48 +146,53 @@ export default function StudentList({ entries }: { entries: StudentEntry[] }) {
       </section>
 
       {visible.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-line px-6 py-12 text-center">
-          <p className="font-display text-hero text-ink">Nenhum aluno encontrado</p>
-          <p className="max-w-sm text-sm text-ink-muted">
-            Nenhum aluno combina com a busca e os filtros atuais. Ajuste-os ou limpe para ver todos.
-          </p>
-          <button
-            type="button"
-            onClick={() => setControls((c) => ({ ...DEFAULT_CONTROLS, sort: c.sort }))}
-            className={BUTTON_GHOST}
-          >
-            Limpar filtros
-          </button>
-        </div>
+        <EmptyState
+          icon="search"
+          title="Nenhum aluno encontrado"
+          text="Nenhum aluno combina com a busca e os filtros atuais. Ajuste-os ou limpe para ver todos."
+          action={
+            <Button variant="secondary" onClick={clearFilters}>
+              Limpar filtros
+            </Button>
+          }
+        />
       ) : (
-        <ul className="flex flex-col gap-3">
-          {visible.map((entry, index) => {
-            const previous = visible[index - 1];
-            const startsGroup = grouped && (index === 0 || previous.needsAction !== entry.needsAction);
-            return (
-              <Fragment key={entry.id}>
-                {startsGroup && (
-                  <li role="presentation" className={index === 0 ? "" : "pt-3"}>
-                    <h2 className="flex items-baseline gap-2 text-lg font-medium text-ink">
-                      {entry.needsAction ? "Precisam da sua ação" : "Sem ação agora"}
-                      <span className="font-mono text-sm text-ink-faint">
-                        {visible.filter((v) => v.needsAction === entry.needsAction).length}
-                      </span>
-                    </h2>
-                  </li>
-                )}
-                <ClientRow entry={entry} />
-              </Fragment>
-            );
-          })}
-        </ul>
-      )}
-
-      {anyMissingData && (
-        <p className="text-xs text-ink-faint">
-          &quot;—&quot; indica dado não informado no cadastro. Idade, altura e objetivo são preenchidos
-          ao adicionar o aluno.
-        </p>
+        <>
+          {/* Desktop (>= 1280px): a lista vira uma grade e cada linha (e o cabeçalho) usa subgrid,
+              então as colunas ficam alinhadas e a de ação se ajusta ao botão mais largo. */}
+          <ul className={`flex flex-col gap-2 ${LIST_GRID_XL}`}>
+            <li
+              role="presentation"
+              aria-hidden
+              className={`t-label hidden border border-l-4 border-transparent px-4 text-ink-faint xl:grid ${ROW_SUBGRID_XL}`}
+            >
+              <span>Aluno</span>
+              <span>Acompanhamento</span>
+              <span>Financeiro</span>
+              <span>Ação</span>
+            </li>
+            {visible.map((entry, index) => {
+              const previous = visible[index - 1];
+              const group = groupOf(entry);
+              const startsGroup = grouped && (index === 0 || groupOf(previous) !== group);
+              return (
+                <Fragment key={entry.id}>
+                  {startsGroup && (
+                    <li role="presentation" className={`xl:col-span-full ${index === 0 ? "" : "pt-4"}`}>
+                      <h2 className="flex items-baseline gap-2 t-subtitle text-ink">
+                        {GROUP_LABEL[group]}
+                        <span className="tabular-nums text-sm font-normal text-ink-faint">
+                          {visible.filter((v) => groupOf(v) === group).length}
+                        </span>
+                      </h2>
+                    </li>
+                  )}
+                  <ClientRow entry={entry} />
+                </Fragment>
+              );
+            })}
+          </ul>
+        </>
       )}
     </div>
   );

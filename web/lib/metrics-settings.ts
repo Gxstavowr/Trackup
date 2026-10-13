@@ -7,6 +7,12 @@ import {
   type MetricDirection,
 } from "@/lib/metrics-catalog";
 import type { CheckinQuestion } from "@/lib/repository";
+import {
+  DEFAULT_WEIGHT_QUESTION,
+  WEIGHT_QUESTION_KEY,
+  ensureWeightQuestion,
+  isAlwaysTrackedMetric,
+} from "@/lib/checkin-steps";
 
 /**
  * Configuração de métricas POR ALUNO (item 17 do master TODO) — camada sobre
@@ -75,7 +81,8 @@ export function resolveEffectiveMetrics(rows: ClientMetricSettingRow[]): Effecti
       label: item.label,
       unit: item.unit,
       source: "catalog",
-      tracked: row ? row.tracked : true,
+      // Peso é sempre acompanhado (obrigatório no check-in), mesmo com linha antiga `tracked=false`.
+      tracked: isAlwaysTrackedMetric(item.key) ? true : row ? row.tracked : true,
       targetValue: row?.target_value ?? null,
       goalDirection: row?.goal_direction ?? null,
       settingId: row?.id ?? null,
@@ -119,7 +126,10 @@ export function applyMetricSettingsToQuestions(
 ): CheckinQuestion[] {
   const trackedByKey = new Map(metrics.map((m) => [m.key, m.tracked]));
   const filtered = questions.filter(
-    (q) => !METRIC_CATALOG_KEYS.has(q.key) || (trackedByKey.get(q.key) ?? true)
+    (q) =>
+      !METRIC_CATALOG_KEYS.has(q.key) ||
+      isAlwaysTrackedMetric(q.key) ||
+      (trackedByKey.get(q.key) ?? true)
   );
   const existingKeys = new Set(questions.map((q) => q.key));
   const maxSort = questions.reduce((max, q) => Math.max(max, q.sort_order), 0);
@@ -138,7 +148,22 @@ export function applyMetricSettingsToQuestions(
       active: true,
       sort_order: maxSort + i + 1,
     }));
-  return [...filtered, ...custom];
+  // Peso obrigatório em todo check-in, mesmo que o template não tenha a pergunta ou a tenha
+  // como opcional — vale pro formulário e pra validação do envio (as duas passam por aqui).
+  const minSort = questions.reduce((min, q) => Math.min(min, q.sort_order), 0);
+  return ensureWeightQuestion([...filtered, ...custom], () => ({
+    id: `system:${WEIGHT_QUESTION_KEY}`,
+    template_id: templateId,
+    key: WEIGHT_QUESTION_KEY,
+    label: DEFAULT_WEIGHT_QUESTION.label,
+    type: "number",
+    unit: DEFAULT_WEIGHT_QUESTION.unit,
+    step: 1,
+    tracks: "measures",
+    required: true,
+    active: true,
+    sort_order: minSort - 1,
+  }));
 }
 
 /** Chaves de métrica CUSTOM que este aluno pode gravar em `metrics` agora (tracked = true). */
@@ -194,6 +219,9 @@ export async function setMetricTracked(
   metricKey: string,
   tracked: boolean
 ): Promise<void> {
+  if (!tracked && isAlwaysTrackedMetric(metricKey)) {
+    throw new Error("O peso é obrigatório em todo check-in e não pode ser ocultado.");
+  }
   const supabase = await createSupabaseServerClient();
   const isCatalog = METRIC_CATALOG_KEYS.has(metricKey);
   const { error } = await supabase.from("client_metric_settings").upsert(

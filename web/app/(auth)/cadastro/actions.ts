@@ -7,6 +7,7 @@ import { isEmailRateLimitError, EMAIL_RATE_LIMIT_MESSAGE } from "@/lib/supabase/
 import { getOrigin } from "@/lib/site-url";
 import { LEGAL_VERSION } from "@/lib/legal/documents";
 import { getRequestEvidence } from "@/lib/legal/consent";
+import { defaultTemplateRows } from "@/lib/checkin-catalog";
 
 export type SignupState = {
   error?: string;
@@ -154,41 +155,12 @@ export async function signupCoach(
     .single();
 
   if (!templateError && template) {
-    const { error: questionsError } = await admin.from("checkin_questions").insert([
-      {
-        template_id: template.id,
-        key: "weight_kg",
-        label: "Peso (kg)",
-        type: "number",
-        unit: "kg",
-        required: true,
-        sort_order: 0,
-      },
-      {
-        template_id: template.id,
-        key: "adherence_pct",
-        label: "Como foi sua aderência à dieta e ao treino essa semana?",
-        type: "scale",
-        required: true,
-        sort_order: 1,
-      },
-      {
-        template_id: template.id,
-        key: "energy",
-        label: "Nível de energia",
-        type: "scale",
-        required: false,
-        sort_order: 2,
-      },
-      {
-        template_id: template.id,
-        key: "notes",
-        label: "Observações (opcional)",
-        type: "text",
-        required: false,
-        sort_order: 3,
-      },
-    ]);
+    // V3: o catálogo inteiro do sistema (lib/checkin-catalog.ts) — peso, alimentação, treino,
+    // bem-estar e as perguntas condicionais/sensíveis. Contas antigas recebem as que faltam pelo
+    // script `scripts/upgrade-checkin-template.mjs` (mesma lista, insert-if-missing por `key`).
+    const { error: questionsError } = await admin
+      .from("checkin_questions")
+      .insert(defaultTemplateRows().map((row) => ({ ...row, template_id: template.id })));
     if (questionsError) {
       console.error("Falha ao semear perguntas do check-in padrão:", questionsError.message);
     }

@@ -138,6 +138,207 @@ export function deriveEvaluationSignals(detail: EvaluationDetail): EvaluationSig
   return signals;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Cartões de sinais (V2, tarefa 14). Mesmas regras e limiares acima, em forma estruturada para a
+// tela desenhar cartões: variação de cada métrica, estabilidade entre semanas, metas e check-ins.
+// Cada texto é montado só com números e rótulos que existem nos registros — nunca causa, nunca
+// diagnóstico, nunca "melhorou/piorou" (subir ou descer depende do objetivo do aluno).
+// ---------------------------------------------------------------------------------------------
+
+export type SignalCardTone = "attention" | "info" | "positive" | "neutral";
+
+export type SignalCard = {
+  id: string;
+  tone: SignalCardTone;
+  /** Selo curto no topo do cartão (ex.: "Variação relevante", "Estável", "Atenção"). */
+  badge: string;
+  /** O que o cartão mede (ex.: "Peso", "Metas da semana"). */
+  title: string;
+  /** Número em destaque (ex.: "−1,2 kg", "2 de 3"). */
+  value: string;
+  valueCaption?: string;
+  /** Uma frase curta, só com fatos. */
+  description: string;
+  /** Contexto expansível: linhas "rótulo — valor" (semanas, metas). */
+  context?: { label: string; value: string; current?: boolean }[];
+};
+
+function signed(value: number, unit: string): string {
+  return `${value > 0 ? "+" : "−"}${num(Math.abs(value))} ${unit}`;
+}
+
+function pointsWord(points: number): string {
+  return points === 1 ? "ponto" : "pontos";
+}
+
+export function deriveSignalCards(detail: EvaluationDetail): SignalCard[] {
+  const cards: SignalCard[] = [];
+  const week = detail.row.weekNumber;
+  const ordered = [...detail.context].sort((a, b) => a.weekNumber - b.weekNumber);
+  const currentRow = ordered.find((w) => w.weekNumber === week) ?? null;
+
+  type MetricRule = {
+    id: string;
+    title: string;
+    pick: (w: ContextWeek) => number | null;
+    fmt: (v: number) => string;
+    unit: (n: number) => string;
+    limit: number;
+    scale: boolean;
+  };
+  const adhSuffix = detail.adherenceIsScale ? " de 5" : "";
+  const rules: MetricRule[] = [
+    { id: "weight", title: "Peso", pick: (w) => w.weight, fmt: kg, unit: () => "kg", limit: WEIGHT_SIGNAL_MIN_KG, scale: false },
+    {
+      id: "adherence",
+      title: "Aderência",
+      pick: (w) => w.adherence,
+      fmt: (v) => `${num(v)}${adhSuffix}`,
+      unit: pointsWord,
+      limit: SCALE_SIGNAL_MIN_POINTS,
+      scale: true,
+    },
+    {
+      id: "energy",
+      title: "Energia",
+      pick: (w) => w.energy,
+      fmt: (v) => `${num(v)} de 5`,
+      unit: pointsWord,
+      limit: SCALE_SIGNAL_MIN_POINTS,
+      scale: true,
+    },
+  ];
+
+  for (const rule of rules) {
+    const now = rule.id === "weight" ? detail.weight.current : currentRow ? rule.pick(currentRow) : null;
+    const before = rule.id === "weight" ? detail.weight.previous : previousValue(detail, rule.pick);
+    if (now == null || !before) continue;
+
+    const diff = Math.round((now - before.value) * 100) / 100;
+    const crossed = Math.abs(diff) >= rule.limit;
+
+    // Série da janela de contexto (semanas com registro, até a atual) — a base da "estabilidade".
+    const series = ordered
+      .filter((w) => w.weekNumber <= week)
+      .map((w) => ({ weekNumber: w.weekNumber, value: w.weekNumber === week ? now : rule.pick(w) }))
+      .filter((p): p is { weekNumber: number; value: number } => p.value != null);
+    // Contexto histórico = só semanas PASSADAS: o valor da semana atual já aparece em
+    // "Recebido nesta semana" e na comparação, não se repete aqui.
+    const context = series
+      .filter((p) => p.weekNumber < week)
+      .map((p) => ({ label: `Semana ${p.weekNumber}`, value: rule.fmt(p.value) }));
+    const range = series.length > 0 ? Math.max(...series.map((p) => p.value)) - Math.min(...series.map((p) => p.value)) : 0;
+    const stable = !crossed && series.length >= 3 && range < rule.limit;
+
+    const valueText = diff === 0 ? "Igual" : signed(diff, rule.unit(Math.abs(diff)));
+    const limitText = rule.id === "weight" ? kg(rule.limit) : `${rule.limit} pontos`;
+
+    if (crossed) {
+      cards.push({
+        id: rule.id,
+        tone: rule.scale && diff < 0 ? "attention" : "info",
+        badge: "Variação relevante",
+        title: rule.title,
+        value: valueText,
+        valueCaption: `desde a semana ${before.weekNumber}`,
+        description: `Variação de ${limitText} ou mais — os valores de cada semana estão na comparação.`,
+        context,
+      });
+    } else if (stable) {
+      cards.push({
+        id: rule.id,
+        tone: "neutral",
+        badge: "Estável",
+        title: rule.title,
+        value: range === 0 ? "Igual" : `até ${rule.id === "weight" ? kg(range) : `${num(range)} ${pointsWord(range)}`}`,
+        valueCaption: `de diferença entre as semanas ${series[0].weekNumber} e ${week}`,
+        description: `${series.length} semanas com registro, todas a menos de ${limitText} entre si.`,
+        context,
+      });
+    }
+    // Variação comum (abaixo do limite e sem tendência de estabilidade): nenhum cartão — a
+    // diferença contra a semana anterior já é o padrão de "Comparar com outra semana".
+  }
+
+  // Check-ins das semanas anteriores da janela de contexto + prazo do desta semana.
+  const prior = ordered.filter((w) => w.weekNumber < week);
+  const missed = prior.filter((w) => !w.submitted).map((w) => w.weekNumber);
+  const late = Boolean(detail.row.submittedAt && toSaoPauloDate(detail.row.submittedAt) > detail.row.periodEnd);
+  if (missed.length > 0) {
+    cards.push({
+      id: "missed",
+      tone: "attention",
+      badge: "Atenção",
+      title: "Check-ins",
+      value: `${missed.length} sem envio`,
+      valueCaption: missed.length === 1 ? `na semana ${missed[0]}` : `nas semanas ${missed.join(", ")}`,
+      description: `Sem check-in enviado ${missed.length === 1 ? "na semana" : "nas semanas"} ${missed.join(", ")}.`,
+      context: prior.map((w) => ({ label: `Semana ${w.weekNumber}`, value: w.submitted ? "Enviado" : "Sem envio" })),
+    });
+  } else if (prior.length >= 2 && !late) {
+    cards.push({
+      id: "checkins-ok",
+      tone: "positive",
+      badge: "Em dia",
+      title: "Check-ins",
+      value: `${prior.length + 1} seguidos`,
+      valueCaption: `semanas ${prior[0].weekNumber} a ${week}`,
+      description: `Check-in enviado em todas as semanas de ${prior[0].weekNumber} a ${week}.`,
+      context: prior.map((w) => ({ label: `Semana ${w.weekNumber}`, value: "Enviado" })),
+    });
+  }
+  if (late && detail.row.submittedAt) {
+    cards.push({
+      id: "late",
+      tone: "attention",
+      badge: "Atenção",
+      title: "Prazo do check-in",
+      value: shortDate(detail.row.submittedAt),
+      valueCaption: `fim da semana: ${dateOnlyShort(detail.row.periodEnd)}`,
+      description: `O check-in da semana ${week} foi enviado em ${shortDate(detail.row.submittedAt)}, depois do fim da semana (${dateOnlyShort(detail.row.periodEnd)}).`,
+    });
+  }
+
+  // Metas da semana: atingidas × em parte × não atingidas × em aberto.
+  const goals = detail.goals;
+  if (goals.length > 0) {
+    const met = goals.filter((g) => g.result_status === "success").length;
+    const partial = goals.filter((g) => g.result_status === "partial").length;
+    const failed = goals.filter((g) => g.result_status === "fail").length;
+    const open = goals.filter((g) => g.result_status === "pending").length;
+    const parts = [
+      `${met} atingida${met === 1 ? "" : "s"}`,
+      ...(partial ? [`${partial} em parte`] : []),
+      ...(failed ? [`${failed} não atingida${failed === 1 ? "" : "s"}`] : []),
+      ...(open ? [`${open} em aberto`] : []),
+    ];
+    const statusText: Record<string, string> = {
+      success: "Atingida",
+      partial: "Em parte",
+      fail: "Não atingida",
+      pending: "Em aberto",
+    };
+    cards.push({
+      id: "goals",
+      tone: failed > 0 ? "attention" : met === goals.length ? "positive" : "info",
+      badge: failed > 0 ? "Atenção" : met === goals.length ? "Metas cumpridas" : "Metas",
+      title: "Metas da semana",
+      value: `${met} de ${goals.length}`,
+      valueCaption: "atingidas",
+      description: `${parts.join(" · ")}.`,
+      context: goals.map((g) => ({
+        label: g.label,
+        value: `meta ${g.target_value.toLocaleString("pt-BR")}${g.unit ? ` ${g.unit}` : ""}${
+          g.result_value != null ? ` · resultado ${Number(g.result_value).toLocaleString("pt-BR")}` : ""
+        } · ${statusText[g.result_status] ?? g.result_status}`,
+      })),
+    });
+  }
+
+  const order: Record<SignalCardTone, number> = { attention: 0, info: 1, neutral: 2, positive: 3 };
+  return cards.sort((a, b) => order[a.tone] - order[b.tone]);
+}
+
 /** Existe pelo menos uma semana anterior com dado pra comparar? Decide a mensagem do estado vazio. */
 export function hasPriorWeeks(detail: EvaluationDetail): boolean {
   return (

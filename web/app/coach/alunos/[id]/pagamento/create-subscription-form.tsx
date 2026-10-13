@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { createSubscriptionAction, type PagamentoActionState } from "./actions";
+import { buttonClass } from "@/components/ui/button";
 
 const initialState: PagamentoActionState = null;
 
@@ -29,7 +30,7 @@ export default function CreateSubscriptionForm({ clientId }: { clientId: string 
           type="text"
           required
           placeholder="Plano Mensal"
-          className="min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
+          className="min-h-11 rounded-md border border-line-control bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
         />
       </label>
 
@@ -42,7 +43,7 @@ export default function CreateSubscriptionForm({ clientId }: { clientId: string 
             inputMode="decimal"
             required
             placeholder="249,00"
-            className="min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
+            className="min-h-11 rounded-md border border-line-control bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
           />
         </label>
 
@@ -52,7 +53,7 @@ export default function CreateSubscriptionForm({ clientId }: { clientId: string 
             name="period"
             required
             defaultValue=""
-            className="min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
+            className="min-h-11 rounded-md border border-line-control bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
           >
             <option value="" disabled>
               Selecione…
@@ -75,7 +76,7 @@ export default function CreateSubscriptionForm({ clientId }: { clientId: string 
       <button
         type="submit"
         disabled={pending}
-        className="self-start min-h-11 rounded-md bg-brand px-4 py-2 font-medium text-on-accent transition-opacity disabled:opacity-60"
+        className={buttonClass({ className: "self-start" })}
       >
         {pending ? "Criando…" : "Criar assinatura"}
       </button>

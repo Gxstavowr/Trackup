@@ -25,7 +25,16 @@ const EXPORT_TABLES: { key: string; table: string; select: string }[] = [
   { key: "goals", table: "goals", select: "*" },
   { key: "orientations", table: "orientations", select: "*" },
   { key: "history", table: "history_events", select: "*" },
-  { key: "workout_plans", table: "workout_plans", select: "*, workout_days(*, workout_exercises(*))" },
+  // Prescrição por série e substitutos ordenados (0020) embutidos em cada exercício do treino.
+  // Só os campos da prescrição; o nome do substituto vem de `exercises` (o RLS do aluno já o libera).
+  {
+    key: "workout_plans",
+    table: "workout_plans",
+    select:
+      "*, workout_days(*, workout_exercises(*, " +
+      "workout_exercise_sets(set_number, reps_min, reps_max, load, rir, rest_sec), " +
+      "workout_exercise_substitutes(exercise_id, sort_order, exercise:exercises(name))))",
+  },
   { key: "workout_sessions", table: "workout_sessions", select: "*" },
   { key: "workout_logs", table: "workout_logs", select: "*" },
   {

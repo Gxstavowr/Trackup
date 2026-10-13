@@ -2,7 +2,13 @@ import "server-only";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { getClient, type Client } from "@/lib/repository";
 import { getEffectiveClientMetrics } from "@/lib/metrics-settings";
-import type { EvolutionData, EvolutionMetricDef, EvolutionWeekPoint } from "@/lib/evolution-format";
+import type { EvolutionData, EvolutionMetricDef } from "@/lib/evolution-format";
+import {
+  buildEvolutionWeeks,
+  evolutionMaxWeek,
+  type EvolutionInstanceRow,
+  type EvolutionMetricRow,
+} from "@/lib/evolution-weeks";
 
 /**
  * EVOLUÇÃO DO ALUNO (item 15 do master TODO) — aba "Evolução" do workspace do aluno: tendência
@@ -18,13 +24,10 @@ import type { EvolutionData, EvolutionMetricDef, EvolutionWeekPoint } from "@/li
  * Fonte: `metrics` (client_id, week_number, key, value) + `checkin_instances` (pra data real do
  * início de cada semana, mesma fonte que `lib/week-comparison.ts` usa). RLS (`is_coach_of_client`)
  * garante o isolamento — mesmo padrão das outras abas do aluno.
+ *
+ * Semanas: só até a semana CORRENTE do aluno (`computeWeekInfo(start_date)`), igual a
+ * `lib/week-comparison.ts` — ver `buildEvolutionWeeks` (`lib/evolution-weeks.ts`, V3 tarefa 13).
  */
-
-function toNumber(value: number | string | null): number | null {
-  if (value == null) return null;
-  const n = typeof value === "number" ? value : Number(String(value).trim().replace(",", "."));
-  return Number.isFinite(n) ? n : null;
-}
 
 /**
  * Monta a evolução completa (todas as semanas com dado) de UM aluno — o recorte por período
@@ -72,30 +75,12 @@ export async function getStudentEvolution(clientId: string): Promise<EvolutionDa
     }
   }
 
-  const periodStartByWeek = new Map<number, string>();
-  for (const row of (instancesRes.data ?? []) as { week_number: number; period_start: string }[]) {
-    periodStartByWeek.set(row.week_number, row.period_start);
-  }
-
-  const valuesByWeek = new Map<number, Record<string, number>>();
-  for (const row of (metricsRes.data ?? []) as { week_number: number; key: string; value: number | string | null }[]) {
-    const value = toNumber(row.value);
-    if (value == null) continue;
-    // Mesma guarda de `metrics` em `lib/repository.ts`/`lib/week-comparison.ts`: peso <= 0 é lixo
-    // de digitação, não um registro válido — não deve virar ponto no gráfico.
-    if (row.key === "weight_kg" && value <= 0) continue;
-    const bucket = valuesByWeek.get(row.week_number) ?? {};
-    bucket[row.key] = value;
-    valuesByWeek.set(row.week_number, bucket);
-  }
-
-  const weeks: EvolutionWeekPoint[] = [...valuesByWeek.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([weekNumber, values]) => ({
-      weekNumber,
-      periodStart: periodStartByWeek.get(weekNumber) ?? null,
-      values,
-    }));
+  const startDate = (client as Client).start_date ?? null;
+  const weeks = buildEvolutionWeeks(
+    (metricsRes.data ?? []) as EvolutionMetricRow[],
+    (instancesRes.data ?? []) as EvolutionInstanceRow[],
+    { startDate, maxWeek: evolutionMaxWeek(startDate) }
+  );
 
   return { clientName, metrics, weeks };
 }

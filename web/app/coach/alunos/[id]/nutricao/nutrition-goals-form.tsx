@@ -3,11 +3,10 @@
 import { useActionState, useState } from "react";
 import type { NutritionPlan } from "@/lib/repository";
 import { updateGoalsAction, type NutricaoActionState } from "./actions";
+import { inputClass, labelClass } from "@/components/ui/field";
+import { buttonClass } from "@/components/ui/button";
 
 const initialState: NutricaoActionState = null;
-const INPUT =
-  "w-full min-w-0 min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand";
-const LABEL = "flex flex-col gap-1.5 text-sm";
 
 /**
  * Metas nutricionais do plano (kcal/proteína/carboidrato/gordura, item 20) e hidratação
@@ -30,31 +29,31 @@ export default function NutritionGoalsForm({ clientId, plan }: { clientId: strin
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="self-start min-h-11 rounded-md border border-line px-4 text-sm text-ink hover:border-brand"
+        className={buttonClass({ variant: "secondary", className: "self-start" })}
       >
-        + Definir metas nutricionais e hidratação
+        + Definir metas e hidratação
       </button>
     );
   }
 
   return (
-    <form action={action} className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-4">
+    <form action={action} className="flex flex-col gap-3 card p-4">
       <input type="hidden" name="clientId" value={clientId} />
       <input type="hidden" name="planId" value={plan.id} />
-      <span className="text-sm font-medium text-ink">Metas nutricionais</span>
+      <span className="text-sm font-medium text-ink">Metas e hidratação</span>
 
       <div className="grid gap-3 sm:grid-cols-4">
-        <label className={LABEL}>
+        <label className={labelClass}>
           <span className="text-ink-muted">Kcal/dia</span>
           <input
             name="target_kcal"
             type="number"
             min={0}
             defaultValue={plan.target_kcal ?? ""}
-            className={INPUT}
+            className={inputClass}
           />
         </label>
-        <label className={LABEL}>
+        <label className={labelClass}>
           <span className="text-ink-muted">Proteína (g)</span>
           <input
             name="target_protein_g"
@@ -62,10 +61,10 @@ export default function NutritionGoalsForm({ clientId, plan }: { clientId: strin
             min={0}
             step="any"
             defaultValue={plan.target_protein_g ?? ""}
-            className={INPUT}
+            className={inputClass}
           />
         </label>
-        <label className={LABEL}>
+        <label className={labelClass}>
           <span className="text-ink-muted">Carboidrato (g)</span>
           <input
             name="target_carbs_g"
@@ -73,10 +72,10 @@ export default function NutritionGoalsForm({ clientId, plan }: { clientId: strin
             min={0}
             step="any"
             defaultValue={plan.target_carbs_g ?? ""}
-            className={INPUT}
+            className={inputClass}
           />
         </label>
-        <label className={LABEL}>
+        <label className={labelClass}>
           <span className="text-ink-muted">Gordura (g)</span>
           <input
             name="target_fat_g"
@@ -84,12 +83,12 @@ export default function NutritionGoalsForm({ clientId, plan }: { clientId: strin
             min={0}
             step="any"
             defaultValue={plan.target_fat_g ?? ""}
-            className={INPUT}
+            className={inputClass}
           />
         </label>
       </div>
 
-      <label className={`${LABEL} sm:max-w-[220px]`}>
+      <label className={`${labelClass} sm:max-w-[220px]`}>
         <span className="text-ink-muted">Hidratação — meta de água (ml/dia)</span>
         <input
           name="target_water_ml"
@@ -97,7 +96,7 @@ export default function NutritionGoalsForm({ clientId, plan }: { clientId: strin
           min={0}
           placeholder="2000"
           defaultValue={plan.target_water_ml ?? ""}
-          className={INPUT}
+          className={inputClass}
         />
       </label>
 
@@ -110,7 +109,7 @@ export default function NutritionGoalsForm({ clientId, plan }: { clientId: strin
       <button
         type="submit"
         disabled={pending}
-        className="self-start min-h-11 rounded-md border border-line px-4 py-2 text-sm text-ink hover:border-brand disabled:opacity-60"
+        className={buttonClass({ variant: "secondary", className: "self-start" })}
       >
         {pending ? "Salvando…" : "Salvar metas"}
       </button>

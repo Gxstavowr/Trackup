@@ -1,11 +1,10 @@
 import type { Viewport } from "next";
 import Link from "next/link";
-import { logout } from "@/lib/actions/logout";
 import NotificationBell from "../notification-bell";
 import PortalNav from "./portal-nav";
 import LegalLinks from "../legal-links";
-import { ICONS } from "./portal-ui";
 import { requireClient } from "./require-client";
+import Brand from "@/components/brand";
 
 /**
  * Casca de TODO o lado do aluno (`/portal/*`) — item 23. Mesma identidade dark do coach (tokens
@@ -28,50 +27,48 @@ import { requireClient } from "./require-client";
  * `<meta>` manual.
  */
 export const viewport: Viewport = {
-  themeColor: "#0a0a09",
+  themeColor: "#060606",
   viewportFit: "cover",
 };
 
-export default async function PortalLayout({ children }: LayoutProps<"/portal">) {
-  await requireClient();
+function initialOf(name: string): string {
+  return (name.trim().charAt(0) || "A").toLocaleUpperCase("pt-BR");
+}
 
+export default async function PortalLayout({ children }: LayoutProps<"/portal">) {
+  const { client } = await requireClient();
+
+  // `--portal-nav-h` = altura REAL da barra de abas (sem a área segura do iOS). É a fonte única:
+  // a nav usa esse valor como altura das abas e o <main> reserva o mesmo espaço (+ safe area +
+  // folga) no padding-bottom, então o último cartão/botão de toda tela fica acima da barra.
+  // Barras de ação fixas dentro do portal (ex.: check-in) se posicionam com o mesmo valor.
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex flex-1 flex-col [--portal-nav-h:4.25rem]">
       <header className="sticky top-0 z-30 border-b border-line bg-surface-sunken">
         <div className="mx-auto flex h-14 w-full max-w-xl items-center gap-2 px-4">
           <Link href="/portal" className="flex min-h-11 min-w-0 items-center">
-            <span className="flex items-baseline gap-2">
-              <span className="font-display text-xl text-ink">Trackly</span>
-              <span className="font-mono text-label uppercase tracking-widest text-ink-faint">
-                Aluno
-              </span>
-            </span>
+            <Brand variant="compact" />
           </Link>
 
           <div className="ml-auto flex items-center gap-1">
             <NotificationBell recipient="client" href="/portal/notificacoes" variant="shell" />
             <Link
-              href="/meus-dados"
-              aria-label="Privacidade e meus dados"
-              className="flex h-11 min-w-11 items-center justify-center rounded-md px-2.5 text-ink-muted transition-colors hover:bg-surface hover:text-brand"
+              href="/portal/conta"
+              aria-label="Minha conta"
+              className="flex size-11 items-center justify-center rounded-full"
             >
-              {ICONS.privacy}
-            </Link>
-            <form action={logout}>
-              <button
-                type="submit"
-                aria-label="Sair"
-                className="flex h-11 min-w-11 items-center justify-center gap-2.5 rounded-md px-2.5 text-sm text-ink-muted transition-colors hover:bg-surface hover:text-brand"
+              <span
+                aria-hidden
+                className="flex size-9 items-center justify-center rounded-full border border-line-strong bg-surface-raised font-display text-sm font-bold text-brand"
               >
-                {ICONS.logout}
-                <span className="hidden md:inline">Sair</span>
-              </button>
-            </form>
+                {initialOf(client.name)}
+              </span>
+            </Link>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto flex w-full min-w-0 max-w-xl flex-1 flex-col gap-6 px-4 pb-28 pt-6 md:pt-8">
+      <main className="mx-auto flex w-full min-w-0 max-w-xl flex-1 flex-col gap-6 px-4 pb-[calc(var(--portal-nav-h)+env(safe-area-inset-bottom)+2rem)] pt-6 md:pt-8">
         {children}
         <LegalLinks className="mt-auto pt-6" />
       </main>

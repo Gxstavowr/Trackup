@@ -3,10 +3,10 @@
 import { useActionState, useState } from "react";
 import type { NutritionPlanWithMeals } from "@/lib/repository";
 import { createDraftAction, discardDraftAction, publishDraftAction, type NutricaoActionState } from "./actions";
+import { inputClass } from "@/components/ui/field";
+import { buttonClass } from "@/components/ui/button";
 
 const initialState: NutricaoActionState = null;
-const INPUT =
-  "w-full min-w-0 min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand";
 
 /**
  * Empty state + formulário "Criar rascunho" — em branco, a partir do plano PUBLICADO (nova
@@ -24,7 +24,8 @@ export function CreateDraftForm({
   defaultName: string;
 }) {
   const [state, action, pending] = useActionState(createDraftAction, initialState);
-  const [source, setSource] = useState("blank");
+  // Com plano publicado, o padrão é editar uma NOVA VERSÃO dele (não começar em branco e correr o risco de publicar um plano vazio por cima).
+  const [source, setSource] = useState(published ? `plan:${published.id}` : "blank");
 
   return (
     <form action={action} className="flex flex-col gap-3 rounded-lg border border-dashed border-line p-4">
@@ -35,7 +36,7 @@ export function CreateDraftForm({
 
       <label className="flex flex-col gap-1.5 text-sm">
         <span className="text-ink-muted">Começar</span>
-        <select name="source" value={source} onChange={(e) => setSource(e.target.value)} className={INPUT}>
+        <select name="source" value={source} onChange={(e) => setSource(e.target.value)} className={inputClass}>
           <option value="blank">Em branco</option>
           {published && <option value={`plan:${published.id}`}>A partir do plano publicado (nova versão)</option>}
           {templates.map((t) => (
@@ -48,7 +49,7 @@ export function CreateDraftForm({
 
       <label className="flex flex-col gap-1.5 text-sm">
         <span className="text-ink-muted">Nome do plano</span>
-        <input name="name" type="text" defaultValue={defaultName} className={INPUT} />
+        <input name="name" type="text" defaultValue={defaultName} className={inputClass} />
       </label>
 
       {state?.error && (
@@ -60,7 +61,7 @@ export function CreateDraftForm({
       <button
         type="submit"
         disabled={pending}
-        className="self-start min-h-11 rounded-md bg-brand px-4 py-2 font-medium text-on-accent transition-opacity disabled:opacity-60"
+        className={buttonClass({ className: "self-start" })}
       >
         {pending ? "Criando…" : "Criar rascunho"}
       </button>
@@ -78,7 +79,7 @@ export function PublishDraftButton({ clientId, planId }: { clientId: string; pla
       <button
         type="submit"
         disabled={pending}
-        className="min-h-11 rounded-md bg-brand px-4 py-2 font-medium text-on-accent transition-opacity disabled:opacity-60"
+        className={buttonClass()}
       >
         {pending ? "Publicando…" : "Publicar nutrição"}
       </button>
@@ -96,7 +97,7 @@ export function DiscardDraftButton({ clientId, planId }: { clientId: string; pla
       <button
         type="button"
         onClick={() => setConfirming(true)}
-        className="min-h-11 rounded-md border border-line px-4 py-2 text-sm text-ink-muted hover:border-line-strong hover:text-ink"
+        className={buttonClass({ variant: "tertiary" })}
       >
         Descartar rascunho
       </button>
@@ -112,11 +113,11 @@ export function DiscardDraftButton({ clientId, planId }: { clientId: string; pla
         <button
           type="submit"
           disabled={pending}
-          className="min-h-11 rounded-md border border-late text-late-text px-3 text-sm disabled:opacity-60"
+          className={buttonClass({ variant: "danger" })}
         >
           {pending ? "Descartando…" : "Confirmar"}
         </button>
-        <button type="button" onClick={() => setConfirming(false)} className="min-h-11 rounded-md border border-line px-3 text-sm text-ink-muted">
+        <button type="button" onClick={() => setConfirming(false)} className={buttonClass({ variant: "tertiary" })}>
           Cancelar
         </button>
       </div>

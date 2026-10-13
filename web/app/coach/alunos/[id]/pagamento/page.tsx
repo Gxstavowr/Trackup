@@ -9,6 +9,10 @@ import { requireCoach } from "../../../require-coach";
 import { registerNextPaymentAction, markPaymentAsPaidAction } from "./actions";
 import CreateSubscriptionForm from "./create-subscription-form";
 import SubscriptionStatusControl from "./subscription-status-control";
+import { todayInSaoPaulo } from "@/lib/finance/dates";
+import { displayPaymentStatus } from "@/lib/finance/metrics";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
+import { buttonClass } from "@/components/ui/button";
 
 const PERIOD_LABEL: Record<string, string> = {
   monthly: "Mensal",
@@ -23,10 +27,10 @@ const SUBSCRIPTION_STATUS_LABEL: Record<SubscriptionStatus, string> = {
   cancelled: "Cancelada",
 };
 
-const SUBSCRIPTION_STATUS_CLASS: Record<SubscriptionStatus, string> = {
-  active: "bg-ok-tint text-ok",
-  paused: "bg-warn-tint text-warn",
-  cancelled: "bg-late-tint text-late-text",
+const SUBSCRIPTION_STATUS_TONE: Record<SubscriptionStatus, BadgeTone> = {
+  active: "success",
+  paused: "warning",
+  cancelled: "danger",
 };
 
 const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
@@ -37,12 +41,12 @@ const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
   refunded: "Estornado",
 };
 
-const PAYMENT_STATUS_CLASS: Record<PaymentStatus, string> = {
-  pending: "bg-warn-tint text-warn",
-  paid: "bg-ok-tint text-ok",
-  overdue: "bg-late-tint text-late-text",
-  cancelled: "bg-surface-sunken text-ink-muted",
-  refunded: "bg-surface-sunken text-ink-muted",
+const PAYMENT_STATUS_TONE: Record<PaymentStatus, BadgeTone> = {
+  pending: "warning",
+  paid: "success",
+  overdue: "danger",
+  cancelled: "neutral",
+  refunded: "neutral",
 };
 
 function formatBRL(cents: number): string {
@@ -96,6 +100,8 @@ export default async function ClientPaymentPage({
   }
 
   const subscription = await getSubscription(id);
+  // `pending` vencida aparece como "Atrasado" (derivado, igual ao Financeiro e à lista de alunos).
+  const today = todayInSaoPaulo();
 
   return (
     <div className="flex flex-col gap-8">
@@ -106,15 +112,11 @@ export default async function ClientPaymentPage({
           <CreateSubscriptionForm clientId={id} />
         ) : (
           <div className="flex flex-col gap-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 card px-4 py-3">
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-3">
                   <span className="font-medium text-ink">{subscription.plan_name}</span>
-                  <span
-                    className={`rounded-full px-3 py-1 font-mono text-xs uppercase tracking-wide ${SUBSCRIPTION_STATUS_CLASS[subscription.status]}`}
-                  >
-                    {SUBSCRIPTION_STATUS_LABEL[subscription.status]}
-                  </span>
+                  <Badge tone={SUBSCRIPTION_STATUS_TONE[subscription.status]} dot>{SUBSCRIPTION_STATUS_LABEL[subscription.status]}</Badge>
                 </div>
                 <span className="text-sm text-ink-muted">
                   {formatBRL(subscription.price_cents)} · {PERIOD_LABEL[subscription.period]}
@@ -130,7 +132,7 @@ export default async function ClientPaymentPage({
                     <input type="hidden" name="clientId" value={id} />
                     <button
                       type="submit"
-                      className="min-h-11 rounded-md bg-brand px-4 py-2 font-medium text-on-accent transition-opacity hover:opacity-90"
+                      className={buttonClass()}
                     >
                       Registrar próxima cobrança
                     </button>
@@ -148,8 +150,13 @@ export default async function ClientPaymentPage({
                   Nenhuma cobrança registrada ainda — use &quot;Registrar próxima cobrança&quot; acima.
                 </p>
               ) : (
-                <ul className="overflow-hidden rounded-lg border border-line bg-surface">
-                  {subscription.payments.map((payment) => (
+                <ul className="overflow-hidden card">
+                  {subscription.payments.map((rawPayment) => {
+                    const payment = {
+                      ...rawPayment,
+                      status: displayPaymentStatus(rawPayment.status, rawPayment.due_date, today),
+                    };
+                    return (
                     <li
                       key={payment.id}
                       className="flex flex-col gap-3 border-b border-line px-4 py-4 last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
@@ -164,11 +171,7 @@ export default async function ClientPaymentPage({
                       </div>
 
                       <div className="flex items-center gap-3">
-                        <span
-                          className={`rounded-full px-3 py-1 font-mono text-xs uppercase tracking-wide ${PAYMENT_STATUS_CLASS[payment.status]}`}
-                        >
-                          {PAYMENT_STATUS_LABEL[payment.status]}
-                        </span>
+                        <Badge tone={PAYMENT_STATUS_TONE[payment.status]} dot>{PAYMENT_STATUS_LABEL[payment.status]}</Badge>
 
                         {(payment.status === "pending" || payment.status === "overdue") && (
                           <form action={markPaymentAsPaidAction} className="flex items-center gap-2">
@@ -177,7 +180,7 @@ export default async function ClientPaymentPage({
                             <select
                               name="method"
                               defaultValue=""
-                              className="min-h-11 rounded-md border border-line bg-surface-sunken px-2 py-1.5 text-xs text-ink outline-none focus:border-brand"
+                              className="min-h-11 rounded-md border border-line-control bg-surface-sunken px-2 py-1.5 text-xs text-ink outline-none focus:border-brand"
                             >
                               <option value="">Manual</option>
                               <option value="pix">Pix</option>
@@ -187,7 +190,7 @@ export default async function ClientPaymentPage({
                             </select>
                             <button
                               type="submit"
-                              className="min-h-11 rounded-md border border-line px-3 py-1.5 text-sm text-ink hover:border-brand"
+                              className={buttonClass({ variant: "secondary" })}
                             >
                               Marcar como pago
                             </button>
@@ -195,7 +198,8 @@ export default async function ClientPaymentPage({
                         )}
                       </div>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               )}
             </div>

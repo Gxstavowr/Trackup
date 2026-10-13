@@ -1,6 +1,6 @@
 import "server-only";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { isPhotoAngle, type PhotoAngle } from "@/lib/storage/buckets";
+import { isPhotoAngle, sortPhotoAngles, type PhotoAngle } from "@/lib/storage/buckets";
 import { periodOfWeek } from "@/lib/checkin-week";
 import {
   COMPARISON_METRIC_TABLE_KEYS,
@@ -146,7 +146,8 @@ export async function getWeekComparisonData(
         periodEnd,
         hasCheckin: Boolean(instance),
         metrics,
-        photoAngles: [...(anglesByWeek.get(weekNumber) ?? [])],
+        // Ordem canônica (frente, laterais, costas, legado `side` por último).
+        photoAngles: sortPhotoAngles(anglesByWeek.get(weekNumber) ?? []),
       };
     });
 }

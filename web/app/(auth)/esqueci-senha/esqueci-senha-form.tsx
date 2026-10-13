@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import Link from "next/link";
 import { requestPasswordReset, type ForgotPasswordState } from "./actions";
+import { buttonClass } from "@/components/ui/button";
 
 const initialState: ForgotPasswordState = null;
 
@@ -41,7 +42,7 @@ export default function EsqueciSenhaForm() {
           type="email"
           required
           autoComplete="email"
-          className="min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
+          className="min-h-11 rounded-md border border-line-control bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
         />
       </label>
 
@@ -54,7 +55,7 @@ export default function EsqueciSenhaForm() {
       <button
         type="submit"
         disabled={pending}
-        className="mt-2 w-full rounded-md bg-brand py-2.5 font-medium text-on-accent transition-opacity disabled:opacity-60"
+        className={buttonClass({ width: "full", className: "mt-2" })}
       >
         {pending ? "Enviando…" : "Enviar link"}
       </button>

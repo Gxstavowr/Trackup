@@ -1,25 +1,22 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   getClient,
   getClients,
-  getFoodEquivalences,
+  getFoodEquivalencesForFoods,
   getFoods,
   getNutritionOverview,
   getNutritionTemplates,
   getPlanChangeLogs,
 } from "@/lib/repository";
 import { requireCoach } from "../../../require-coach";
-import FoodLibrary from "./food-library";
-import FoodEquivalencesPanel from "./food-equivalences-panel";
 import { CreateDraftForm, DiscardDraftButton, PublishDraftButton } from "./plan-lifecycle";
 import NutritionGoalsForm from "./nutrition-goals-form";
-import DailyView from "./daily-view";
-import AddMealForm from "./add-meal-form";
-import DuplicateDayForm from "./duplicate-day-form";
+import PlanEditor from "./plan-editor";
 import DuplicateToClientForm from "./duplicate-to-client-form";
 import TemplatesPanel from "./templates-panel";
-import PreviewPanel from "./preview-panel";
 import PlanHistoryPanel from "../plan-history-panel";
+import { Badge } from "@/components/ui/badge";
 
 /**
  * Tela "Nutrição do aluno" (item 20 do master TODO — construtor completo, espelhando
@@ -52,27 +49,32 @@ export default async function ClientNutritionPage({
     notFound();
   }
 
-  const filters = {
-    q: typeof sp.q === "string" ? sp.q : "",
-    category: typeof sp.category === "string" ? sp.category : "",
-    archived: sp.archived === "1",
-  };
+  void sp;
 
-  const [filteredFoods, allFoods, overview, templates, equivalences, logs, allClients] = await Promise.all([
-    getFoods({
-      search: filters.q || undefined,
-      category: filters.category || undefined,
-      includeArchived: filters.archived,
-    }),
+  const [allFoods, overview, templates, logs, allClients] = await Promise.all([
     getFoods(),
     getNutritionOverview(id),
     getNutritionTemplates(),
-    getFoodEquivalences(),
     getPlanChangeLogs(id, "nutrition"),
     getClients(),
   ]);
 
   const { draft, published, archivedCount } = overview;
+
+  // Equivalências da biblioteca dos alimentos do plano: a prévia "Como o aluno vê" mostra
+  // "Equivale a ..." exatamente como o portal (que busca as mesmas linhas por alimento).
+  const planFoodIds = Array.from(
+    new Set(
+      [...(draft?.meals ?? []), ...(published?.meals ?? [])]
+        .flatMap((m) => m.items.map((item) => item.food_id))
+        .filter((foodId): foodId is string => foodId != null)
+    )
+  );
+  // Falha aqui só empobrece a prévia — não pode derrubar o editor.
+  const equivalences = await getFoodEquivalencesForFoods(planFoodIds).catch((err) => {
+    console.error("Não foi possível carregar as equivalências para a prévia:", err);
+    return [];
+  });
   const otherClients = allClients.filter((c) => c.id !== id);
   const savableFrom = draft
     ? { planId: draft.id, label: draft.name }
@@ -80,11 +82,44 @@ export default async function ClientNutritionPage({
       ? { planId: published.id, label: published.name }
       : null;
 
+  const publishedCard = published ? (
+<div className="flex flex-col gap-4 card p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="font-medium text-ink">{published.name}</span>
+                <Badge tone="success">
+                  Publicado
+                </Badge>
+                <span className="text-xs text-ink-faint">
+                  {published.meals.length} {published.meals.length === 1 ? "refeição" : "refeições"}
+                </span>
+              </div>
+              <DuplicateToClientForm clientId={id} planId={published.id} otherClients={otherClients} />
+            </div>
+
+            <PlanEditor
+              clientId={id}
+              planId={published.id}
+              meals={published.meals}
+              foods={allFoods}
+              plan={published}
+              templates={templates}
+              editable={false}
+              equivalences={equivalences}
+            />
+          </div>
+  ) : null;
+
   return (
     <div className="flex flex-col gap-8">
-      <FoodLibrary clientId={id} foods={filteredFoods} allFoods={allFoods} filters={filters} />
-
-      <FoodEquivalencesPanel clientId={id} foods={allFoods} equivalences={equivalences} />
+      <p className="text-sm text-ink-muted">
+        Esta tela é a dieta deste aluno. A biblioteca de alimentos, as substituições gerais e os templates da conta
+        ficam em{" "}
+        <Link href="/coach/nutricao" className="text-brand underline">
+          Nutrição
+        </Link>
+        ; ao montar uma refeição você busca e cria alimentos sem sair daqui.
+      </p>
 
       <section className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -96,42 +131,16 @@ export default async function ClientNutritionPage({
           )}
         </div>
 
-        {published && (
-          <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <span className="font-medium text-ink">{published.name}</span>
-                <span className="rounded-full bg-ok-tint px-3 py-1 font-mono text-xs uppercase tracking-wide text-ok">
-                  Publicado
-                </span>
-                <span className="text-xs text-ink-faint">
-                  {published.meals.length} {published.meals.length === 1 ? "refeição" : "refeições"}
-                </span>
-              </div>
-              <DuplicateToClientForm clientId={id} planId={published.id} otherClients={otherClients} />
-            </div>
-
-            <DailyView
-              clientId={id}
-              planId={published.id}
-              meals={published.meals}
-              foods={allFoods}
-              plan={published}
-              editable={false}
-            />
-
-            <PreviewPanel plan={published} />
-          </div>
-        )}
+        {!draft && publishedCard}
 
         {draft ? (
           <div className="flex flex-col gap-6 rounded-lg border border-brand/40 bg-brand-tint/20 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <span className="font-medium text-ink">{draft.name}</span>
-                <span className="rounded-full bg-warn-tint px-3 py-1 font-mono text-xs uppercase tracking-wide text-warn">
+                <Badge tone="warning">
                   Rascunho
-                </span>
+                </Badge>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <DiscardDraftButton clientId={id} planId={draft.id} />
@@ -141,28 +150,16 @@ export default async function ClientNutritionPage({
 
             <NutritionGoalsForm clientId={id} plan={draft} />
 
-            {allFoods.length === 0 ? (
-              <p className="text-sm text-ink-muted">
-                Cadastre pelo menos um alimento na biblioteca acima antes de montar as refeições.
-              </p>
-            ) : (
-              <>
-                {draft.meals.length > 0 && <DuplicateDayForm clientId={id} planId={draft.id} />}
-
-                <DailyView
-                  clientId={id}
-                  planId={draft.id}
-                  meals={draft.meals}
-                  foods={allFoods}
-                  plan={draft}
-                  editable={true}
-                />
-
-                <AddMealForm clientId={id} planId={draft.id} />
-              </>
-            )}
-
-            <PreviewPanel plan={draft} />
+            <PlanEditor
+              clientId={id}
+              planId={draft.id}
+              meals={draft.meals}
+              foods={allFoods}
+              plan={draft}
+              templates={templates}
+              editable={true}
+              equivalences={equivalences}
+            />
           </div>
         ) : (
           <CreateDraftForm
@@ -171,6 +168,15 @@ export default async function ClientNutritionPage({
             templates={templates}
             defaultName={published ? published.name : `Nutrição de ${client.name}`}
           />
+        )}
+
+        {draft && published && (
+          <details className="card">
+            <summary className="min-h-11 cursor-pointer select-none px-4 py-3 text-sm font-semibold text-ink-muted hover:text-ink">
+              Versão publicada (o aluno vê esta): {published.name}
+            </summary>
+            <div className="p-4 pt-0">{publishedCard}</div>
+          </details>
         )}
       </section>
 

@@ -141,3 +141,10 @@ export function computeWaterProgress(consumedMl: number, targetMl: number | null
 export function clampWaterMl(amountMl: number): number {
   return Math.min(WATER_LOG_MAX_ML, Math.max(0, Math.round(amountMl)));
 }
+
+/** "3,0 L" a partir de 1000 ml, "500 ml" abaixo disso (pt-BR). */
+export function formatWaterMl(ml: number): string {
+  if (!Number.isFinite(ml)) return "—";
+  if (ml >= 1000) return `${(ml / 1000).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 2 })} L`;
+  return `${Math.round(ml).toLocaleString("pt-BR")} ml`;
+}

@@ -6,3 +6,6 @@ Thumbs.db
 supabase/.temp/
 # dumps de snapshot de testes de navegador
 web/eval-*.yml
+
+# Claude Code (configuração pessoal)
+.claude/settings.local.json

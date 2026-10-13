@@ -15,6 +15,7 @@ import {
   deleteMealSubstitution as deleteMealSubstitutionRecord,
   deleteNutritionTemplate as deleteNutritionTemplateRecord,
   discardNutritionDraft as discardNutritionDraftRecord,
+  copyMealToPlan as copyMealToPlanRecord,
   duplicateMeal as duplicateMealRecord,
   duplicateNutritionDay as duplicateNutritionDayRecord,
   duplicateNutritionPlan as duplicateNutritionPlanRecord,
@@ -79,6 +80,12 @@ function parseMacros(formData: FormData, prefix = ""): FoodMacros {
     protein_g: parseOptionalFloat(formData.get(`${prefix}protein_g`)) ?? undefined,
     carbs_g: parseOptionalFloat(formData.get(`${prefix}carbs_g`)) ?? undefined,
     fat_g: parseOptionalFloat(formData.get(`${prefix}fat_g`)) ?? undefined,
+    ...(parseOptionalFloat(formData.get(`${prefix}base_qty`))
+      ? {
+          base_qty: parseOptionalFloat(formData.get(`${prefix}base_qty`)) as number,
+          base_unit: parseOptionalText(formData.get(`${prefix}unit`)) ?? "g",
+        }
+      : {}),
   };
 }
 
@@ -547,6 +554,7 @@ export async function updateMealItemAction(
 ): Promise<NutricaoActionState> {
   const clientId = String(formData.get("clientId") || "");
   const itemId = String(formData.get("itemId") || "");
+  const hasQuantity = formData.has("quantity");
   const quantity = parseOptionalFloat(formData.get("quantity"));
   const unit = parseOptionalText(formData.get("unit"));
 
@@ -555,14 +563,37 @@ export async function updateMealItemAction(
   if (!itemId) return { error: "Item inválido." };
 
   try {
+    // Só envia o que veio no formulário (edição inline manda só quantidade; o formulário de
+    // detalhes manda unidade/observações). Macros são recalculados pelo repositório a partir
+    // do alimento × quantidade — não há mais ajuste manual que desencontre dos dados.
     await updateMealItemRecord(itemId, {
-      quantity,
-      unit,
-      notes: parseOptionalText(formData.get("notes")),
-      macros: parseMacros(formData),
+      ...(hasQuantity ? { quantity } : {}),
+      ...(formData.has("unit") ? { unit } : {}),
+      ...(formData.has("notes") ? { notes: parseOptionalText(formData.get("notes")) } : {}),
     });
   } catch (err) {
     return { error: actionErrorMessage(err, "Não foi possível editar o item.") };
+  }
+
+  if (clientId) revalidatePath(pathFor(clientId));
+  return { success: true };
+}
+
+/** Copia uma refeição de outro dia do plano, de outro plano ou de um template pro dia atual. */
+export async function copyMealAction(
+  _prevState: NutricaoActionState,
+  formData: FormData
+): Promise<NutricaoActionState> {
+  const clientId = String(formData.get("clientId") || "");
+  const planId = String(formData.get("planId") || "");
+  const sourceMealId = String(formData.get("sourceMealId") || "");
+  const targetDay = parseDayOfWeek(formData.get("targetDay"));
+  if (!planId || !sourceMealId) return { error: "Escolha a refeição que será copiada." };
+
+  try {
+    await copyMealToPlanRecord(sourceMealId, planId, targetDay);
+  } catch (err) {
+    return { error: actionErrorMessage(err, "Não foi possível copiar a refeição.") };
   }
 
   if (clientId) revalidatePath(pathFor(clientId));

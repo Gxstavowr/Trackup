@@ -1,6 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { getEvaluationQueue, type EvaluationRow } from "@/lib/evaluations";
+import { getStudentEvaluationRow, type EvaluationRow } from "@/lib/evaluations";
 import { monthOf, todayInSaoPaulo } from "@/lib/finance/dates";
 import { getFinanceOverview, type FinancePayment } from "@/lib/finance/queries";
 import { getClient, getPaymentStatusForClients, type Client } from "@/lib/repository";
@@ -19,7 +19,7 @@ export type StudentContext = {
  * Contexto do aluno pra todas as telas de `/coach/alunos/[id]/*` (cabeçalho, Resumo...).
  *
  * Situação, rótulos e ação principal saem de `buildStudentEntry` — a MESMA função e as MESMAS
- * fontes (`getEvaluationQueue` + status de pagamento) da lista de Alunos —, então o perfil nunca
+ * fontes (`getEvaluationQueue`/`getStudentEvaluationRow` + status de pagamento) da lista de Alunos —, então o perfil nunca
  * contradiz a lista. `cache()` do React: layout e página da mesma requisição pagam uma ida ao
  * banco só. `null` = aluno inexistente ou de outra conta (RLS): quem chama responde 404.
  */
@@ -27,8 +27,8 @@ export const getStudentContext = cache(async (id: string): Promise<StudentContex
   const client = await getClient(id);
   if (!client) return null;
 
-  const [queue, paymentStatusByClient, origin] = await Promise.all([
-    getEvaluationQueue(), // deduplicado por requisição com o badge da navegação
+  const [evaluation, paymentStatusByClient, origin] = await Promise.all([
+    getStudentEvaluationRow(client), // só os dados deste aluno (mesma regra da fila da conta)
     getPaymentStatusForClients([id]),
     getOrigin(),
   ]);
@@ -47,7 +47,6 @@ export const getStudentContext = cache(async (id: string): Promise<StudentContex
     }
   }
 
-  const evaluation = queue.find((row) => row.client.id === id) ?? null;
   const entry = buildStudentEntry({
     client,
     evaluation,

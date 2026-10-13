@@ -26,11 +26,11 @@ export default function PlanHistoryPanel({ logs }: { logs: PlanChangeLog[] }) {
   return (
     <section className="flex flex-col gap-4">
       <h2 className="text-lg font-medium text-ink">Histórico de alterações</h2>
-      <ul className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-1">
+      <ul className="flex flex-col gap-2 card p-1">
         {logs.map((log) => (
           <li key={log.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-3 py-2 text-sm">
             <span className="text-ink">
-              <span className="font-mono text-xs uppercase tracking-wide text-ink-faint">
+              <span className="text-xs font-semibold text-ink-faint">
                 {ACTION_LABEL[log.action]}
               </span>{" "}
               {log.summary}

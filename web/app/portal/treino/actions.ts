@@ -132,6 +132,7 @@ export async function logSetAction(
   const load = parseNumber(formData.get("load"));
   const reps = parseNumber(formData.get("reps"));
   const perceivedRir = parseNumber(formData.get("perceivedRir"));
+  const studentNote = String(formData.get("studentNote") || "").slice(0, 500);
 
   if (!sessionId || !clientId || !workoutExerciseId || !exerciseId || !setNumber || !weekNumber) {
     return { error: "Não foi possível identificar a série." };
@@ -148,6 +149,7 @@ export async function logSetAction(
       load,
       reps,
       perceivedRir,
+      studentNote: studentNote || null,
     });
   } catch (err) {
     return { error: actionErrorMessage(err, "Não foi possível registrar a série.") };
@@ -186,6 +188,9 @@ export async function completeSessionAction(
     return { error: actionErrorMessage(err, "Não foi possível finalizar o treino.") };
   }
 
-  revalidateTreino();
+  // Sem `revalidatePath` aqui: numa Server Action ele re-renderiza a página atual, e sem sessão
+  // aberta ela trocaria a tela de resumo (estado do cliente em `SessionView`) pela lista de
+  // dias. As páginas do portal são dinâmicas (sem cache), e "Voltar ao treino" é uma
+  // navegação completa, então tudo abre atualizado em seguida.
   return { success: true };
 }

@@ -2,18 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CheckinPhoto } from "@/lib/storage/checkin-photos";
-
-const ANGLES: { angle: CheckinPhoto["angle"]; label: string }[] = [
-  { angle: "front", label: "Frente" },
-  { angle: "side", label: "Lado" },
-  { angle: "back", label: "Costas" },
-];
+import { PHOTO_ANGLE_LABEL, displayAnglesForWeek, photoGridClass } from "@/lib/storage/photo-angles";
 
 /** Espera antes da única nova tentativa de carregar a imagem que falhou. */
 const RETRY_DELAY_MS = 800;
 
 /**
- * As três posições (frente, lado, costas) de UMA semana, lado a lado. Peça reutilizável: a aba
+ * As posições de UMA semana: frente, lateral esquerda, lateral direita e costas (2x2 no celular).
+ * Semana antiga (3 fotos) mostra frente, "Lateral (registro anterior)" e costas — a lateral antiga
+ * nunca vira esquerda/direita (`displayAnglesForWeek`). Peça reutilizável: a aba
  * Fotos renderiza uma por semana, a avaliação renderiza a semana atual, e a comparação visual
  * (item 14) poderá renderizar duas (atual x comparativa) sem mexer aqui. Recebe só as fotos
  * daquela semana, com as URLs assinadas já geradas no servidor (`listClientPhotos`).
@@ -30,10 +27,12 @@ export default function PhotoTriptych({
   photos: CheckinPhoto[];
 }) {
   const byAngle = new Map(photos.map((p) => [p.angle, p]));
+  const angles = displayAnglesForWeek(byAngle.keys());
 
   return (
-    <div className="grid grid-cols-3 gap-3">
-      {ANGLES.map(({ angle, label }) => {
+    <div className={`grid gap-3 ${photoGridClass(angles.length)}`}>
+      {angles.map((angle) => {
+        const label = PHOTO_ANGLE_LABEL[angle];
         const photo = byAngle.get(angle);
         return (
           <figure key={angle} className="flex min-w-0 flex-col gap-1.5">

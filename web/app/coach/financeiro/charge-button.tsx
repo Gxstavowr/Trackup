@@ -1,5 +1,6 @@
 import { formatBRL, formatDateShort, firstName, whatsappDigits } from "@/lib/finance/format";
 import type { FinancePayment } from "@/lib/finance/queries";
+import Icon from "@/components/ui/icon";
 import { BUTTON_DISABLED, BUTTON_OUTLINE } from "./ui";
 
 /**
@@ -25,6 +26,7 @@ export default function ChargeButton({
     return (
       <div className="flex flex-col gap-1 sm:items-end">
         <button type="button" disabled aria-describedby={`no-phone-${payment.id}`} className={BUTTON_DISABLED}>
+          <Icon name="wallet" size={18} className="shrink-0" />
           Cobrar pagamento
         </button>
         <p id={`no-phone-${payment.id}`} className="text-xs text-ink-faint sm:text-right">
@@ -50,6 +52,7 @@ export default function ChargeButton({
       rel="noopener noreferrer"
       className={className}
     >
+      <Icon name="wallet" size={18} className="shrink-0" />
       Cobrar pagamento
       <span className="sr-only"> de {payment.client.name} pelo WhatsApp (abre em nova aba)</span>
     </a>

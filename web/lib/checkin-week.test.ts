@@ -43,3 +43,13 @@ test("antes do início, fica na semana 1", () => {
 test("periodOfWeek bate com computeWeekInfo", () => {
   assert.deepEqual(periodOfWeek("2026-10-08", 4), { periodStart: "2026-10-26", periodEnd: "2026-11-01" });
 });
+
+test("semana corrente (sáb 10/10/2026) vai de segunda 05/10 a domingo 11/10, nunca terça a segunda", () => {
+  // Aluno que começou numa TERÇA (2026-07-21): antes da 0014 a semana 12 era 06/10–12/10.
+  const info = computeWeekInfo("2026-07-21", new Date("2026-10-10T15:00:00Z"));
+  assert.deepEqual(info, { weekNumber: 12, periodStart: "2026-10-05", periodEnd: "2026-10-11" });
+  assert.equal(new Date(`${info.periodStart}T00:00:00Z`).getUTCDay(), 1); // segunda
+  assert.equal(new Date(`${info.periodEnd}T00:00:00Z`).getUTCDay(), 0); // domingo
+  // Sábado 23:30 em SP (domingo 02:30 UTC) ainda é a mesma semana.
+  assert.deepEqual(computeWeekInfo("2026-07-21", new Date("2026-10-11T02:30:00Z")), info);
+});

@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import { requireCoach } from "../../../require-coach";
 import { getStudentTimeline } from "@/lib/history";
+import EvolutionSubnav from "../evolution-subnav";
 import HistoryTimeline from "./history-timeline";
+import { EmptyState } from "@/components/ui/empty-state";
 
 /**
  * Histórico do aluno (`/coach/alunos/[id]/historico`, item 16 do TODO) — aba "Histórico" do
@@ -33,6 +35,7 @@ export default async function StudentHistoryPage({
 
   return (
     <div className="flex flex-col gap-6">
+      <EvolutionSubnav clientId={id} active="historico" />
       <section aria-label="Histórico" className="flex flex-col gap-3">
         <h2 className="text-lg font-medium text-ink">Histórico</h2>
         <p className="text-sm text-ink-muted">
@@ -42,13 +45,8 @@ export default async function StudentHistoryPage({
       </section>
 
       {isEmpty ? (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-line px-6 py-14 text-center">
-          <p className="font-display text-hero text-ink">Ainda sem histórico</p>
-          <p className="max-w-sm text-sm text-ink-muted">
-            O histórico aparece aqui assim que o aluno enviar o primeiro check-in ou você registrar
-            a primeira orientação/meta.
-          </p>
-        </div>
+        <EmptyState icon="clock" title="Ainda sem histórico" text="O histórico aparece aqui assim que o aluno enviar o primeiro check-in ou você registrar
+            a primeira orientação/meta." />
       ) : (
         <HistoryTimeline timeline={timeline} />
       )}

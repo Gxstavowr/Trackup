@@ -249,6 +249,7 @@ const TRACKLY_ERROR_MESSAGES: Record<string, string> = {
   order_mismatch: "A ordem enviada não bate com os itens atuais — recarregue a página e tente de novo.",
   not_coach: "Sessão de coach inválida.",
   invalid_items: "Lista de exercícios inválida.",
+  workout_exercise_not_found: "Exercício do treino não encontrado — recarregue a página.",
 };
 
 /**

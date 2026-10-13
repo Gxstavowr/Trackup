@@ -2,45 +2,49 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { EvaluationRow, EvaluationState } from "@/lib/evaluations";
 import { getSaoPauloClock } from "@/lib/portal-today";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
+import { buttonClass } from "@/components/ui/button";
+import Icon, { type IconName } from "@/components/ui/icon";
+import { SITUATION_META, getSituation, isOverdue } from "@/lib/evaluation-situation";
+import { EmptyState } from "@/components/ui/empty-state";
 
 /**
- * Peças de UI compartilhadas entre `/coach` (fila de trabalho), `/coach/avaliacoes` (lista
+ * Peças de UI compartilhadas entre `/coach` (panorama da semana + ações prioritárias), `/coach/avaliacoes` (lista
  * completa) e a página de avaliação do aluno — uma fonte só pro vocabulário de status e pros
  * botões de ação, pra os três lugares nunca divergirem.
  *
  * Vocabulário: estados do CICLO de avaliação (nunca status financeiro — pagamento é outro eixo).
  */
 
-export const BADGE_BASE = "rounded-full px-3 py-1 font-mono text-xs uppercase tracking-wide";
 
 export const STATE_META: Record<
   EvaluationState,
-  { label: string; badge: string; action: string }
+  { label: string; tone: BadgeTone; action: string }
 > = {
-  pending: { label: "Avaliação pendente", badge: "bg-brand-tint text-brand", action: "Abrir avaliação" },
-  in_progress: { label: "Em avaliação", badge: "bg-brand-tint text-brand", action: "Continuar avaliação" },
-  draft: { label: "Orientação em rascunho", badge: "bg-warn-tint text-warn", action: "Finalizar orientação" },
+  pending: { label: "Avaliação pendente", tone: "accent", action: "Abrir avaliação" },
+  in_progress: { label: "Em avaliação", tone: "accent", action: "Continuar avaliação" },
+  draft: { label: "Orientação em rascunho", tone: "warning", action: "Finalizar avaliação" },
   awaiting_checkin: {
     label: "Aguardando check-in",
-    badge: "bg-surface-sunken text-ink-muted",
+    tone: "neutral",
     action: "Cobrar check-in",
   },
-  done: { label: "Ciclo concluído", badge: "bg-ok-tint text-ok", action: "Ver avaliação" },
+  done: { label: "Ciclo concluído", tone: "success", action: "Ver acompanhamento" },
 };
 
-/** Botão principal (ação do coach) e secundário — sempre com aparência de botão, alvo >= 44px. */
-export const BUTTON_PRIMARY =
-  "inline-flex min-h-11 w-full items-center justify-center rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-on-accent transition-opacity hover:opacity-90 sm:w-auto";
-export const BUTTON_OUTLINE =
-  "inline-flex min-h-11 w-full items-center justify-center rounded-md border border-brand px-5 py-2.5 text-sm font-medium text-brand transition-colors hover:bg-brand-tint sm:w-auto";
-export const BUTTON_GHOST =
-  "inline-flex min-h-11 w-full items-center justify-center rounded-md border border-line px-5 py-2.5 text-sm font-medium text-ink transition-colors hover:border-line-strong sm:w-auto";
-export const BUTTON_DISABLED =
-  "inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center rounded-md border border-line px-5 py-2.5 text-sm font-medium text-ink-faint opacity-70 sm:w-auto";
+/** Botões da fila de avaliações — vêm do design system (`components/ui/button`); largura total no celular. */
+export const BUTTON_PRIMARY = buttonClass({ variant: "primary", width: "mobile" });
+export const BUTTON_OUTLINE = buttonClass({ variant: "secondary", width: "mobile" });
+export const BUTTON_GHOST = buttonClass({ variant: "secondary", width: "mobile" });
+export const BUTTON_DISABLED = buttonClass({
+  variant: "secondary",
+  width: "mobile",
+  className: "cursor-not-allowed border-line! text-ink-faint! opacity-70 hover:border-line! hover:text-ink-faint!",
+});
 
 export function StateBadge({ state }: { state: EvaluationState }) {
   const meta = STATE_META[state];
-  return <span className={`${BADGE_BASE} ${meta.badge}`}>{meta.label}</span>;
+  return <Badge tone={meta.tone} dot>{meta.label}</Badge>;
 }
 
 /** Timestamp -> dd/mm (fuso do Brasil, pra o servidor em UTC não deslocar o dia). */
@@ -159,6 +163,7 @@ export function ChargeCheckinButton({
     return (
       <div className="flex flex-col gap-1.5 sm:items-end">
         <button type="button" disabled aria-describedby={`no-phone-${client.id}`} className={BUTTON_DISABLED}>
+          <Icon name="checkin" size={18} className="shrink-0" />
           Cobrar check-in
         </button>
         <p id={`no-phone-${client.id}`} className="text-xs text-ink-faint sm:text-right">
@@ -176,6 +181,7 @@ export function ChargeCheckinButton({
       rel="noopener noreferrer"
       className={className}
     >
+      <Icon name="checkin" size={18} className="shrink-0" />
       Cobrar check-in
       <span className="sr-only"> de {client.name} pelo WhatsApp (abre em nova aba)</span>
     </a>
@@ -212,6 +218,7 @@ export function OrientationReadyButton({
           aria-describedby={`no-phone-orientation-${client.id}`}
           className={BUTTON_DISABLED}
         >
+          <Icon name="message" size={18} className="shrink-0" />
           Avisar orientação
         </button>
         <p id={`no-phone-orientation-${client.id}`} className="text-xs text-ink-faint sm:text-right">
@@ -229,32 +236,52 @@ export function OrientationReadyButton({
       rel="noopener noreferrer"
       className={className}
     >
+      <Icon name="message" size={18} className="shrink-0" />
       Avisar orientação
       <span className="sr-only"> — {client.name} pelo WhatsApp (abre em nova aba)</span>
     </a>
   );
 }
 
-function rowDetail(row: EvaluationRow): string {
+/**
+ * "Falar no WhatsApp": contato geral, sem mensagem pronta e sem pressão (tertiary). Só aparece
+ * quando o aluno tem telefone válido — a falta de telefone já é explicada pelas ações de cobrança.
+ */
+export function ContactWhatsappButton({
+  client,
+  className = buttonClass({ variant: "tertiary", width: "mobile" }),
+}: {
+  client: EvaluationRow["client"];
+  className?: string;
+}) {
+  const digits = whatsappDigits(client.phone);
+  if (!digits) return null;
+  return (
+    <a href={`https://wa.me/${digits}`} target="_blank" rel="noopener noreferrer" className={className}>
+      <Icon name="message" size={18} className="shrink-0" />
+      Falar no WhatsApp
+      <span className="sr-only"> com {client.name} (abre em nova aba)</span>
+    </a>
+  );
+}
+
+/** Uma linha curta de contexto: o que aconteceu / o que falta (sem repetir o nome do estado). */
+function rowDetail(row: EvaluationRow, overdue: boolean): string {
+  const week = `Semana ${row.weekNumber}`;
+  const prev = overdue ? " · semana anterior" : "";
   switch (row.state) {
     case "pending":
-      return row.submittedAt
-        ? `Check-in enviado em ${formatShortDate(row.submittedAt)} · ainda não aberto por você`
-        : "Check-in enviado · ainda não aberto por você";
+      return `${week} · enviado${row.submittedAt ? ` em ${formatShortDate(row.submittedAt)}` : ""}${prev}`;
     case "in_progress":
-      return row.reviewOpenedAt
-        ? `Avaliação aberta em ${formatShortDate(row.reviewOpenedAt)} · orientação ainda não enviada`
-        : "Avaliação aberta · orientação ainda não enviada";
+      return `${week} · aberta${row.reviewOpenedAt ? ` em ${formatShortDate(row.reviewOpenedAt)}` : ""}${prev}`;
     case "draft":
-      return "Rascunho de orientação salvo · falta enviar ao aluno";
+      return `${week} · rascunho salvo, falta enviar ao aluno${prev}`;
     case "awaiting_checkin":
       return row.late
-        ? `Check-in atrasado · previsto até ${formatDateOnlyShort(row.periodEnd)}`
-        : `Aguardando o aluno enviar · até ${formatDateOnlyShort(row.periodEnd)}`;
+        ? `${week} · o prazo era ${formatDateOnlyShort(row.periodEnd)}`
+        : `${week} · enviar até ${formatDateOnlyShort(row.periodEnd)}`;
     case "done":
-      return row.reviewedAt
-        ? `Orientação enviada em ${formatShortDate(row.reviewedAt)}`
-        : "Orientação enviada";
+      return `${week} · orientação enviada${row.reviewedAt ? ` em ${formatShortDate(row.reviewedAt)}` : ""}`;
   }
 }
 
@@ -263,33 +290,56 @@ export function evaluationHref(clientId: string): string {
   return `/coach/alunos/${clientId}/avaliacao`;
 }
 
-/** Uma linha por aluno: nome + status explícito + UM botão principal pra situação. */
-export function EvaluationListItem({ row }: { row: EvaluationRow }) {
-  const meta = STATE_META[row.state];
+/**
+ * Uma linha por aluno: nome + situação (texto sempre) + contexto curto + UM botão pra situação.
+ * `emphasis` pinta o botão de ação como primário (amarelo) — usado só na próxima da fila;
+ * as demais usam botão secundário pra o acento não competir em toda linha.
+ */
+export function EvaluationListItem({
+  row,
+  today,
+  emphasis = false,
+}: {
+  row: EvaluationRow;
+  today: string;
+  emphasis?: boolean;
+}) {
+  const situation = getSituation(row);
+  const meta = SITUATION_META[situation];
+  const overdue = isOverdue(row, today);
+  const late = situation === "checkin_late";
   return (
-    <li className="flex flex-col gap-3 border-b border-line px-4 py-4 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-      <div className="flex min-w-0 flex-col gap-1.5">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+    <li
+      className={`flex flex-col gap-3 border-b border-line px-4 py-3.5 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4 ${
+        emphasis ? "bg-brand-tint/40" : ""
+      }`}
+    >
+      <div className="flex min-w-0 flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
           <Link
             href={`/coach/alunos/${row.client.id}`}
-            className="inline-flex min-h-11 max-w-full items-center font-medium text-ink hover:text-brand"
+            className="-my-3 max-w-full truncate py-3 font-medium text-ink hover:text-brand"
           >
             {row.client.name}
           </Link>
-          <StateBadge state={row.state} />
+          <Badge tone={meta.tone} dot>
+            {meta.label}
+          </Badge>
+          {overdue && <Badge tone="danger">Semana anterior</Badge>}
         </div>
-        <p className={`text-xs ${row.late ? "text-late-text" : "text-ink-muted"}`}>
-          Semana {row.weekNumber} · {rowDetail(row)}
-        </p>
+        <p className={`t-helper ${late ? "!text-late-text" : ""}`}>{rowDetail(row, overdue)}</p>
       </div>
 
       <div className="sm:shrink-0">
-        {row.state === "awaiting_checkin" ? (
-          <ChargeCheckinButton client={row.client} weekNumber={row.weekNumber} late={row.late} />
+        {situation === "checkin_late" || situation === "checkin_waiting" ? (
+          <ChargeCheckinButton client={row.client} weekNumber={row.weekNumber} late={late} />
         ) : (
           <Link
             href={evaluationHref(row.client.id)}
-            className={row.state === "done" ? BUTTON_GHOST : BUTTON_PRIMARY}
+            className={buttonClass({
+              variant: emphasis ? "primary" : "secondary",
+              width: "mobile",
+            })}
           >
             {meta.action}
             <span className="sr-only"> — {row.client.name}</span>
@@ -300,149 +350,216 @@ export function EvaluationListItem({ row }: { row: EvaluationRow }) {
   );
 }
 
-/**
- * "Merece atenção" — só situações que o ciclo já sabe derivar (nada de regra nova nem query
- * extra), no vocabulário do ciclo de avaliação (nunca status financeiro):
- *  - `late`: check-in atrasado (a instância foi marcada `late`, ver `EvaluationRow.late`);
- *  - `draft`: rascunho de orientação parado — o rascunho ficou pra trás e a semana dele já
- *    acabou (`periodEnd` < hoje) sem a orientação ser enviada;
- *  - `previous_week`: avaliação de uma semana anterior (check-in enviado, semana já encerrada)
- *    ainda sem orientação enviada.
- * Uma linha por aluno, na mesma ordem da fila (o que espera há mais tempo primeiro).
- */
-export type AttentionKind = "late" | "draft" | "previous_week";
-export type AttentionItem = { row: EvaluationRow; kind: AttentionKind; reason: string };
-
-/** `todayStr` = `AAAA-MM-DD` em São Paulo (`todayDateSP`) — o mesmo referencial de `computeWeekInfo` / da fila. */
-export function getAttentionItems(rows: EvaluationRow[], todayStr: string): AttentionItem[] {
-  const items: AttentionItem[] = [];
-  for (const row of rows) {
-    const week = row.weekNumber;
-    if (row.state === "awaiting_checkin" && row.late) {
-      items.push({
-        row,
-        kind: "late",
-        reason: `Check-in da semana ${week} atrasado — previsto até ${formatDateOnlyShort(row.periodEnd)} e o aluno ainda não enviou.`,
-      });
-    } else if (row.state === "draft" && row.periodEnd < todayStr) {
-      items.push({
-        row,
-        kind: "draft",
-        reason: `Rascunho da orientação da semana ${week} parado — a semana já acabou e a orientação não foi enviada ao aluno.`,
-      });
-    } else if ((row.state === "pending" || row.state === "in_progress") && row.periodEnd < todayStr) {
-      items.push({
-        row,
-        kind: "previous_week",
-        reason: `Avaliação da semana ${week} (semana anterior) sem orientação enviada${
-          row.submittedAt ? ` — check-in enviado em ${formatShortDate(row.submittedAt)}` : ""
-        }.`,
-      });
-    }
-  }
-  return items;
-}
-
-/** Bloco compacto: nome + motivo explícito + UM botão de ação por linha (mesmo padrão de `RowsList`). */
-export function AttentionList({ items }: { items: AttentionItem[] }) {
-  return (
-    <ul className="overflow-hidden rounded-lg border border-warn/40 bg-surface shadow-[var(--surface-raised-shadow)]">
-      {items.map(({ row, kind, reason }) => (
-        <li
-          key={row.client.id}
-          className="flex flex-col gap-3 border-b border-line px-4 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
-        >
-          <div className="flex min-w-0 flex-col gap-1">
-            <Link
-              href={`/coach/alunos/${row.client.id}`}
-              className="inline-flex min-h-11 max-w-full items-center font-medium text-ink hover:text-brand"
-            >
-              {row.client.name}
-            </Link>
-            <p className={`text-xs ${kind === "late" ? "text-late-text" : "text-ink-muted"}`}>{reason}</p>
-          </div>
-          <div className="sm:shrink-0">
-            {kind === "late" ? (
-              <ChargeCheckinButton client={row.client} weekNumber={row.weekNumber} late />
-            ) : (
-              <Link href={evaluationHref(row.client.id)} className={BUTTON_PRIMARY}>
-                {STATE_META[row.state].action}
-                <span className="sr-only"> — {row.client.name}</span>
-              </Link>
-            )}
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** Contêiner de lista de linhas (borda + fundo de superfície), com um título de grupo opcional. */
+/** Cabeçalho de grupo: título + contagem tabular + descrição curta opcional + ação opcional à direita. */
 export function EvaluationGroup({
   title,
   count,
   description,
+  action,
+  tone = "default",
   children,
 }: {
   title: string;
   count: number;
   description?: string;
+  action?: ReactNode;
+  tone?: "default" | "work";
   children: ReactNode;
 }) {
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex flex-col gap-0.5">
-        <h2 className="flex items-baseline gap-2 text-lg font-medium text-ink">
-          {title}
-          <span className="font-mono text-sm text-ink-faint">{count}</span>
-        </h2>
-        {description && <p className="text-sm text-ink-muted">{description}</p>}
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+        <div className="flex flex-col gap-1">
+          <h2 className="t-subtitle flex items-center gap-2.5 text-ink">
+            {title}
+            <span
+              className={`inline-flex min-w-7 items-center justify-center rounded-full px-2 py-1 text-xs font-bold leading-none tabular-nums ${
+                tone === "work" && count > 0 ? "bg-brand text-on-accent" : "bg-surface-raised text-ink-muted"
+              }`}
+            >
+              {count}
+            </span>
+          </h2>
+          {description && <p className="t-helper">{description}</p>}
+        </div>
+        {action}
       </div>
       {children}
     </section>
   );
 }
 
-export function RowsList({ rows }: { rows: EvaluationRow[] }) {
+/** Lista de linhas. Na primeira linha da fila de trabalho (`highlightFirst`) o botão é primário. */
+export function RowsList({
+  rows,
+  today,
+  highlightFirst = false,
+  work = false,
+}: {
+  rows: EvaluationRow[];
+  today: string;
+  highlightFirst?: boolean;
+  /** Fila de trabalho: borda de acento para destacá-la das demais listas. */
+  work?: boolean;
+}) {
   return (
-    <ul className="overflow-hidden rounded-lg border border-line bg-surface shadow-[var(--surface-raised-shadow)]">
-      {rows.map((row) => (
-        <EvaluationListItem key={row.client.id} row={row} />
+    <ul className={`overflow-hidden card ${work ? "!border-brand/40" : ""}`}>
+      {rows.map((row, i) => (
+        <EvaluationListItem key={row.client.id} row={row} today={today} emphasis={highlightFirst && i === 0} />
       ))}
     </ul>
   );
 }
 
 /** Estado vazio de um grupo — explica o que fazer, nunca só "nada aqui". */
-export function GroupEmpty({ title, text }: { title: string; text: string }) {
+export function GroupEmpty({ title, text, icon = "check-circle" }: { title: string; text: string; icon?: IconName }) {
+  return <EmptyState compact icon={icon} title={title} text={text} />;
+}
+
+/**
+ * Indicador de progresso da semana: anel (concluídos / total) + valor. O texto "x/y" está sempre
+ * presente — o anel é só reforço visual.
+ */
+export function WeekProgressRing({ done, total }: { done: number; total: number }) {
+  const r = 42;
+  const circ = 2 * Math.PI * r;
+  const pct = total > 0 ? done / total : 0;
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-dashed border-line px-5 py-6 text-center">
-      <p className="font-medium text-ink">{title}</p>
-      <p className="mx-auto max-w-md text-sm text-ink-muted">{text}</p>
+    <div
+      className="relative size-28 shrink-0 sm:size-32"
+      role="img"
+      aria-label={`${done} de ${total} ciclos concluídos esta semana`}
+    >
+      <svg viewBox="0 0 100 100" className="size-full -rotate-90" aria-hidden>
+        <circle cx="50" cy="50" r={r} fill="none" strokeWidth="9" className="stroke-line-strong" />
+        <circle
+          cx="50"
+          cy="50"
+          r={r}
+          fill="none"
+          strokeWidth="9"
+          strokeLinecap="round"
+          className="stroke-brand"
+          strokeDasharray={circ}
+          strokeDashoffset={circ * (1 - pct)}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="font-display text-[1.75rem] font-extrabold leading-none tabular-nums text-ink sm:text-3xl">
+          {done}
+          <span className="text-ink-faint">/{total}</span>
+        </span>
+        <span className="t-label mt-1 text-ink-muted">concluídos</span>
+      </div>
     </div>
   );
 }
 
-/** Contador do resumo — número grande + rótulo + uma linha de contexto opcional. */
-export function Counter({
+/** Valor do resumo: número .t-value (tabular) + rótulo; mesma altura e alinhamento em todos. */
+export function SummaryStat({
   label,
   value,
-  hint,
   tone = "default",
 }: {
   label: string;
   value: number;
-  hint?: string;
-  tone?: "default" | "brand" | "late";
+  tone?: "default" | "accent" | "danger";
 }) {
-  const valueColor = tone === "brand" && value > 0 ? "text-brand" : tone === "late" && value > 0 ? "text-late" : "text-ink";
+  const color =
+    value === 0
+      ? "text-ink-faint"
+      : tone === "accent"
+        ? "text-brand"
+        : tone === "danger"
+          ? "text-danger-text"
+          : "text-ink";
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-line bg-surface p-3 shadow-[var(--surface-raised-shadow)] sm:p-4">
-      <span className="font-mono text-label uppercase leading-tight tracking-wide text-ink-faint">
-        {label}
-      </span>
-      <span className={`font-display text-counter leading-none ${valueColor}`}>{value}</span>
-      {hint && <span className="text-xs leading-snug text-ink-muted">{hint}</span>}
+    <div className="flex min-w-0 flex-col gap-2">
+      <span className={`t-value !text-[2rem] sm:!text-[2.5rem] ${color}`}>{value}</span>
+      <span className="t-label text-ink-muted">{label}</span>
     </div>
+  );
+}
+
+/**
+ * Métrica de progresso "x de y" com barra — resumo semanal do hub (`/coach`). O texto "x/y" está
+ * sempre presente; a barra é reforço visual. `total = 0` mostra a barra vazia, sem dividir por zero.
+ */
+export function ProgressMetric({
+  label,
+  value,
+  total,
+  hint,
+}: {
+  label: string;
+  value: number;
+  total: number;
+  hint?: string;
+}) {
+  const pct = total > 0 ? Math.min(100, Math.round((value / total) * 100)) : 0;
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="t-label text-ink-muted">{label}</span>
+        <span className="font-display text-lg font-extrabold leading-none tabular-nums text-ink">
+          {value}
+          <span className="text-ink-faint">/{total}</span>
+        </span>
+      </div>
+      <div
+        className="h-2 overflow-hidden rounded-full bg-line-strong"
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={value}
+      >
+        <div className="h-full rounded-full bg-brand" style={{ width: `${pct}%` }} />
+      </div>
+      {hint && <p className="t-helper">{hint}</p>}
+    </div>
+  );
+}
+
+/**
+ * Um ponto de atenção do hub: ícone + contagem + frase curta + link para onde se resolve.
+ * Só contagens e nomes — nunca respostas do check-in.
+ */
+export function AttentionItem({
+  icon,
+  tone,
+  count,
+  title,
+  text,
+  href,
+  linkLabel,
+}: {
+  icon: IconName;
+  tone: "danger" | "warning";
+  count: number;
+  title: string;
+  text: string;
+  href: string;
+  linkLabel: string;
+}) {
+  const chip = tone === "danger" ? "bg-danger-tint text-danger-text" : "bg-warning-tint text-ink";
+  return (
+    <li className="flex flex-col gap-3 border-b border-line px-4 py-3.5 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className={`inline-flex size-9 shrink-0 items-center justify-center rounded-full ${chip}`} aria-hidden>
+          <Icon name={icon} size={18} />
+        </span>
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <p className="font-medium text-ink">
+            <span className="tabular-nums">{count}</span> {title}
+          </p>
+          <p className="t-helper break-words">{text}</p>
+        </div>
+      </div>
+      <Link href={href} className={buttonClass({ variant: "tertiary", width: "mobile", className: "sm:shrink-0" })}>
+        {linkLabel}
+        <Icon name="arrow-right" size={16} className="shrink-0" />
+      </Link>
+    </li>
   );
 }

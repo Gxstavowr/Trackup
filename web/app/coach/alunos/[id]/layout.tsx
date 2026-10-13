@@ -6,12 +6,9 @@ import StudentHeader from "./student-header";
 import StudentTabs, { type StudentTab } from "./student-tabs";
 
 /**
- * Abas do contexto do aluno, na ordem do produto: Resumo, Avaliação, Treino, Nutrição, Fotos,
- * Pagamentos, Histórico. NÃO são itens da navegação principal do coach — vivem aqui, dentro do
- * aluno. Histórico (item 16) fecha a lista de propósito: é a visão "big picture" da relação ao
- * longo dos meses, depois de todas as abas operacionais. Evolução (item 15) entra logo depois de
- * Nutrição: tendência numérica das métricas — peso e o que mais o coach estiver acompanhando
- * para este aluno (item 17) — distinta do Histórico, que é a timeline de eventos.
+ * Abas do contexto do aluno (máx. 6): Resumo, Avaliação, Treino, Nutrição, Evolução, Pagamentos.
+ * Fotos e Histórico vivem dentro de Evolução (seções Métricas | Fotos | Histórico, cada uma com
+ * a sua URL). NÃO são itens da navegação principal — vivem aqui, dentro do aluno.
  */
 const STUDENT_TABS: StudentTab[] = [
   { segment: "", label: "Resumo" },
@@ -19,10 +16,8 @@ const STUDENT_TABS: StudentTab[] = [
   { segment: "avaliacao", label: "Avaliação" },
   { segment: "treino", label: "Treino" },
   { segment: "nutricao", label: "Nutrição" },
-  { segment: "evolucao", label: "Evolução" },
-  { segment: "fotos", label: "Fotos" },
+  { segment: "evolucao", label: "Evolução", also: ["fotos", "historico"] },
   { segment: "pagamento", label: "Pagamentos" },
-  { segment: "historico", label: "Histórico" },
 ];
 
 /**
@@ -56,7 +51,7 @@ export default async function StudentLayout({
       <header className="flex flex-col gap-3">
         <Link
           href="/coach/alunos"
-          className="inline-flex min-h-11 w-fit items-center font-mono text-sm text-ink-muted hover:text-brand"
+          className="inline-flex min-h-11 w-fit items-center tabular-nums text-sm text-ink-muted hover:text-brand"
         >
           ← Alunos
         </Link>

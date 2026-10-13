@@ -337,3 +337,29 @@ export function toFriendlyActionError(message: string, fallback: string): string
   const translated = translateTracklyError(message);
   return RAW_DB_ERROR_PATTERN.test(translated) ? fallback : translated;
 }
+
+// ============================================================================
+// Ordem de apresentação ao aluno
+// ============================================================================
+
+export type MealTimeLike = { time: string | null; sort_order: number };
+
+function mealMinutes(time: string | null): number {
+  if (!time) return Number.POSITIVE_INFINITY; // sem horário vai para o fim
+  const [h, m] = time.split(":");
+  return Number(h) * 60 + Number(m);
+}
+
+/**
+ * Ordem em que o ALUNO vê as refeições do dia (`/portal/nutricao`): por horário (sem horário
+ * por último) e, em empate, por `sort_order`. Fonte única — o portal e a prévia "Como o aluno
+ * vê" do coach usam esta função, para a prévia nunca mostrar uma ordem diferente da real.
+ */
+export function sortMealsForStudent<T extends MealTimeLike>(meals: T[]): T[] {
+  return meals.slice().sort((a, b) => {
+    const ta = mealMinutes(a.time);
+    const tb = mealMinutes(b.time);
+    if (ta !== tb) return ta < tb ? -1 : 1;
+    return a.sort_order - b.sort_order;
+  });
+}

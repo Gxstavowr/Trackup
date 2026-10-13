@@ -14,11 +14,15 @@
 
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
+
+// Mesma escala de macros que o app usa ao adicionar um item à refeição (lib/food-macros.ts —
+// arquivo sem imports '@/', o Node 24 importa o .ts direto removendo os tipos).
+const { scaleFoodMacros } = await import(pathToFileURL(path.join(ROOT, "lib", "food-macros.ts")).href);
 
 // ============================================================================
 // Config
@@ -59,6 +63,8 @@ const SUPABASE_URL = env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE_KEY = env.SUPABASE_SERVICE_ROLE_KEY;
 // Senha dos logins de demo: vem de web/.env.local (gitignorado), nunca escrita no código.
 const STUDENT_PASSWORD = env.DEMO_STUDENT_PASSWORD;
+// Opcional: quando definida, o seed redefine a senha do coach de demo para este valor.
+const COACH_PASSWORD = env.DEMO_COACH_PASSWORD;
 
 if (!SUPABASE_URL || !SERVICE_ROLE_KEY || !STUDENT_PASSWORD) {
   console.error(
@@ -105,27 +111,92 @@ function atTime(dateStr, hh, mm = 0) {
   return `${dateStr}T${pad2(hh)}:${pad2(mm)}:00.000Z`;
 }
 
-/** Mesmo algoritmo de `computeWeekInfo` em web/lib/repository.ts — mantido em paralelo de
- * propósito (módulo puro, sem import de TS a partir de um script .mjs). */
-function computeWeekInfo(startDateStr, today = TODAY) {
-  const start = new Date(`${startDateStr}T00:00:00Z`);
-  const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-  const diffDays = Math.floor((todayUtc.getTime() - start.getTime()) / 86_400_000);
-  const weekNumber = Math.max(1, Math.floor(diffDays / 7) + 1);
-  const periodStartMs = start.getTime() + (weekNumber - 1) * 7 * 86_400_000;
-  const periodStart = new Date(periodStartMs);
-  const periodEnd = new Date(periodStartMs + 6 * 86_400_000);
-  return {
-    weekNumber,
-    periodStart: periodStart.toISOString().slice(0, 10),
-    periodEnd: periodEnd.toISOString().slice(0, 10),
-  };
+/** "Hoje" em America/Sao_Paulo (`YYYY-MM-DD`) — mesma referência de `todayDateSP`
+ * (web/lib/portal-today.ts) usada pelo app pra decidir a semana corrente. */
+function todaySP(today = TODAY) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(today);
 }
 
-/** `start_date` tal que, hoje, o aluno esteja na semana `pastWeeks + 1`, com `hoje` caindo
- * `offsetDays` dias depois do início dessa semana (0 = primeiro dia da semana). */
+/** Segunda-feira da semana de calendário de `dateStr` (mesma conta de `mondayOf`). */
+function mondayOf(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  return addDaysUTC(dateStr, -((d.getUTCDay() + 6) % 7));
+}
+
+/** Mesmo algoritmo de `computeWeekInfo`/`periodOfWeek` em web/lib/checkin-week.ts (semanas de
+ * CALENDÁRIO, segunda a domingo, desde a migration 0014) — mantido em paralelo de propósito
+ * (módulo puro, sem import de TS a partir de um script .mjs). Se mudar lá, mude aqui. */
+function periodOfWeek(startDateStr, weekNumber) {
+  const periodStart = addDaysUTC(mondayOf(startDateStr), (weekNumber - 1) * 7);
+  return { periodStart, periodEnd: addDaysUTC(periodStart, 6) };
+}
+
+function computeWeekInfo(startDateStr, today = TODAY) {
+  const diffDays =
+    (new Date(`${mondayOf(todaySP(today))}T00:00:00Z`).getTime() -
+      new Date(`${mondayOf(startDateStr)}T00:00:00Z`).getTime()) /
+    86_400_000;
+  const weekNumber = Math.max(1, Math.round(diffDays / 7) + 1);
+  return { weekNumber, ...periodOfWeek(startDateStr, weekNumber) };
+}
+
+/** `start_date` tal que, hoje, o aluno esteja na semana `pastWeeks + 1` pela regra de semanas de
+ * calendário: o início cai `offsetDays` dias depois da segunda-feira da semana 1, sem sair dessa
+ * semana. Antes era `hoje - (pastWeeks*7 + offset)` (regra antiga de 7 dias corridos): com o app
+ * em semanas de calendário, isso desalinhava semana corrente e períodos (ex.: resumo falando em
+ * "semana 10" enquanto Home/Jornada diziam "semana 3"). */
 function startDateFor(pastWeeks, offsetDays, today = TODAY) {
-  return addDaysUTC(isoDate(today), -(pastWeeks * 7 + offsetDays));
+  const week1Monday = addDaysUTC(mondayOf(todaySP(today)), -pastWeeks * 7);
+  const startDate = addDaysUTC(week1Monday, Math.min(Math.max(0, offsetDays), 6));
+  if (computeWeekInfo(startDate, today).weekNumber !== pastWeeks + 1) {
+    throw new Error(`seed: start_date ${startDate} não cai na semana ${pastWeeks + 1}.`);
+  }
+  return startDate;
+}
+
+/** Data dentro da semana corrente, `daysBack` dias antes de hoje (SP) — nunca antes do início da
+ * semana nem no futuro. */
+function dayInCurrentWeek(periodStart, daysBack = 0, today = TODAY) {
+  const d = addDaysUTC(todaySP(today), -daysBack);
+  return d < periodStart ? periodStart : d;
+}
+
+/** Teto "agora - N minutos" (ISO). Timestamp de semana corrente montado com `atTime` (hora fixa
+ * em UTC) pode cair no FUTURO quando o seed roda cedo — ex.: "enviado às 15:00" visto às 09:00,
+ * com a orientação parecendo anterior ao check-in. */
+function capPast(iso, minutesBeforeNow = 5, now = TODAY) {
+  if (iso == null) return iso;
+  const cap = now.getTime() - minutesBeforeNow * 60_000;
+  return Date.parse(iso) > cap ? new Date(cap).toISOString() : iso;
+}
+
+/** Garante uma sequência estritamente crescente e no passado (`null` é ignorado), ex.:
+ * enviado < avaliação aberta < avaliado. Cada posição tem um teto progressivamente mais perto de
+ * "agora" (90 / 45 / 10 / 5 min antes), e se o clamp inverter a ordem o item é empurrado pra 15 min
+ * depois do anterior — que sempre cabe sob o teto dele. */
+function orderedPast(timestamps, now = TODAY) {
+  const caps = [90, 45, 10, 5];
+  const out = [];
+  let prev = null;
+  timestamps.forEach((iso, i) => {
+    if (iso == null) {
+      out.push(iso);
+      return;
+    }
+    const capMin = caps[Math.min(i, caps.length - 1)];
+    let t = capPast(iso, capMin, now);
+    if (prev != null && Date.parse(t) <= Date.parse(prev)) {
+      t = capPast(new Date(Date.parse(prev) + 15 * 60_000).toISOString(), capMin, now);
+    }
+    out.push(t);
+    prev = t;
+  });
+  return out;
 }
 
 function round1(n) {
@@ -531,6 +602,12 @@ async function cleanup(accountId) {
     console.log("Nenhum aluno existente nesta conta.");
   }
 
+  // Arquivos das fotos de demo no Storage (a cascata só apaga as linhas de `photos`).
+  {
+    const removed = await removeDemoPhotoObjects(accountId);
+    console.log(`${removed} arquivo(s) de foto de demo removido(s) do bucket.`);
+  }
+
   // Biblioteca da conta (não é filha de `clients`, precisa apagar à parte).
   for (const table of ["workout_plans", "nutrition_plans"]) {
     // Templates de treino/nutrição da conta (client_id null) também são demo — apaga se houver.
@@ -649,13 +726,32 @@ function buildCheckinInstanceRows(student, clientId, templateId) {
 
   const startDate = startDateFor(student.pastWeeks, student.offset);
 
-  // Semanas passadas: ciclo completo (submitted -> reviewed).
+  // Semanas passadas: ciclo completo (submitted -> reviewed). Períodos de segunda a domingo,
+  // iguais aos que o app calcula (`periodOfWeek`).
   for (let w = 1; w <= student.pastWeeks; w++) {
-    const periodStart = addDaysUTC(startDate, (w - 1) * 7);
-    const periodEnd = addDaysUTC(periodStart, 6);
+    const { periodStart, periodEnd } = periodOfWeek(startDate, w);
     const submittedAt = atTime(addDaysUTC(periodStart, 2), 19, 30);
     const reviewOpenedAt = atTime(addDaysUTC(periodStart, 3), 10, 15);
     const reviewedAt = atTime(addDaysUTC(periodStart, 3), 18, 45);
+    // "Atrasado": a ÚLTIMA semana passada (prazo — domingo — já vencido) ficou sem envio. Antes o
+    // seed marcava a semana CORRENTE como `late`, cujo prazo ainda não passou ("o prazo era 18/10"
+    // visto em 13/10).
+    if (student.state === "awaiting_checkin_late" && w === student.pastWeeks) {
+      rows.push({
+        __week: w,
+        __kind: "past",
+        client_id: clientId,
+        template_id: templateId,
+        week_number: w,
+        period_start: periodStart,
+        period_end: periodEnd,
+        status: "late",
+        submitted_at: null,
+        review_opened_at: null,
+        reviewed_at: null,
+      });
+      continue;
+    }
     rows.push({
       __week: w,
       __kind: "past",
@@ -673,9 +769,9 @@ function buildCheckinInstanceRows(student, clientId, templateId) {
 
   // Semana corrente: depende do estado alvo deste aluno.
   const currentWeek = student.pastWeeks + 1;
-  const periodStart = addDaysUTC(startDate, student.pastWeeks * 7);
-  const periodEnd = addDaysUTC(periodStart, 6);
-  const today = addDaysUTC(periodStart, student.offset);
+  const { periodStart, periodEnd } = periodOfWeek(startDate, currentWeek);
+  // Timestamps da semana corrente: sempre dentro dela e nunca no futuro.
+  const today = dayInCurrentWeek(periodStart, 0);
 
   if (student.state === "pending") {
     rows.push({
@@ -701,7 +797,7 @@ function buildCheckinInstanceRows(student, clientId, templateId) {
       period_start: periodStart,
       period_end: periodEnd,
       status: "submitted",
-      submitted_at: atTime(addDaysUTC(today, -1), 19, 0),
+      submitted_at: atTime(dayInCurrentWeek(periodStart, 1), 19, 0),
       review_opened_at: atTime(today, 9, 0),
       reviewed_at: null,
     });
@@ -715,8 +811,8 @@ function buildCheckinInstanceRows(student, clientId, templateId) {
       period_start: periodStart,
       period_end: periodEnd,
       status: "submitted",
-      submitted_at: atTime(addDaysUTC(today, -2), 19, 0),
-      review_opened_at: atTime(addDaysUTC(today, -1), 10, 0),
+      submitted_at: atTime(dayInCurrentWeek(periodStart, 2), 19, 0),
+      review_opened_at: atTime(dayInCurrentWeek(periodStart, 1), 10, 0),
       reviewed_at: null,
     });
   } else if (student.state === "done") {
@@ -729,11 +825,12 @@ function buildCheckinInstanceRows(student, clientId, templateId) {
       period_start: periodStart,
       period_end: periodEnd,
       status: "reviewed",
-      submitted_at: atTime(addDaysUTC(today, -1), 19, 0),
+      submitted_at: atTime(dayInCurrentWeek(periodStart, 1), 19, 0),
       review_opened_at: atTime(today, 9, 0),
       reviewed_at: atTime(today, 11, 0),
     });
   } else if (student.state === "awaiting_checkin_late") {
+    // O atraso é da semana ANTERIOR (ver acima); a corrente está aberta, dentro do prazo.
     rows.push({
       __week: currentWeek,
       __kind: "current",
@@ -742,15 +839,536 @@ function buildCheckinInstanceRows(student, clientId, templateId) {
       week_number: currentWeek,
       period_start: periodStart,
       period_end: periodEnd,
-      status: "late",
+      status: "pending",
       submitted_at: null,
       review_opened_at: null,
       reviewed_at: null,
     });
   }
-  // "awaiting_checkin" (não atrasado) e "paused": nenhuma linha pra semana corrente.
+  // "awaiting_checkin" e "paused": nenhuma linha pra semana corrente.
+
+  // Semana corrente: nada no futuro e ordem enviado < avaliação aberta < avaliado.
+  for (const row of rows) {
+    if (row.__kind !== "current") continue;
+    [row.submitted_at, row.review_opened_at, row.reviewed_at] = orderedPast([
+      row.submitted_at,
+      row.review_opened_at,
+      row.reviewed_at,
+    ]);
+  }
 
   return rows;
+}
+
+// ============================================================================
+// 6) Fotos de progresso de demo (bucket `checkin-photos` + tabela `photos`)
+// ============================================================================
+//
+// Segue EXATAMENTE as regras do app (lib/storage/buckets.ts, lib/storage/photo-angles.ts,
+// lib/storage/checkin-photos.ts):
+//  - bucket privado `checkin-photos`, só `image/jpeg`, até 5 MB;
+//  - path `{account_id}/{client_id}/week-{n}/{angle}.jpg` (`buildPhotoPath`), que passa em
+//    `isOwnedPhotoPath`/`PHOTO_FILE_RE`;
+//  - `photos.week_number` = semana da instância de check-in e `checkin_id` = id dela;
+//  - ângulos novos front/left/right/back; legado `side` só em semana antiga (front/side/back).
+// A imagem é um JPEG de verdade gerado aqui (encoder baseline mínimo, sem dependências), com
+// "SEMANA N" + posição escritos nela — o número desenhado é o MESMO `week_number` da linha, pra
+// conferir que o cabeçalho da semana bate com a foto exibida.
+
+const CHECKIN_PHOTOS_BUCKET = "checkin-photos";
+const PHOTO_W = 240;
+const PHOTO_H = 320;
+
+/** Alunos com fotos de demo: duas últimas semanas avaliadas com as 4 posições novas e uma semana
+ * antiga (1) só com o legado front/side/back. Carlos também tem a semana corrente (enviada, em
+ * avaliação) com as 4 fotos — check-in enviado sempre tem as 4. */
+const DEMO_PHOTO_PLAN = {
+  rafael: (s) => ({ fourAngleWeeks: [s.pastWeeks - 1, s.pastWeeks], legacyWeeks: [1] }),
+  carlos: (s) => ({ fourAngleWeeks: [s.pastWeeks - 1, s.pastWeeks, s.pastWeeks + 1], legacyWeeks: [1] }),
+};
+
+const PHOTO_ANGLE_TEXT = {
+  front: "FRENTE",
+  left: "LAT. ESQUERDA",
+  right: "LAT. DIREITA",
+  back: "COSTAS",
+  side: "LATERAL (ANTIGA)",
+};
+
+const PHOTO_ANGLE_RGB = {
+  front: [37, 99, 235],
+  left: [22, 163, 74],
+  right: [217, 119, 6],
+  back: [124, 58, 237],
+  side: [71, 85, 105],
+};
+
+// Fonte bitmap 5x7 (só os caracteres usados nos textos acima, nomes e dígitos).
+const FONT_5X7 = {
+  A: ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
+  C: ["01110", "10001", "10000", "10000", "10000", "10001", "01110"],
+  D: ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
+  E: ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
+  F: ["11111", "10000", "10000", "11110", "10000", "10000", "10000"],
+  G: ["01110", "10001", "10000", "10111", "10001", "10001", "01111"],
+  I: ["01110", "00100", "00100", "00100", "00100", "00100", "01110"],
+  L: ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
+  M: ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
+  N: ["10001", "11001", "10101", "10011", "10001", "10001", "10001"],
+  O: ["01110", "10001", "10001", "10001", "10001", "10001", "01110"],
+  Q: ["01110", "10001", "10001", "10001", "10101", "10010", "01101"],
+  R: ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
+  S: ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
+  T: ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+  U: ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
+  0: ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
+  1: ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
+  2: ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
+  3: ["11110", "00001", "00001", "01110", "00001", "00001", "11110"],
+  4: ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
+  5: ["11111", "10000", "11110", "00001", "00001", "10001", "01110"],
+  6: ["00110", "01000", "10000", "11110", "10001", "10001", "01110"],
+  7: ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
+  8: ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
+  9: ["01110", "10001", "10001", "01111", "00001", "00010", "01100"],
+  ".": ["00000", "00000", "00000", "00000", "00000", "01100", "01100"],
+  "(": ["00010", "00100", "01000", "01000", "01000", "00100", "00010"],
+  ")": ["01000", "00100", "00010", "00010", "00010", "00100", "01000"],
+  "-": ["00000", "00000", "00000", "11111", "00000", "00000", "00000"],
+  " ": ["00000", "00000", "00000", "00000", "00000", "00000", "00000"],
+};
+
+function asciiUpper(text) {
+  return text
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toUpperCase();
+}
+
+/** Canvas RGB simples. */
+function makeCanvas(w, h, rgb) {
+  const px = new Uint8Array(w * h * 3);
+  for (let i = 0; i < w * h; i++) px.set(rgb, i * 3);
+  return { w, h, px };
+}
+
+function fillRect(c, x0, y0, w, h, rgb) {
+  for (let y = Math.max(0, y0); y < Math.min(c.h, y0 + h); y++) {
+    for (let x = Math.max(0, x0); x < Math.min(c.w, x0 + w); x++) c.px.set(rgb, (y * c.w + x) * 3);
+  }
+}
+
+function fillEllipse(c, cx, cy, rx, ry, rgb) {
+  for (let y = Math.floor(cy - ry); y <= cy + ry; y++) {
+    for (let x = Math.floor(cx - rx); x <= cx + rx; x++) {
+      if (x < 0 || y < 0 || x >= c.w || y >= c.h) continue;
+      const dx = (x - cx) / rx;
+      const dy = (y - cy) / ry;
+      if (dx * dx + dy * dy <= 1) c.px.set(rgb, (y * c.w + x) * 3);
+    }
+  }
+}
+
+/** Texto centralizado; escala automática (até `maxScale`) pra caber na largura. */
+function drawTextCentered(c, text, y, rgb, maxScale) {
+  const chars = [...asciiUpper(text)].map((ch) => FONT_5X7[ch] ?? FONT_5X7[" "]);
+  const scale = Math.max(1, Math.min(maxScale, Math.floor((c.w - 16) / (chars.length * 6))));
+  const totalW = chars.length * 6 * scale - scale;
+  let x = Math.floor((c.w - totalW) / 2);
+  for (const glyph of chars) {
+    for (let gy = 0; gy < 7; gy++) {
+      for (let gx = 0; gx < 5; gx++) {
+        if (glyph[gy][gx] === "1") fillRect(c, x + gx * scale, y + gy * scale, scale, scale, rgb);
+      }
+    }
+    x += 6 * scale;
+  }
+  return 7 * scale;
+}
+
+function mixRgb(a, b, t) {
+  return a.map((v, i) => Math.round(v + (b[i] - v) * t));
+}
+
+/** Placeholder da foto: fundo na cor da posição, silhueta simples e o texto "SEMANA N / posição". */
+function renderDemoPhoto(firstName, weekNumber, angle) {
+  const base = PHOTO_ANGLE_RGB[angle];
+  const c = makeCanvas(PHOTO_W, PHOTO_H, mixRgb(base, [255, 255, 255], 0.15));
+  const body = mixRgb(base, [255, 255, 255], 0.55);
+  const lateral = angle === "left" || angle === "right" || angle === "side";
+  // Silhueta (cabeça + tronco + pernas) — mais estreita nas laterais.
+  const torsoW = lateral ? 44 : 84;
+  fillEllipse(c, PHOTO_W / 2, 118, 20, 24, body);
+  fillRect(c, PHOTO_W / 2 - torsoW / 2, 146, torsoW, 92, body);
+  if (!lateral) {
+    fillRect(c, PHOTO_W / 2 - torsoW / 2 - 16, 150, 12, 78, body);
+    fillRect(c, PHOTO_W / 2 + torsoW / 2 + 4, 150, 12, 78, body);
+  }
+  fillRect(c, PHOTO_W / 2 - torsoW / 2 + 4, 238, torsoW / 2 - 6, 64, body);
+  fillRect(c, PHOTO_W / 2 + 2, 238, torsoW / 2 - 6, 64, body);
+  // Faixa escura com os textos (contraste).
+  const band = mixRgb(base, [0, 0, 0], 0.55);
+  fillRect(c, 0, 0, PHOTO_W, 84, band);
+  const white = [255, 255, 255];
+  drawTextCentered(c, `SEMANA ${weekNumber}`, 12, white, 4);
+  drawTextCentered(c, PHOTO_ANGLE_TEXT[angle], 50, white, 3);
+  fillRect(c, 0, PHOTO_H - 26, PHOTO_W, 26, band);
+  drawTextCentered(c, `${firstName} - DEMO`, PHOTO_H - 20, white, 2);
+  return c;
+}
+
+// ---- Encoder JPEG baseline mínimo (YCbCr 4:4:4, tabelas padrão do Anexo K) ----
+
+const JPEG_ZIGZAG = [
+  0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5, 12, 19, 26, 33, 40, 48, 41, 34, 27, 20, 13, 6, 7, 14, 21,
+  28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51, 58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61,
+  54, 47, 55, 62, 63,
+];
+const JPEG_Q_LUMA = [
+  16, 11, 10, 16, 24, 40, 51, 61, 12, 12, 14, 19, 26, 58, 60, 55, 14, 13, 16, 24, 40, 57, 69, 56, 14, 17, 22, 29,
+  51, 87, 80, 62, 18, 22, 37, 56, 68, 109, 103, 77, 24, 35, 55, 64, 81, 104, 113, 92, 49, 64, 78, 87, 103, 121, 120,
+  101, 72, 92, 95, 98, 112, 100, 103, 99,
+];
+const JPEG_Q_CHROMA = (() => {
+  const t = new Array(64).fill(99);
+  const head = [
+    [17, 18, 24, 47],
+    [18, 21, 26, 66],
+    [24, 26, 56],
+    [47, 66],
+  ];
+  head.forEach((row, y) => row.forEach((v, x) => (t[y * 8 + x] = v)));
+  return t;
+})();
+
+function rangeBytes(from, to) {
+  const out = [];
+  for (let v = from; v <= to; v++) out.push(v);
+  return out;
+}
+
+const JPEG_HUFF = {
+  dcLuma: { bits: [0, 1, 5, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0], vals: rangeBytes(0, 11) },
+  dcChroma: { bits: [0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0], vals: rangeBytes(0, 11) },
+  acLuma: {
+    bits: [0, 2, 1, 3, 3, 2, 4, 3, 5, 5, 4, 4, 0, 0, 1, 0x7d],
+    vals: [
+      0x01, 0x02, 0x03, 0x00, 0x04, 0x11, 0x05, 0x12, 0x21, 0x31, 0x41, 0x06, 0x13, 0x51, 0x61, 0x07, 0x22, 0x71,
+      0x14, 0x32, 0x81, 0x91, 0xa1, 0x08, 0x23, 0x42, 0xb1, 0xc1, 0x15, 0x52, 0xd1, 0xf0, 0x24, 0x33, 0x62, 0x72,
+      0x82, 0x09, 0x0a, ...rangeBytes(0x16, 0x1a), ...rangeBytes(0x25, 0x2a), ...rangeBytes(0x34, 0x3a),
+      ...rangeBytes(0x43, 0x4a), ...rangeBytes(0x53, 0x5a), ...rangeBytes(0x63, 0x6a), ...rangeBytes(0x73, 0x7a),
+      ...rangeBytes(0x83, 0x8a), ...rangeBytes(0x92, 0x9a), ...rangeBytes(0xa2, 0xaa), ...rangeBytes(0xb2, 0xba),
+      ...rangeBytes(0xc2, 0xca), ...rangeBytes(0xd2, 0xda), ...rangeBytes(0xe1, 0xea), ...rangeBytes(0xf1, 0xfa),
+    ],
+  },
+  acChroma: {
+    bits: [0, 2, 1, 2, 4, 4, 3, 4, 7, 5, 4, 4, 0, 1, 2, 0x77],
+    vals: [
+      0x00, 0x01, 0x02, 0x03, 0x11, 0x04, 0x05, 0x21, 0x31, 0x06, 0x12, 0x41, 0x51, 0x07, 0x61, 0x71, 0x13, 0x22,
+      0x32, 0x81, 0x08, 0x14, 0x42, 0x91, 0xa1, 0xb1, 0xc1, 0x09, 0x23, 0x33, 0x52, 0xf0, 0x15, 0x62, 0x72, 0xd1,
+      0x0a, 0x16, 0x24, 0x34, 0xe1, 0x25, 0xf1, 0x17, 0x18, 0x19, 0x1a, 0x26, 0x27, 0x28, 0x29, 0x2a,
+      ...rangeBytes(0x35, 0x3a), ...rangeBytes(0x43, 0x4a), ...rangeBytes(0x53, 0x5a), ...rangeBytes(0x63, 0x6a),
+      ...rangeBytes(0x73, 0x7a), ...rangeBytes(0x82, 0x8a), ...rangeBytes(0x92, 0x9a), ...rangeBytes(0xa2, 0xaa),
+      ...rangeBytes(0xb2, 0xba), ...rangeBytes(0xc2, 0xca), ...rangeBytes(0xd2, 0xda), ...rangeBytes(0xe2, 0xea),
+      ...rangeBytes(0xf2, 0xfa),
+    ],
+  },
+};
+
+/** symbol -> [code, length] a partir de bits/vals (procedimento do Anexo C). */
+function buildHuffCodes({ bits, vals }) {
+  const map = new Map();
+  let code = 0;
+  let k = 0;
+  for (let len = 1; len <= 16; len++) {
+    for (let i = 0; i < bits[len - 1]; i++) map.set(vals[k++], [code++, len]);
+    code <<= 1;
+  }
+  return map;
+}
+
+function scaleQuant(table, quality) {
+  const s = quality < 50 ? 5000 / quality : 200 - quality * 2;
+  return table.map((v) => clamp(Math.floor((v * s + 50) / 100), 1, 255));
+}
+
+const DCT_COS = (() => {
+  const t = new Float64Array(64);
+  for (let x = 0; x < 8; x++) for (let u = 0; u < 8; u++) t[x * 8 + u] = Math.cos(((2 * x + 1) * u * Math.PI) / 16);
+  return t;
+})();
+
+/** DCT 8x8 separável (bloco já com level shift). */
+function fdct8x8(block) {
+  const tmp = new Float64Array(64);
+  const out = new Float64Array(64);
+  for (let y = 0; y < 8; y++) {
+    for (let u = 0; u < 8; u++) {
+      let s = 0;
+      for (let x = 0; x < 8; x++) s += block[y * 8 + x] * DCT_COS[x * 8 + u];
+      tmp[y * 8 + u] = s * (u === 0 ? Math.SQRT1_2 : 1) * 0.5;
+    }
+  }
+  for (let u = 0; u < 8; u++) {
+    for (let v = 0; v < 8; v++) {
+      let s = 0;
+      for (let y = 0; y < 8; y++) s += tmp[y * 8 + u] * DCT_COS[y * 8 + v];
+      out[v * 8 + u] = s * (v === 0 ? Math.SQRT1_2 : 1) * 0.5;
+    }
+  }
+  return out;
+}
+
+function encodeJpeg({ w, h, px }, quality = 90) {
+  const qY = scaleQuant(JPEG_Q_LUMA, quality);
+  const qC = scaleQuant(JPEG_Q_CHROMA, quality);
+  const codes = {
+    dcY: buildHuffCodes(JPEG_HUFF.dcLuma),
+    acY: buildHuffCodes(JPEG_HUFF.acLuma),
+    dcC: buildHuffCodes(JPEG_HUFF.dcChroma),
+    acC: buildHuffCodes(JPEG_HUFF.acChroma),
+  };
+
+  const out = [];
+  const u16 = (v) => out.push((v >> 8) & 0xff, v & 0xff);
+  // SOI + APP0 (JFIF)
+  out.push(0xff, 0xd8, 0xff, 0xe0);
+  u16(16);
+  out.push(0x4a, 0x46, 0x49, 0x46, 0x00, 1, 1, 0, 0, 1, 0, 1, 0, 0);
+  // DQT (tabelas em ordem zigzag)
+  for (const [id, q] of [
+    [0, qY],
+    [1, qC],
+  ]) {
+    out.push(0xff, 0xdb);
+    u16(67);
+    out.push(id);
+    for (let k = 0; k < 64; k++) out.push(q[JPEG_ZIGZAG[k]]);
+  }
+  // SOF0
+  out.push(0xff, 0xc0);
+  u16(17);
+  out.push(8);
+  u16(h);
+  u16(w);
+  out.push(3, 1, 0x11, 0, 2, 0x11, 1, 3, 0x11, 1);
+  // DHT
+  for (const [cls, table] of [
+    [0x00, JPEG_HUFF.dcLuma],
+    [0x10, JPEG_HUFF.acLuma],
+    [0x01, JPEG_HUFF.dcChroma],
+    [0x11, JPEG_HUFF.acChroma],
+  ]) {
+    out.push(0xff, 0xc4);
+    u16(3 + 16 + table.vals.length);
+    out.push(cls, ...table.bits, ...table.vals);
+  }
+  // SOS
+  out.push(0xff, 0xda);
+  u16(12);
+  out.push(3, 1, 0x00, 2, 0x11, 3, 0x11, 0, 63, 0);
+
+  // Entropy-coded data
+  let bitBuf = 0;
+  let bitCnt = 0;
+  const writeBits = (code, len) => {
+    for (let i = len - 1; i >= 0; i--) {
+      bitBuf = (bitBuf << 1) | ((code >> i) & 1);
+      if (++bitCnt === 8) {
+        out.push(bitBuf);
+        if (bitBuf === 0xff) out.push(0x00);
+        bitBuf = 0;
+        bitCnt = 0;
+      }
+    }
+  };
+  const category = (v) => {
+    let a = Math.abs(v);
+    let n = 0;
+    while (a > 0) {
+      n++;
+      a >>= 1;
+    }
+    return n;
+  };
+  const writeValue = (v, cat) => {
+    if (cat > 0) writeBits(v < 0 ? v + (1 << cat) - 1 : v, cat);
+  };
+  const huff = (table, sym) => {
+    const c = table.get(sym);
+    if (!c) throw new Error(`JPEG: símbolo Huffman ausente (${sym}).`);
+    writeBits(c[0], c[1]);
+  };
+
+  const prevDc = [0, 0, 0];
+  const block = new Float64Array(64);
+  for (let by = 0; by < h; by += 8) {
+    for (let bx = 0; bx < w; bx += 8) {
+      for (let comp = 0; comp < 3; comp++) {
+        for (let y = 0; y < 8; y++) {
+          for (let x = 0; x < 8; x++) {
+            const sx = Math.min(w - 1, bx + x);
+            const sy = Math.min(h - 1, by + y);
+            const i = (sy * w + sx) * 3;
+            const r = px[i];
+            const g = px[i + 1];
+            const b = px[i + 2];
+            let v;
+            if (comp === 0) v = 0.299 * r + 0.587 * g + 0.114 * b;
+            else if (comp === 1) v = -0.168736 * r - 0.331264 * g + 0.5 * b + 128;
+            else v = 0.5 * r - 0.418688 * g - 0.081312 * b + 128;
+            block[y * 8 + x] = v - 128;
+          }
+        }
+        const coef = fdct8x8(block);
+        const q = comp === 0 ? qY : qC;
+        const zz = new Array(64);
+        for (let k = 0; k < 64; k++) zz[k] = Math.round(coef[JPEG_ZIGZAG[k]] / q[JPEG_ZIGZAG[k]]);
+
+        const dcTable = comp === 0 ? codes.dcY : codes.dcC;
+        const acTable = comp === 0 ? codes.acY : codes.acC;
+        const diff = zz[0] - prevDc[comp];
+        prevDc[comp] = zz[0];
+        const dcCat = category(diff);
+        huff(dcTable, dcCat);
+        writeValue(diff, dcCat);
+
+        let run = 0;
+        for (let k = 1; k < 64; k++) {
+          const v = zz[k];
+          if (v === 0) {
+            run++;
+            continue;
+          }
+          while (run > 15) {
+            huff(acTable, 0xf0);
+            run -= 16;
+          }
+          const cat = category(v);
+          huff(acTable, (run << 4) | cat);
+          writeValue(v, cat);
+          run = 0;
+        }
+        if (run > 0) huff(acTable, 0x00);
+      }
+    }
+  }
+  if (bitCnt > 0) writeBits((1 << (8 - bitCnt)) - 1, 8 - bitCnt);
+  out.push(0xff, 0xd9);
+  return Uint8Array.from(out);
+}
+
+/** Mesmo formato de `buildPhotoPath` (lib/storage/buckets.ts). */
+function buildPhotoPath(accountId, clientId, weekNumber, angle) {
+  return `${accountId}/${clientId}/week-${weekNumber}/${angle}.jpg`;
+}
+
+/** Mesmas opções de `ensureCheckinPhotosBucket` (lib/storage/buckets.ts). */
+async function ensureCheckinPhotosBucket() {
+  const options = { public: false, fileSizeLimit: 5 * 1024 * 1024, allowedMimeTypes: ["image/jpeg"] };
+  const { data: existing } = await admin.storage.getBucket(CHECKIN_PHOTOS_BUCKET);
+  if (existing) {
+    if (existing.public) {
+      const { error } = await admin.storage.updateBucket(CHECKIN_PHOTOS_BUCKET, options);
+      if (error) throw new Error(`Não foi possível tornar o bucket privado: ${error.message}`);
+    }
+    return;
+  }
+  const { error } = await admin.storage.createBucket(CHECKIN_PHOTOS_BUCKET, options);
+  if (error && !/already exists|duplicate/i.test(error.message)) {
+    throw new Error(`Não foi possível criar o bucket de fotos: ${error.message}`);
+  }
+}
+
+/** Remove TODOS os objetos sob `{accountId}/` no bucket de fotos (só a conta de demo — o seed já
+ * apaga todos os alunos dela). Pega também objetos órfãos de execuções anteriores (o `delete` em
+ * `clients` só cascateia as linhas de `photos`, não os arquivos). Estrutura fixa:
+ * `{account}/{client}/week-{n}/{angle}.jpg`. */
+async function removeDemoPhotoObjects(accountId) {
+  const { data: bucket } = await admin.storage.getBucket(CHECKIN_PHOTOS_BUCKET);
+  if (!bucket) return 0;
+  const listAll = async (prefix) => {
+    const items = [];
+    for (let offset = 0; ; offset += 100) {
+      const { data, error } = await admin.storage.from(CHECKIN_PHOTOS_BUCKET).list(prefix, { limit: 100, offset });
+      if (error) throw new Error(`Falha ao listar fotos em ${prefix}: ${error.message}`);
+      items.push(...(data ?? []));
+      if (!data || data.length < 100) break;
+    }
+    return items;
+  };
+  const paths = [];
+  for (const clientDir of await listAll(accountId)) {
+    const clientPrefix = `${accountId}/${clientDir.name}`;
+    for (const weekDir of await listAll(clientPrefix)) {
+      const weekPrefix = `${clientPrefix}/${weekDir.name}`;
+      for (const file of await listAll(weekPrefix)) {
+        if (file.id) paths.push(`${weekPrefix}/${file.name}`);
+      }
+    }
+  }
+  for (let i = 0; i < paths.length; i += 100) {
+    const { error } = await admin.storage.from(CHECKIN_PHOTOS_BUCKET).remove(paths.slice(i, i + 100));
+    if (error) throw new Error(`Falha ao apagar fotos de demo: ${error.message}`);
+  }
+  return paths.length;
+}
+
+/** Sobe as fotos de demo e grava as linhas em `photos`, ligadas à instância de check-in da semana. */
+async function seedDemoPhotos(accountId, clientByKey, instanceByClientWeek) {
+  logStep("Fotos de progresso de demo (checkin-photos + photos)");
+  await ensureCheckinPhotosBucket();
+
+  const rows = [];
+  const uploaded = [];
+  for (const [key, planFor] of Object.entries(DEMO_PHOTO_PLAN)) {
+    const student = STUDENTS.find((s) => s.key === key);
+    const client = clientByKey.get(key);
+    if (!student || !client) continue;
+    const firstName = student.name.split(" ")[0];
+    const plan = planFor(student);
+    const entries = [
+      ...plan.legacyWeeks.flatMap((w) => ["front", "side", "back"].map((angle) => ({ week: w, angle }))),
+      ...plan.fourAngleWeeks.flatMap((w) => ["front", "left", "right", "back"].map((angle) => ({ week: w, angle }))),
+    ];
+    for (const { week, angle } of entries) {
+      const instance = instanceByClientWeek.get(`${client.id}:${week}`);
+      if (!instance || !instance.submitted_at) {
+        throw new Error(`seed: ${student.name} não tem check-in enviado na semana ${week} para anexar fotos.`);
+      }
+      const storagePath = buildPhotoPath(accountId, client.id, week, angle);
+      const bytes = encodeJpeg(renderDemoPhoto(firstName, week, angle));
+      const { error } = await admin.storage
+        .from(CHECKIN_PHOTOS_BUCKET)
+        .upload(storagePath, bytes, { contentType: "image/jpeg", upsert: true, cacheControl: "3600" });
+      if (error) throw new Error(`Falha ao subir ${storagePath}: ${error.message}`);
+      uploaded.push(storagePath);
+      rows.push({
+        client_id: client.id,
+        checkin_id: instance.id,
+        week_number: week,
+        angle,
+        storage_path: storagePath,
+        // Antes do envio do check-in (as fotos são tiradas e depois o formulário é enviado).
+        created_at: new Date(Date.parse(instance.submitted_at) - 10 * 60_000).toISOString(),
+      });
+    }
+    console.log(
+      `${student.name}: semanas ${plan.fourAngleWeeks.join(", ")} (frente/lat. esquerda/lat. direita/costas) e ` +
+        `${plan.legacyWeeks.join(", ")} (legado frente/lateral/costas).`
+    );
+  }
+
+  const { error } = await admin.from("photos").insert(rows);
+  if (error) {
+    await admin.storage.from(CHECKIN_PHOTOS_BUCKET).remove(uploaded);
+    if (error.code === "23514") {
+      throw new Error("photos.angle não aceita left/right — aplique a migration 0017_photo_angles_four.sql.");
+    }
+    throw new Error(`Insert em "photos" falhou: ${error.message} (${error.code ?? "?"})`);
+  }
+  console.log(`${rows.length} foto(s) de demo (${uploaded.length} objeto(s) no bucket).`);
+  return rows.length;
 }
 
 // ============================================================================
@@ -761,6 +1379,11 @@ async function main() {
   logStep("Coach e template de check-in");
   const coach = await findCoach();
   console.log(`Coach: ${coach.name} <${coach.email}> — account_id ${coach.account_id}`);
+  if (COACH_PASSWORD) {
+    const { error } = await admin.auth.admin.updateUserById(coach.id, { password: COACH_PASSWORD });
+    if (error) throw new Error(`Falha ao definir a senha do coach: ${error.message}`);
+    console.log("Senha do coach sincronizada com DEMO_COACH_PASSWORD.");
+  }
   const { template, questions } = await findTemplate(coach.account_id);
   console.log(`Template "${template.name}" com ${questions.length} pergunta(s) ativa(s): ${questions.map((q) => q.key).join(", ")}`);
 
@@ -805,6 +1428,7 @@ async function main() {
   // -- Check-ins (instâncias) -----------------------------------------------
   logStep("Criando check-ins (semanas passadas + semana corrente)");
   const instanceIdByClientWeek = new Map(); // `${clientId}:${week}` -> instance id
+  const instanceByClientWeek = new Map(); // `${clientId}:${week}` -> { id, submitted_at } (fotos)
   const allAnswers = [];
   const allMetrics = [];
   const allOrientations = [];
@@ -825,6 +1449,7 @@ async function main() {
 
     for (const meta of instanceRows) {
       const checkinId = instanceIdByClientWeek.get(`${client.id}:${meta.__week}`);
+      instanceByClientWeek.set(`${client.id}:${meta.__week}`, { id: checkinId, submitted_at: meta.submitted_at });
       const hasAnswers =
         meta.status === "submitted" || meta.status === "reviewed";
       const m = metricsForWeek(student, meta.__week);
@@ -867,7 +1492,18 @@ async function main() {
           focus_override: null,
           coach_note: coachNoteFor(student, meta.__week, m.adherence),
           is_draft: isDraft,
-          created_at: isDraft ? atTime(addDaysUTC(meta.period_start, student.offset ?? 0), 9, 0) : meta.reviewed_at,
+          // Rascunho: depois da abertura da avaliação e nunca no futuro.
+          created_at: isDraft
+            ? capPast(
+                new Date(
+                  Math.max(
+                    Date.parse(atTime(dayInCurrentWeek(meta.period_start, 0), 9, 0)),
+                    Date.parse(meta.review_opened_at ?? meta.submitted_at) + 15 * 60_000
+                  )
+                ).toISOString(),
+                5
+              )
+            : meta.reviewed_at,
           sent_at: isDraft ? null : meta.reviewed_at,
         });
 
@@ -900,7 +1536,7 @@ async function main() {
           unit: "kg",
           result_value: m.weight,
           result_status: hit ? "success" : "partial",
-          created_at: atTime(addDaysUTC(startDateFor(student.pastWeeks, student.offset), (w - 1) * 7 + 1), 8, 0),
+          created_at: atTime(addDaysUTC(periodOfWeek(startDateFor(student.pastWeeks, student.offset), w).periodStart, 1), 8, 0),
         });
       }
     }
@@ -916,6 +1552,9 @@ async function main() {
   console.log(`${allHistoryEvents.length} evento(s) de histórico.`);
   await insertMany("goals", allGoals);
   console.log(`${allGoals.length} meta(s).`);
+
+  // -- Fotos de progresso de demo -------------------------------------------
+  await seedDemoPhotos(coach.account_id, clientByKey, instanceByClientWeek);
 
   // -- client_metric_settings (0005) — opcional, só se a tabela existir --------
   if (schema.clientMetricSettings) {
@@ -1077,15 +1716,19 @@ async function main() {
   const exerciseIdByName = new Map(insertedExercises.map((e) => [e.name, e.id]));
   console.log(`${insertedExercises.length} exercício(s) na biblioteca.`);
 
+  // Formato do app (lib/food-macros.ts): valores de UMA porção-base — kcal, protein_g, carbs_g,
+  // fat_g + base_qty/base_unit (100 g para g/ml, 1 para unidades).
+  const per100g = (kcal, protein_g, carbs_g, fat_g) => ({ kcal, protein_g, carbs_g, fat_g, base_qty: 100, base_unit: "g" });
+  const perUnit = (unit, kcal, protein_g, carbs_g, fat_g) => ({ kcal, protein_g, carbs_g, fat_g, base_qty: 1, base_unit: unit });
   const FOODS = [
-    { name: "Arroz branco cozido", unit: "g", category: "Carboidrato", macros: { kcal: 128, protein: 2.5, carbs: 28, fat: 0.2 } },
-    { name: "Feijão carioca cozido", unit: "g", category: "Carboidrato", macros: { kcal: 76, protein: 4.8, carbs: 13.6, fat: 0.5 } },
-    { name: "Peito de frango grelhado", unit: "g", category: "Proteína", macros: { kcal: 165, protein: 31, carbs: 0, fat: 3.6 } },
-    { name: "Batata doce cozida", unit: "g", category: "Carboidrato", macros: { kcal: 86, protein: 1.6, carbs: 20, fat: 0.1 } },
-    { name: "Ovo cozido", unit: "un", category: "Proteína", macros: { kcal: 78, protein: 6.3, carbs: 0.6, fat: 5.3 } },
-    { name: "Whey protein (dose)", unit: "scoop", category: "Proteína", macros: { kcal: 120, protein: 24, carbs: 3, fat: 1.5 } },
-    { name: "Aveia em flocos", unit: "g", category: "Carboidrato", macros: { kcal: 389, protein: 13.9, carbs: 66.3, fat: 6.9 } },
-    { name: "Banana prata", unit: "un", category: "Fruta", macros: { kcal: 98, protein: 1.3, carbs: 26, fat: 0.2 } },
+    { name: "Arroz branco cozido", unit: "g", category: "Carboidrato", macros: per100g(128, 2.5, 28, 0.2) },
+    { name: "Feijão carioca cozido", unit: "g", category: "Carboidrato", macros: per100g(76, 4.8, 13.6, 0.5) },
+    { name: "Peito de frango grelhado", unit: "g", category: "Proteína", macros: per100g(165, 31, 0, 3.6) },
+    { name: "Batata doce cozida", unit: "g", category: "Carboidrato", macros: per100g(86, 1.6, 20, 0.1) },
+    { name: "Ovo cozido", unit: "un", category: "Proteína", macros: perUnit("un", 78, 6.3, 0.6, 5.3) },
+    { name: "Whey protein (dose)", unit: "scoop", category: "Proteína", macros: perUnit("scoop", 120, 24, 3, 1.5) },
+    { name: "Aveia em flocos", unit: "g", category: "Carboidrato", macros: per100g(389, 13.9, 66.3, 6.9) },
+    { name: "Banana prata", unit: "un", category: "Fruta", macros: perUnit("un", 98, 1.3, 26, 0.2) },
   ];
   const foodRowsToInsert = FOODS.map((f) => {
     const row = { account_id: coach.account_id, name: f.name, unit: f.unit, macros: f.macros };
@@ -1095,7 +1738,7 @@ async function main() {
     }
     return row;
   });
-  const insertedFoods = await insertMany("foods", foodRowsToInsert, "id, name");
+  const insertedFoods = await insertMany("foods", foodRowsToInsert, "id, name, unit, macros");
   const foodIdByName = new Map(insertedFoods.map((f) => [f.id ? f.name : null, f.id]));
   const foodByName = new Map(insertedFoods.map((f) => [f.name, f]));
   console.log(`${insertedFoods.length} alimento(s) na biblioteca.`);
@@ -1206,7 +1849,8 @@ async function main() {
           meal_id: mealRow.id,
           food_id: food?.id ?? null,
           qty,
-          macros: food?.macros ?? {},
+          // Valor JÁ ESCALADO pela quantidade, igual ao app (repository -> scaleFoodMacros).
+          macros: food ? scaleFoodMacros({ unit: food.unit, macros: food.macros ?? {} }, item.quantity, item.unit) : {},
         };
         if (schema.mealItemsSortOrder) row.sort_order = idx;
         if (schema.mealItemsExtra) {
@@ -1389,8 +2033,8 @@ async function main() {
       const client = clientByKey.get(student.key);
       const week = student.pastWeeks + 1;
       const day = workoutInfo.days[dayIndex];
-      const startedAt = atTime(addDaysUTC(isoDate(TODAY), -daysAgo), 7, 0);
-      const endedAt = atTime(addDaysUTC(isoDate(TODAY), -daysAgo), 7, day.duration_min ?? 50);
+      const startedAt = atTime(addDaysUTC(todaySP(), -daysAgo), 10, 0);
+      const endedAt = atTime(addDaysUTC(todaySP(), -daysAgo), 10, day.duration_min ?? 50);
 
       const { data: session, error: sessionError } = await admin
         .from("workout_sessions")
@@ -1454,7 +2098,7 @@ async function main() {
       const mealLogRows = [];
       const waterLogRows = [];
       for (let daysAgo = 0; daysAgo < 3; daysAgo++) {
-        const logDate = addDaysUTC(isoDate(TODAY), -daysAgo);
+        const logDate = addDaysUTC(todaySP(), -daysAgo); // dia de SP, como o app
         const breakfast = nutritionInfo.meals[0];
         const lunch = nutritionInfo.meals[1];
         mealLogRows.push({
@@ -1539,6 +2183,7 @@ async function main() {
     orientations: await countRows("orientations", inIds),
     history_events: await countRows("history_events", inIds),
     goals: await countRows("goals", inIds),
+    photos: await countRows("photos", inIds),
     notifications: await countRows("notifications", inIds),
     subscriptions: await countRows("subscriptions", inIds),
     payments: cleanPaymentRows.length, // via subscription_id, não client_id direto

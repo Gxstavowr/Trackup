@@ -56,7 +56,7 @@ export default async function NotificationBell({
         </svg>
         <span className="hidden md:inline">Notificações</span>
         {unreadCount > 0 && (
-          <span className="absolute right-0.5 top-0.5 inline-flex min-w-[1.1rem] items-center justify-center rounded-full bg-coral px-1 text-[0.65rem] font-medium leading-4 text-on-coral md:static md:ml-auto md:min-w-[1.25rem] md:px-1.5 md:py-0.5 md:text-xs md:leading-normal">
+          <span className="absolute right-0.5 top-0.5 inline-flex min-w-[1.1rem] items-center justify-center rounded-full bg-coral px-1 text-xs font-medium leading-4 text-on-coral md:static md:ml-auto md:min-w-[1.25rem] md:px-1.5 md:py-0.5 md:text-xs md:leading-normal">
             {countLabel}
           </span>
         )}
@@ -67,7 +67,7 @@ export default async function NotificationBell({
   return (
     <Link
       href={href}
-      className="relative inline-flex min-h-11 items-center rounded-full border border-line px-5 py-2 font-mono text-sm text-ink hover:border-brand"
+      className="relative inline-flex min-h-11 items-center rounded-full border border-line px-5 py-2 text-sm font-medium text-ink hover:border-brand"
     >
       Notificações
       {unreadCount > 0 && (

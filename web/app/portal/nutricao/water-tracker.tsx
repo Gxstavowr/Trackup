@@ -1,9 +1,10 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { clampWaterMl, computeWaterProgress, WATER_QUICK_ADD_ML } from "@/lib/nutrition-session";
+import { clampWaterMl, computeWaterProgress, formatWaterMl, WATER_QUICK_ADD_ML } from "@/lib/nutrition-session";
 import { CARD } from "../portal-ui";
 import { logWaterAction, type WaterLogActionState } from "./actions";
+import { buttonClass } from "@/components/ui/button";
 
 const initialState: WaterLogActionState = null;
 
@@ -37,9 +38,9 @@ export default function WaterTracker({
   return (
     <div className={`${CARD} flex flex-col gap-3 p-4`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-mono text-label uppercase tracking-widest text-ink-faint">Água</h2>
+        <h2 className="t-label text-ink-faint">Hidratação</h2>
         <span className="text-sm text-ink-muted">
-          {amount}ml / {targetMl}ml{progress.pct != null && ` · ${progress.pct}%`}
+          <b className="font-display text-base text-brand">{formatWaterMl(amount)}</b> / {formatWaterMl(targetMl)}{progress.pct != null && ` · ${progress.pct}%`}
         </span>
       </div>
 
@@ -49,9 +50,9 @@ export default function WaterTracker({
         aria-valuemax={targetMl}
         aria-valuenow={Math.min(amount, targetMl)}
         aria-label="Progresso da meta de água"
-        className="h-1.5 overflow-hidden rounded-full bg-surface-sunken"
+        className="h-2 overflow-hidden rounded-full bg-surface-sunken"
       >
-        <div className="h-full rounded-full bg-brand transition-[width]" style={{ width: `${barPct}%` }} />
+        <div className="h-full rounded-full bg-info transition-[width]" style={{ width: `${barPct}%` }} />
       </div>
 
       <div className="flex flex-wrap gap-1.5">
@@ -62,7 +63,7 @@ export default function WaterTracker({
             onClick={() => setAmount((a) => clampWaterMl(a + inc))}
             className="min-h-11 rounded-full border border-line px-3 text-sm text-ink hover:border-brand"
           >
-            +{inc}ml
+            +{inc} ml
           </button>
         ))}
         <button
@@ -81,7 +82,7 @@ export default function WaterTracker({
         <button
           type="submit"
           disabled={pending || !dirty}
-          className="min-h-11 rounded-md bg-brand px-4 text-sm font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
+          className={buttonClass()}
         >
           {pending ? "Salvando…" : dirty ? "Salvar" : "Salvo ✓"}
         </button>

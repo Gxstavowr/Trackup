@@ -7,20 +7,20 @@ export default function FinanceSkeleton() {
       <div className="flex flex-col gap-4" aria-hidden>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-5">
+            <div key={i} className="flex flex-col gap-3 card p-5">
               <div className="h-3 w-24 animate-pulse rounded bg-line" />
               <div className="h-9 w-40 animate-pulse rounded bg-line" />
               <div className="h-3 w-full max-w-56 animate-pulse rounded bg-line" />
             </div>
           ))}
         </div>
-        <div className="h-24 animate-pulse rounded-lg border border-line bg-surface" />
+        <div className="h-24 animate-pulse card" />
       </div>
 
       {[0, 1].map((i) => (
         <div key={i} className="flex flex-col gap-3" aria-hidden>
           <div className="h-7 w-48 animate-pulse rounded bg-line" />
-          <div className="h-28 animate-pulse rounded-lg border border-line bg-surface" />
+          <div className="h-28 animate-pulse card" />
         </div>
       ))}
     </div>

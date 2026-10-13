@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { buttonClass } from "@/components/ui/button";
 
 /**
  * Casca de uma seção da navegação do coach que AINDA NÃO tem implementação real
@@ -21,7 +22,7 @@ export default function SectionPlaceholder({
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <span className="font-mono text-label uppercase tracking-widest text-ink-faint">
+        <span className="t-label text-ink-faint">
           {eyebrow}
         </span>
         <h1 className="font-display text-hero text-ink">{title}</h1>
@@ -33,7 +34,7 @@ export default function SectionPlaceholder({
         {cta && (
           <Link
             href={cta.href}
-            className="mt-2 inline-flex min-h-11 items-center rounded-md border border-line px-4 py-2 text-sm text-ink hover:border-brand"
+            className={buttonClass({ variant: "secondary", className: "mt-2" })}
           >
             {cta.label}
           </Link>

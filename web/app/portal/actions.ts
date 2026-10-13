@@ -21,7 +21,9 @@ export type SubmitCheckinState = {
  * mapa `question_key -> valor` (o formulário guiado `checkin-form.tsx` mantém o estado dos 4
  * passos e envia tudo de uma vez). Server Actions são endpoints POST públicos: TODA regra é
  * imposta em `submitCheckin` — janela sex–dom (America/Sao_Paulo), check-in do próprio aluno
- * (RLS), só chaves do template, obrigatórias e tipos — nunca confiando na interface.
+ * (RLS), só chaves do template, obrigatórias e tipos, peso sempre obrigatório e as 4 fotos
+ * (front/left/right/back) registradas em `photos` E presentes no Storage — nunca confiando na
+ * interface. Erro de campo volta com `field` (`weight_kg`, `photos` ou a chave da pergunta).
  */
 export async function submitCheckinAction(
   checkinId: string,
@@ -87,10 +89,10 @@ export async function saveCheckinDraftAction(
 export type UploadCheckinPhotoResult = { photo: CheckinPhoto } | { error: string };
 
 /**
- * Server Action de upload de UMA foto do check-in (uma chamada por posição: front/back/side).
+ * Server Action de upload de UMA foto do check-in (uma chamada por posição: front/left/right/back).
  * O cliente já mandou o JPEG comprimido (`lib/storage/compress-image.ts`, ~1600px, q0.82,
  * sempre abaixo do teto de 1MB de corpo das Server Actions do Next). Uma action por foto —
- * em vez de mandar as 3 junto no submit final — mantém cada request pequeno, dá feedback
+ * em vez de mandar as 4 junto no submit final — mantém cada request pequeno, dá feedback
  * por foto e não perde as outras se uma falhar.
  *
  * Server Actions são endpoints POST públicos: TODA autorização (sessão + o check-in ser do

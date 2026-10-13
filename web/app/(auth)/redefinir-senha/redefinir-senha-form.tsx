@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { updatePassword, type UpdatePasswordState } from "./actions";
+import { buttonClass } from "@/components/ui/button";
 
 const initialState: UpdatePasswordState = null;
 
@@ -20,7 +21,7 @@ export default function RedefinirSenhaForm() {
           required
           minLength={8}
           autoComplete="new-password"
-          className="min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
+          className="min-h-11 rounded-md border border-line-control bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
         />
       </label>
 
@@ -33,7 +34,7 @@ export default function RedefinirSenhaForm() {
       <button
         type="submit"
         disabled={pending}
-        className="mt-2 w-full rounded-md bg-brand py-2.5 font-medium text-on-accent transition-opacity disabled:opacity-60"
+        className={buttonClass({ width: "full", className: "mt-2" })}
       >
         {pending ? "Salvando…" : "Salvar nova senha"}
       </button>

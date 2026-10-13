@@ -9,6 +9,7 @@ import {
   insertIdAfter,
   macroProgress,
   mealsForDay,
+  sortMealsForStudent,
   moveItem,
   sumMacros,
   toFriendlyActionError,
@@ -308,4 +309,19 @@ test("toFriendlyActionError: mensagem já amigável (sem termos técnicos) passa
     toFriendlyActionError("Refeição não encontrada: ", "Não foi possível editar a refeição."),
     "Refeição não encontrada: "
   );
+});
+
+test("sortMealsForStudent: por horário, sem horário por último, empate por sort_order", () => {
+  const meals = [
+    { id: "jantar", time: "19:30:00", sort_order: 0 },
+    { id: "sem", time: null, sort_order: 1 },
+    { id: "cafe", time: "07:00:00", sort_order: 5 },
+    { id: "cafe2", time: "07:00:00", sort_order: 2 },
+  ];
+  assert.deepEqual(
+    sortMealsForStudent(meals).map((m) => m.id),
+    ["cafe2", "cafe", "jantar", "sem"]
+  );
+  // não muta o array de entrada
+  assert.equal(meals[0].id, "jantar");
 });

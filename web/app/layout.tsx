@@ -1,22 +1,21 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
-import { Fraunces, Inter, IBM_Plex_Mono } from "next/font/google";
+import { Sora, Inter } from "next/font/google";
 import "./globals.css";
 
-const fraunces = Fraunces({
+// Sora (geométrica, larga, pesos até 800) para títulos e números; Inter para corpo e controles.
+// Sem fonte mono: números usam tabular-nums.
+const sora = Sora({
   variable: "--font-display",
   subsets: ["latin"],
+  weight: ["600", "700", "800"],
+  display: "swap",
 });
 
 const inter = Inter({
   variable: "--font-body",
   subsets: ["latin"],
-});
-
-const plexMono = IBM_Plex_Mono({
-  variable: "--font-mono",
-  weight: ["400", "500"],
-  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -32,7 +31,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="pt-BR"
-      className={`${fraunces.variable} ${inter.variable} ${plexMono.variable} h-full antialiased`}
+      className={`${sora.variable} ${inter.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-paper text-ink">
         {children}

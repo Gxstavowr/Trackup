@@ -5,6 +5,7 @@ import {
   computeElapsedSeconds,
   computeSessionProgress,
   formatDuration,
+  formatElapsedClock,
   formatRestClock,
   groupPreviousPerformance,
   isExerciseDone,
@@ -125,6 +126,24 @@ test("formatDuration: minutos só, e horas+minutos acima de 1h", () => {
   assert.equal(formatDuration(72 * 60), "1h 12min");
 });
 
+test("formatElapsedClock: m:ss abaixo de 1h", () => {
+  assert.equal(formatElapsedClock(0), "0:00");
+  assert.equal(formatElapsedClock(65), "1:05");
+  assert.equal(formatElapsedClock(59 * 60 + 59), "59:59");
+});
+
+test("formatElapsedClock: h:mm:ss a partir de 1h (sessão esquecida aberta)", () => {
+  assert.equal(formatElapsedClock(3600), "1:00:00");
+  assert.equal(formatElapsedClock(3600 + 5 * 60 + 9), "1:05:09");
+  // 1087min04s -> 18h07m04s
+  assert.equal(formatElapsedClock(1087 * 60 + 4), "18:07:04");
+});
+
+test("formatElapsedClock: nunca negativo e ignora fração", () => {
+  assert.equal(formatElapsedClock(-30), "0:00");
+  assert.equal(formatElapsedClock(61.9), "1:01");
+});
+
 test("computeElapsedSeconds: exclui o total já pausado", () => {
   const now = new Date("2026-01-01T10:30:00Z");
   const session = {
@@ -187,4 +206,32 @@ test("buildSessionSummary: exercício parcialmente feito não conta como conclu�
   assert.equal(summary.exercisesDone, 0);
   assert.equal(summary.setsDone, 1);
   assert.equal(summary.setsTotal, 3);
+});
+
+import { buildHighlights, firstIncompleteIndex, nextAfterSet } from "./workout-session";
+
+test("nextAfterSet: exercício solto permanece até terminar, grupo alterna", () => {
+  const flat = [
+    { id: "a", sets: 2, block_type: "normal" as const, group_kind: null, group_key: null },
+    { id: "b", sets: 2, block_type: "normal" as const, group_kind: "superset", group_key: "A" },
+    { id: "c", sets: 2, block_type: "normal" as const, group_kind: "superset", group_key: "A" },
+  ];
+  const done = new Set<string>([setKey("a", 1)]);
+  assert.deepEqual(nextAfterSet(flat, 0, done), { next: 0, rest: true });
+  done.add(setKey("a", 2));
+  assert.deepEqual(nextAfterSet(flat, 0, done), { next: 1, rest: true });
+  done.add(setKey("b", 1));
+  assert.deepEqual(nextAfterSet(flat, 1, done), { next: 2, rest: false });
+  done.add(setKey("c", 1));
+  assert.deepEqual(nextAfterSet(flat, 2, done), { next: 1, rest: true });
+  assert.equal(firstIncompleteIndex(flat, done), 1);
+});
+
+test("buildHighlights só destaca com histórico anterior", () => {
+  const h = buildHighlights([
+    { name: "Supino", current: [{ load: 62.5, reps: 8 }], previous: [{ load: 60, reps: 8 }] },
+    { name: "Remada", current: [{ load: 40, reps: 8 }], previous: [] },
+  ]);
+  assert.equal(h.length, 1);
+  assert.match(h[0].text, /62,5/);
 });

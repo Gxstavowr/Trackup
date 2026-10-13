@@ -9,9 +9,13 @@ import {
   type HistoryFilter,
 } from "@/lib/finance/queries";
 import type { MonthKey } from "@/lib/finance/dates";
+import { Icon } from "@/components/ui";
 import { financeHref } from "./href";
 import PaymentRow from "./payment-row";
+import { withTimeout } from "./timeout";
 import { CARD } from "./ui";
+import { EmptyState } from "@/components/ui/empty-state";
+import type { IconName } from "@/components/ui/icon";
 
 function SectionHeader({
   id,
@@ -26,7 +30,8 @@ function SectionHeader({
 }) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-      <h2 id={id} className="font-display text-xl text-ink md:text-2xl">
+      <h2 id={id} className={`t-subtitle flex items-center gap-2 text-xl md:text-2xl ${tone === "late" ? "text-danger-text" : "text-ink"}`}>
+        {tone === "late" && <Icon name="alert" size={22} />}
         {title}
       </h2>
       {summary && (
@@ -36,12 +41,8 @@ function SectionHeader({
   );
 }
 
-function EmptyLine({ children }: { children: ReactNode }) {
-  return (
-    <p className="rounded-lg border border-dashed border-line px-4 py-6 text-center text-sm text-ink-muted">
-      {children}
-    </p>
-  );
+function EmptyLine({ title, icon = "wallet", children }: { title: string; icon?: IconName; children?: ReactNode }) {
+  return <EmptyState compact icon={icon} title={title} text={children} />;
 }
 
 /** Ação principal #1: quem está devendo AGORA (qualquer mês), do mais antigo pro mais recente. */
@@ -60,9 +61,11 @@ export function LateSection({ overview }: { overview: FinanceOverview }) {
         }
       />
       {late.length === 0 ? (
-        <EmptyLine>Nenhum pagamento atrasado. Todas as cobranças vencidas estão em dia.</EmptyLine>
+        <EmptyLine title="Nenhum pagamento atrasado" icon="check-circle">
+          Todas as cobranças vencidas estão em dia.
+        </EmptyLine>
       ) : (
-        <ul className={`overflow-hidden border-late/40 ${CARD}`}>
+        <ul className={`overflow-hidden border-danger/60 ${CARD}`}>
           {late.map((payment) => (
             <PaymentRow key={payment.id} payment={payment} variant="late" />
           ))}
@@ -79,7 +82,7 @@ export function UpcomingSection({ overview }: { overview: FinanceOverview }) {
     <section aria-labelledby="proximas" className="flex flex-col gap-3">
       <SectionHeader
         id="proximas"
-        title="Próximas cobranças"
+        title="Próximas cobranças pendentes"
         summary={
           upcoming.length > 0
             ? `Próximos ${UPCOMING_DAYS} dias · ${upcoming.length} · ${formatBRL(upcomingTotalCents)}`
@@ -87,8 +90,8 @@ export function UpcomingSection({ overview }: { overview: FinanceOverview }) {
         }
       />
       {upcoming.length === 0 ? (
-        <EmptyLine>
-          Nenhuma cobrança registrada para os próximos {UPCOMING_DAYS} dias. As cobranças aparecem aqui
+        <EmptyLine title={`Nenhuma cobrança nos próximos ${UPCOMING_DAYS} dias`} icon="calendar">
+          As cobranças aparecem aqui
           depois que você usa &quot;Registrar próxima cobrança&quot; na aba Pagamento de cada aluno.
         </EmptyLine>
       ) : (
@@ -152,18 +155,20 @@ function HistorySkeleton() {
   return (
     <div role="status" aria-busy="true">
       <span className="sr-only">Carregando o histórico…</span>
-      <div aria-hidden className="h-40 animate-pulse rounded-lg border border-line bg-surface" />
+      <div aria-hidden className="h-40 animate-pulse card" />
     </div>
   );
 }
 
 async function HistoryList({ filter }: { filter: HistoryFilter }) {
-  const { rows, hasMore } = await getPaymentHistory(filter);
+  const { rows, hasMore } = await withTimeout(getPaymentHistory(filter));
 
   if (rows.length === 0) {
     return (
-      <EmptyLine>
-        {filter === "all" ? "Nenhum pagamento registrado ainda." : "Nenhum pagamento com esse status."}
+      <EmptyLine
+        title={filter === "all" ? "Nenhum pagamento registrado ainda" : "Nenhum pagamento com esse status"}
+      >
+        {filter === "all" ? "Os pagamentos aparecem aqui conforme você os registra em cada aluno." : "Troque o filtro para ver outros pagamentos."}
       </EmptyLine>
     );
   }

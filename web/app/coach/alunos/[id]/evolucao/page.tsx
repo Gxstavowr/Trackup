@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import { requireCoach } from "../../../require-coach";
 import { getStudentEvolution } from "@/lib/evolution";
+import EvolutionSubnav from "../evolution-subnav";
 import EvolutionView from "./evolution-view";
+import { EmptyState } from "@/components/ui/empty-state";
 
 /**
  * Evolução do aluno (`/coach/alunos/[id]/evolucao`, item 15 do TODO) — aba "Evolução" do
@@ -37,6 +39,7 @@ export default async function StudentEvolutionPage({
 
   return (
     <div className="flex flex-col gap-6">
+      <EvolutionSubnav clientId={id} active="evolucao" />
       <section aria-label="Evolução" className="flex flex-col gap-3">
         <h2 className="text-lg font-medium text-ink">Evolução</h2>
         <p className="text-sm text-ink-muted">
@@ -46,16 +49,9 @@ export default async function StudentEvolutionPage({
       </section>
 
       {isEmpty ? (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-line px-6 py-14 text-center">
-          <p className="font-display text-hero text-ink">
-            {data.metrics.length === 0 ? "Nenhuma métrica acompanhada" : "Ainda sem registros"}
-          </p>
-          <p className="max-w-sm text-sm text-ink-muted">
-            {data.metrics.length === 0
+        <EmptyState icon="tracking" title={data.metrics.length === 0 ? "Nenhuma métrica acompanhada" : "Ainda sem registros"} text={<>{data.metrics.length === 0
               ? "Nenhuma métrica está configurada para acompanhamento deste aluno no momento. Ajuste em Resumo → Métricas acompanhadas."
-              : "A evolução aparece aqui assim que houver pelo menos um check-in com métricas registradas."}
-          </p>
-        </div>
+              : "A evolução aparece aqui assim que houver pelo menos um check-in com métricas registradas."}</>} />
       ) : (
         <EvolutionView data={data} />
       )}

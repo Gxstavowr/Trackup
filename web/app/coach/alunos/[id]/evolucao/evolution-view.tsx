@@ -18,7 +18,7 @@ import {
   type MetricTrend,
 } from "@/lib/evolution-format";
 
-const EYEBROW = "font-mono text-label uppercase tracking-widest text-ink-faint";
+const EYEBROW = "t-label text-ink-faint";
 
 /** Texto de delta: bom = accent (`text-ok`), ruim = coral legível (`text-late-text`), sem meta = neutro. */
 function deltaTone(good: boolean | null): string {
@@ -36,12 +36,29 @@ function deltaTone(good: boolean | null): string {
  * MESMO array de semanas (`selectPeriodWeeks`) — gráfico e cards recalculam juntos, sem ida ao
  * servidor e sem poderem divergir.
  */
-export default function EvolutionView({ data }: { data: EvolutionData }) {
-  const [period, setPeriod] = useState<EvolutionPeriod>(12);
+export default function EvolutionView({
+  data,
+  hideEmptyMetrics = false,
+  period: controlledPeriod,
+  onPeriodChange,
+}: {
+  data: EvolutionData;
+  /** Período controlado de fora (o portal compartilha o seletor com o resumo automático). */
+  period?: EvolutionPeriod;
+  onPeriodChange?: (p: EvolutionPeriod) => void;
+  /** Aluno: só mostra métricas com registro no período. Coach (padrão): também mostra as
+   *  configuradas e ainda sem registro, pra ele ver o que falta coletar. */
+  hideEmptyMetrics?: boolean;
+}) {
+  const [ownPeriod, setOwnPeriod] = useState<EvolutionPeriod>(12);
+  const period = controlledPeriod ?? ownPeriod;
+  const setPeriod = onPeriodChange ?? setOwnPeriod;
   const weeks = useMemo(() => selectPeriodWeeks(data.weeks, period), [data.weeks, period]);
 
   const weightMetric = data.metrics.find((m) => m.key === "weight_kg") ?? null;
-  const cardMetrics = data.metrics.filter((m) => m.key !== "weight_kg");
+  const cardMetrics = data.metrics.filter(
+    (m) => m.key !== "weight_kg" && (!hideEmptyMetrics || weeks.some((w) => w.values[m.key] != null))
+  );
 
   return (
     <div className="flex flex-col gap-8">
@@ -81,7 +98,7 @@ function PeriodSelector({
           type="button"
           aria-pressed={period === opt.value}
           onClick={() => onChange(opt.value)}
-          className={`inline-flex min-h-11 items-center justify-center rounded-full border px-4 py-1.5 font-mono text-sm transition-colors ${
+          className={`inline-flex min-h-11 items-center justify-center rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
             period === opt.value
               ? "border-brand bg-brand-tint text-brand"
               : "border-line text-ink-muted hover:border-line-strong hover:text-ink"
@@ -133,11 +150,12 @@ function WeightHero({ metric, weeks }: { metric: EvolutionMetricDef; weeks: Evol
   const reading = describeTrend(trend);
   const gap = describeGoalGap(trend.latest, metric.targetValue, metric.goalDirection);
   const hasData = trend.latest != null;
+  const singlePoint = hasData && !trend.hasEnoughData;
 
   return (
     <section
       aria-label="Peso"
-      className="flex flex-col gap-6 rounded-lg border border-line bg-surface p-5 shadow-[var(--surface-raised-shadow)] sm:p-6"
+      className="flex flex-col gap-6 card p-5 shadow-[var(--surface-raised-shadow)] sm:p-6"
     >
       <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col gap-2">
@@ -145,6 +163,9 @@ function WeightHero({ metric, weeks }: { metric: EvolutionMetricDef; weeks: Evol
           <span className="font-display text-counter leading-none text-ink">
             {trend.latest != null ? formatMetricValue("kg", trend.latest) : "—"}
           </span>
+          {singlePoint && (
+            <span className="text-sm text-ink-muted">Semana {trend.latestWeek}</span>
+          )}
           {reading ? (
             <p className="text-sm text-ink-muted">
               <span className={`font-medium ${deltaTone(trend.good)}`}>{reading.label}</span>
@@ -160,7 +181,11 @@ function WeightHero({ metric, weeks }: { metric: EvolutionMetricDef; weeks: Evol
         {hasData && <WeightFacts trend={trend} gap={gap} targetValue={metric.targetValue} />}
       </div>
 
-      {hasData ? <WeightChart metric={metric} trend={trend} /> : (
+      {singlePoint ? (
+        <p className="rounded-lg border border-dashed border-line px-4 py-4 text-sm text-ink-muted">
+          Um registro de peso até agora. O gráfico aparece a partir do 2º registro.
+        </p>
+      ) : hasData ? <WeightChart metric={metric} trend={trend} /> : (
         <p className="rounded-lg border border-dashed border-line px-4 py-5 text-sm text-ink-muted">
           Sem registros de peso neste período.
         </p>
@@ -231,7 +256,13 @@ function WeightChart({ metric, trend }: { metric: EvolutionMetricDef; trend: Met
     <div role="img" aria-label={summary} className="h-56 w-full sm:h-64">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-          <CartesianGrid stroke="var(--line)" vertical={false} />
+          <defs>
+            <linearGradient id="tk-area-brand" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--brand)" stopOpacity={0.28} />
+              <stop offset="100%" stopColor="var(--brand)" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke="var(--line)" strokeDasharray="2 6" vertical={false} />
           <XAxis
             dataKey="dateLabel"
             stroke="var(--ink-faint)"
@@ -284,9 +315,9 @@ function WeightChart({ metric, trend }: { metric: EvolutionMetricDef; trend: Met
             type="monotone"
             dataKey="value"
             stroke="var(--brand)"
-            strokeWidth={2}
-            fill="var(--brand)"
-            fillOpacity={0.1}
+            strokeWidth={2.5}
+            fill="url(#tk-area-brand)"
+            strokeLinecap="round"
             connectNulls
             dot={chartData.length <= 12 ? { r: 3, fill: "var(--brand)", stroke: "var(--surface)", strokeWidth: 1.5 } : false}
             activeDot={{ r: 5, fill: "var(--brand)", stroke: "var(--surface)", strokeWidth: 2 }}

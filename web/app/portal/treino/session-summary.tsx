@@ -1,56 +1,77 @@
-import Link from "next/link";
-import type { SessionSummary } from "@/lib/workout-session";
+import type { Highlight, SessionSummary } from "@/lib/workout-session";
 import { formatDuration } from "@/lib/workout-session";
-import { BUTTON_PRIMARY, CARD } from "../portal-ui";
+import { buttonClass } from "@/components/ui/button";
+import Icon from "@/components/ui/icon";
+import { CARD } from "../portal-ui";
 
-/** Resumo ao finalizar o treino (item 19) — o que foi feito, sem gráfico novo (a evolução do
- * exercício ao longo do tempo já é alimentada pelos logs por série; aqui é só o retrato desta
- * sessão). */
+/** Resumo ao finalizar o treino (V2 tarefa 20): séries, volume (Σ carga × reps), duração e,
+ * quando há histórico anterior, destaques de carga/volume vs. a última vez. */
 export default function SessionSummaryScreen({
   dayName,
   summary,
   studentNote,
+  highlights,
 }: {
   dayName: string;
   summary: SessionSummary;
   studentNote: string | null;
+  highlights: Highlight[];
 }) {
   return (
     <section className="flex flex-col gap-5">
-      <div className="flex flex-col gap-1">
-        <span className="font-mono text-label uppercase tracking-widest text-ok">Treino concluído</span>
-        <h2 className="font-display text-2xl text-ink">{dayName}</h2>
+      <div className="flex flex-col gap-2">
+        <span className="tk-pop flex size-12 items-center justify-center rounded-full bg-success-tint text-success">
+          <Icon name="check" size={26} strokeWidth={2.5} />
+        </span>
+        <span className="t-label text-success">Treino concluído</span>
+        <h1 className="font-display text-3xl font-bold text-ink">{dayName}</h1>
       </div>
 
-      <div className={`${CARD} grid grid-cols-2 gap-4 p-5 sm:grid-cols-4`}>
-        <Stat label="Exercícios" value={`${summary.exercisesDone}/${summary.exercisesTotal}`} />
-        <Stat label="Séries" value={`${summary.setsDone}/${summary.setsTotal}`} />
-        <Stat label="Duração" value={formatDuration(summary.durationSec)} />
+      <div className={`${CARD} grid grid-cols-2 gap-x-4 gap-y-5 p-5`}>
+        <Stat label="Séries" value={`${summary.setsDone}/${summary.setsTotal}`} accent />
         <Stat
           label="Volume"
-          value={summary.totalVolume > 0 ? `${Math.round(summary.totalVolume).toLocaleString("pt-BR")}kg` : "—"}
+          value={summary.totalVolume > 0 ? `${Math.round(summary.totalVolume).toLocaleString("pt-BR")} kg` : "—"}
+          accent
         />
+        <Stat label="Duração" value={formatDuration(summary.durationSec)} />
+        <Stat label="Exercícios" value={`${summary.exercisesDone}/${summary.exercisesTotal}`} />
       </div>
+
+      {highlights.length > 0 && (
+        <div className={`${CARD} flex flex-col gap-2 p-4`}>
+          <p className="t-label text-brand">Destaques</p>
+          <ul className="flex flex-col gap-2">
+            {highlights.map((h) => (
+              <li key={h.name} className="text-sm">
+                <span className="font-medium text-ink">{h.name}</span>
+                <span className="block text-ink-muted">{h.text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {studentNote && (
         <div className={`${CARD} p-4`}>
-          <p className="font-mono text-label uppercase tracking-widest text-ink-faint">Sua nota</p>
+          <p className="t-label text-ink-faint">Sua nota</p>
           <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink">{studentNote}</p>
         </div>
       )}
 
-      <Link href="/portal/treino" className={BUTTON_PRIMARY}>
+      {/* <a> de propósito: navegação completa, para a lista de dias já abrir sem a sessão. */}
+      <a href="/portal/treino" className={buttonClass({ variant: "primary", size: "lg", width: "full" })}>
         Voltar ao treino
-      </Link>
+      </a>
     </section>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="font-mono text-label uppercase tracking-widest text-ink-faint">{label}</span>
-      <span className="font-display text-xl text-ink">{value}</span>
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <span className="t-label text-ink-faint">{label}</span>
+      <span className={`font-display text-3xl font-bold tabular-nums ${accent ? "text-brand" : "text-ink"}`}>{value}</span>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { requireCoach } from "../require-coach";
 import AddClientForm from "./add-client-form";
 import StudentList from "./student-list";
 import { buildStudentEntry } from "./student-situation";
+import { EmptyState } from "@/components/ui/empty-state";
 
 /**
  * Lista de alunos do coach (`/coach/alunos`) — a tela OPERACIONAL: cada aluno com seus dados,
@@ -58,7 +59,7 @@ export default async function CoachStudentsPage() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <span className="font-mono text-label uppercase tracking-widest text-ink-faint">
+          <span className="t-label text-ink-faint">
             Trackly · Coach
           </span>
           <h1 className="font-display text-hero text-ink">
@@ -72,12 +73,11 @@ export default async function CoachStudentsPage() {
       </header>
 
       {clients.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-line px-6 py-14 text-center">
-          <p className="font-display text-hero text-ink">Nenhum aluno cadastrado ainda</p>
-          <p className="max-w-sm text-sm text-ink-muted">
-            Adicione seu primeiro aluno para gerar o link de convite e começar o acompanhamento.
-          </p>
-        </div>
+        <EmptyState
+          icon="user"
+          title="Nenhum aluno cadastrado ainda"
+          text="Adicione seu primeiro aluno para gerar o link de convite e começar o acompanhamento."
+        />
       ) : (
         <StudentList entries={entries} />
       )}

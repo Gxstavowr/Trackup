@@ -1,4 +1,11 @@
-import type { PhotoAngle } from "@/lib/storage/buckets";
+import {
+  PHOTO_ANGLES,
+  PHOTO_ANGLE_LABEL,
+  PHOTO_ANGLE_PHRASE,
+  PHOTO_ANGLE_SHORT_LABEL,
+  isLegacyPhotoAngle,
+  type PhotoAngle,
+} from "@/lib/storage/photo-angles";
 
 /**
  * Comparação entre semanas (item 14) — tipos e formatação PUROS (sem I/O, sem `server-only`):
@@ -89,6 +96,14 @@ export function formatNumber(value: number): string {
   return value.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
 }
 
+/** "1 treinos" -> "1 treino": a unidade vem do rótulo da pergunta, em plural; com valor 1 volta ao singular
+ *  (só plurais regulares em -os/-as, ex.: treinos, dias, horas — "kg", "cm", "sessões" ficam como estão). */
+export function unitForValue(unit: string | null | undefined, value: number): string | null {
+  const u = unit?.trim();
+  if (!u) return null;
+  return value === 1 && /[oa]s$/i.test(u) && u.length > 3 ? u.slice(0, -1) : u;
+}
+
 export function formatMetricValue(def: MetricDef, value: number): string {
   return def.suffix ? `${formatNumber(value)} ${def.suffix}` : formatNumber(value);
 }
@@ -117,22 +132,54 @@ export function weekLabel(week: Pick<ComparisonWeek, "weekNumber" | "periodStart
   return `Semana ${week.weekNumber} · ${dateShort(week.periodStart)}`;
 }
 
-export const ANGLE_LABEL: Record<PhotoAngle, string> = {
-  front: "Frente",
-  back: "Costas",
-  side: "Lateral",
-};
-
+/** Rótulos/frases das posições — fonte única em `lib/storage/photo-angles.ts`. */
+export const ANGLE_LABEL = PHOTO_ANGLE_LABEL;
+export const ANGLE_SHORT_LABEL = PHOTO_ANGLE_SHORT_LABEL;
 /** Como o ângulo entra numa frase: "Sem foto de frente na semana 5". */
-export const ANGLE_PHRASE: Record<PhotoAngle, string> = {
-  front: "de frente",
-  back: "de costas",
-  side: "lateral",
-};
+export const ANGLE_PHRASE = PHOTO_ANGLE_PHRASE;
 
-export const COMPARISON_ANGLES: readonly PhotoAngle[] = ["front", "back", "side"];
+/**
+ * Todas as posições comparáveis, em ordem: as 4 do check-in novo + o legado `side`. Cada uma só
+ * se compara com ELA MESMA: uma lateral antiga (`side`) nunca é pareada com esquerda/direita.
+ */
+export const COMPARISON_ANGLES: readonly PhotoAngle[] = PHOTO_ANGLES;
+
+/**
+ * Posições a oferecer no seletor para as semanas exibidas: as 4 novas sempre; o legado `side`
+ * só se alguma das semanas tem foto nessa posição (senão seria um botão sempre vazio).
+ */
+export function selectableAngles(weeks: Pick<ComparisonWeek, "photoAngles">[]): PhotoAngle[] {
+  return COMPARISON_ANGLES.filter(
+    (a) => !isLegacyPhotoAngle(a) || weeks.some((w) => w.photoAngles.includes(a))
+  );
+}
+
+/**
+ * Posição inicial da comparação: a primeira (na ordem) presente em TODAS as semanas; senão a
+ * primeira presente em alguma; senão "front".
+ */
+export function defaultComparisonAngle(weeks: Pick<ComparisonWeek, "photoAngles">[]): PhotoAngle {
+  const inBoth = (a: PhotoAngle) => weeks.length > 0 && weeks.every((w) => w.photoAngles.includes(a));
+  const inEither = (a: PhotoAngle) => weeks.some((w) => w.photoAngles.includes(a));
+  return COMPARISON_ANGLES.find(inBoth) ?? COMPARISON_ANGLES.find(inEither) ?? "front";
+}
 
 /** Semana anterior mais próxima (com registro) e a primeira semana do aluno, entre as comparáveis. */
 export function comparableWeeks(weeks: ComparisonWeek[], currentWeek: number): ComparisonWeek[] {
   return weeks.filter((w) => w.weekNumber < currentWeek).sort((a, b) => a.weekNumber - b.weekNumber);
+}
+
+/**
+ * Aviso quando não há semana comparável. Só a semana 1 é de fato "a primeira": a partir da 2 as
+ * semanas anteriores existem no acompanhamento, mas nenhuma tem check-in enviado, métrica ou foto
+ * — e é isso que a tela precisa dizer (não que a semana em foco é a primeira).
+ */
+export function noComparisonMessage(currentWeek: number): string {
+  if (currentWeek <= 1) {
+    return "Esta é a primeira semana do acompanhamento — ainda não há com o que comparar. Quando houver outra semana com registro, as fotos e as métricas aparecem lado a lado aqui.";
+  }
+  const previous = currentWeek - 1;
+  const which =
+    previous === 1 ? "A semana 1 não tem" : `As semanas anteriores (1 a ${previous}) não têm`;
+  return `${which} check-in enviado, métricas nem fotos — não há dados para comparar com a semana ${currentWeek}.`;
 }

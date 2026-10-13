@@ -2,7 +2,11 @@ import { notFound } from "next/navigation";
 import { getClient } from "@/lib/repository";
 import { requireCoach } from "../../../require-coach";
 import { listClientPhotos, type CheckinPhoto } from "@/lib/storage/checkin-photos";
+import EvolutionSubnav from "../evolution-subnav";
 import PhotoTriptych from "../photo-triptych";
+import WeekComparison from "../avaliacao/week-comparison";
+import { loadComparison } from "../avaliacao/load-comparison";
+import { EmptyState } from "@/components/ui/empty-state";
 
 /**
  * Fotos de evolução do aluno — visão READ-ONLY do coach (item 5 do TODO). Rota:
@@ -17,10 +21,13 @@ import PhotoTriptych from "../photo-triptych";
  */
 export default async function ClientPhotosPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { id } = await params;
+  const { comparar } = await searchParams;
   // Guard de role (sessão + coach_users) — o layout do aluno também chama, mas layouts não
   // re-renderizam entre abas, então a página que expõe dado checa por conta própria.
   await requireCoach();
@@ -42,15 +49,29 @@ export default async function ClientPhotosPage({
   }
   const weeks = [...byWeek.entries()].sort((a, b) => b[0] - a[0]);
 
+  // Comparação integrada (V2 tarefa 13): a semana mais recente com fotos contra uma semana anterior.
+  // É a mesma peça da avaliação; `?comparar=N` escolhe a semana comparativa.
+  const latestWeek = weeks[0]?.[0] ?? null;
+  const comparison =
+    latestWeek !== null ? await loadComparison(id, client.start_date, latestWeek, comparar) : null;
+
   return (
     <div className="flex flex-col gap-8">
+      <EvolutionSubnav clientId={id} active="fotos" />
+      {comparison && latestWeek !== null && (
+        <WeekComparison
+          key={`${id}:${latestWeek}`}
+          clientId={id}
+          currentWeek={latestWeek}
+          weeks={comparison.weeks}
+          adherenceIsScale
+          initialCompareWeek={comparison.compareWeek}
+          initialPhotos={comparison.initialPhotos}
+          context="photos"
+        />
+      )}
       {weeks.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-line px-6 py-14 text-center">
-          <p className="font-display text-hero text-ink">Nenhuma foto enviada</p>
-          <p className="max-w-sm text-sm text-ink-muted">
-            As fotos aparecem aqui assim que o aluno enviar no check-in semanal.
-          </p>
-        </div>
+        <EmptyState icon="camera" title="Nenhuma foto enviada" text="As fotos aparecem aqui assim que o aluno enviar no check-in semanal." />
       ) : (
         weeks.map(([week, weekPhotos]) => (
           <section key={week} className="flex flex-col gap-3">

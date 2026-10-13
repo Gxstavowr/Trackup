@@ -19,7 +19,7 @@ export default function CycleDoneBanner({ children }: { children: ReactNode }) {
     <p
       ref={ref}
       role="status"
-      className="mt-1 rounded-md border border-ok/30 bg-ok-tint px-3 py-2 text-sm text-ok"
+      className="tk-fade mt-1 rounded-md border border-ok/30 bg-ok-tint px-3 py-2 text-sm text-ok"
     >
       {children}
     </p>

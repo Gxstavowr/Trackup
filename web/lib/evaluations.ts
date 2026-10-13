@@ -3,6 +3,9 @@ import { cache } from "react";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { todayDateSP } from "@/lib/portal-today";
+import { deriveLateWeek, isCheckinSent, isStoredLateOverdue, previousWeekMonday } from "@/lib/evaluation-late";
+import { unitForValue } from "@/lib/week-comparison-format";
+import { formatCheckinAnswer, getCatalogQuestion } from "@/lib/checkin-catalog";
 import { getClientMetricSettings, resolveEffectiveMetrics } from "@/lib/metrics-settings";
 import {
   computeWeekInfo,
@@ -58,7 +61,10 @@ export type EvaluationRow = {
   submittedAt: string | null;
   reviewOpenedAt: string | null;
   reviewedAt: string | null;
-  /** Só `awaiting_checkin`: o status da instância já foi marcado `late`. */
+  /**
+   * Só `awaiting_checkin`: check-in ATRASADO, derivado na leitura (semana anterior fechada sem
+   * envio; a linha então descreve a semana perdida). Também vale `status = 'late'` legado.
+   */
   late: boolean;
 };
 
@@ -99,8 +105,22 @@ function sortRows(rows: EvaluationRow[]): EvaluationRow[] {
  * `cache()` do React: layout (badge) e páginas da mesma requisição pagam uma ida ao banco só.
  */
 export const getEvaluationQueue = cache(async (): Promise<EvaluationRow[]> => {
-  const supabase = await createSupabaseServerClient();
   const clients = await getClients(); // RLS: só a conta do coach
+  return computeEvaluationRows(clients);
+});
+
+/**
+ * A linha da fila de UM aluno, com a MESMA regra de `getEvaluationQueue`, mas consultando só os
+ * dados dele (workspace do aluno: não precisa carregar a fila da conta inteira). `null` fora da
+ * fila (convite pendente, pausado, sem início).
+ */
+export const getStudentEvaluationRow = cache(async (client: Client): Promise<EvaluationRow | null> => {
+  const rows = await computeEvaluationRows([client]);
+  return rows[0] ?? null;
+});
+
+async function computeEvaluationRows(clients: Client[]): Promise<EvaluationRow[]> {
+  const supabase = await createSupabaseServerClient();
 
   const active = clients.filter(
     (c) => c.status === "active" && c.invite_status === "active" && c.start_date
@@ -110,8 +130,15 @@ export const getEvaluationQueue = cache(async (): Promise<EvaluationRow[]> => {
   const ids = active.map((c) => c.id);
   const todayStr = todayDateSP();
 
-  const [submittedRes, windowRes] = await Promise.all([
+  const [submittedRes, recentSentRes, windowRes] = await Promise.all([
     supabase.from("checkin_instances").select("*").in("client_id", ids).eq("status", "submitted"),
+    // Enviadas/avaliadas desde a semana anterior: base do "atrasado" derivado (sem gravar status).
+    supabase
+      .from("checkin_instances")
+      .select("client_id, week_number, status")
+      .in("client_id", ids)
+      .in("status", ["submitted", "reviewed"])
+      .gte("period_end", previousWeekMonday()),
     supabase
       .from("checkin_instances")
       .select("*")
@@ -126,6 +153,14 @@ export const getEvaluationQueue = cache(async (): Promise<EvaluationRow[]> => {
     throw new Error(`Não foi possível carregar as avaliações: ${windowRes.error.message}`);
   }
 
+  if (recentSentRes.error) {
+    throw new Error(`Não foi possível carregar as avaliações: ${recentSentRes.error.message}`);
+  }
+  const sentStatusByClientWeek = new Map<string, string>();
+  for (const r of (recentSentRes.data ?? []) as { client_id: string; week_number: number; status: string }[]) {
+    sentStatusByClientWeek.set(`${r.client_id}:${r.week_number}`, r.status);
+  }
+
   const submittedByClient = new Map<string, CheckinInstance[]>();
   for (const inst of (submittedRes.data ?? []) as CheckinInstance[]) {
     const list = submittedByClient.get(inst.client_id) ?? [];
@@ -137,7 +172,14 @@ export const getEvaluationQueue = cache(async (): Promise<EvaluationRow[]> => {
     windowByClientWeek.set(`${inst.client_id}:${inst.week_number}`, inst);
   }
 
-  type Pick_ = { client: Client; instance: CheckinInstance | null; weekNumber: number; periodStart: string; periodEnd: string };
+  type Pick_ = {
+    client: Client;
+    instance: CheckinInstance | null;
+    weekNumber: number;
+    periodStart: string;
+    periodEnd: string;
+    lateDerived?: boolean;
+  };
   const picked: Pick_[] = active.map((client) => {
     const current = computeWeekInfo(client.start_date as string);
     const oldestSubmitted = (submittedByClient.get(client.id) ?? []).sort(
@@ -153,12 +195,26 @@ export const getEvaluationQueue = cache(async (): Promise<EvaluationRow[]> => {
       };
     }
     const inWindow = windowByClientWeek.get(`${client.id}:${current.weekNumber}`) ?? null;
+    // Atrasado derivado: a semana anterior fechou (domingo) sem check-in enviado e a corrente
+    // ainda não foi enviada. A linha passa a representar a semana PERDIDA (rótulos e cobrança
+    // falam dela); `late` é calculado abaixo a partir dessa marca, nunca de `status = 'late'`.
+    const lateWeek = deriveLateWeek(
+      client.start_date as string,
+      sentStatusByClientWeek.get(`${client.id}:${current.weekNumber - 1}`),
+      isCheckinSent(inWindow?.status) ||
+        isCheckinSent(sentStatusByClientWeek.get(`${client.id}:${current.weekNumber}`))
+    );
+    if (lateWeek) {
+      return { client, instance: null, ...lateWeek, lateDerived: true };
+    }
     return {
       client,
       instance: inWindow,
       weekNumber: current.weekNumber,
-      periodStart: current.periodStart,
-      periodEnd: current.periodEnd,
+      // Fonte única do período: se a semana tem instância, vale o período gravado nela (instâncias
+      // antigas podem ter período corrido); sem instância, o cálculo do calendário.
+      periodStart: inWindow?.period_start ?? current.periodStart,
+      periodEnd: inWindow?.period_end ?? current.periodEnd,
     };
   });
 
@@ -176,7 +232,7 @@ export const getEvaluationQueue = cache(async (): Promise<EvaluationRow[]> => {
     ((orientationsData ?? []) as OrientationKey[]).map((o) => `${o.client_id}:${o.week_number}`)
   );
 
-  const rows: EvaluationRow[] = picked.map(({ client, instance, weekNumber, periodStart, periodEnd }) => {
+  const rows: EvaluationRow[] = picked.map(({ client, instance, weekNumber, periodStart, periodEnd, lateDerived }) => {
     let state: EvaluationState;
     if (instance?.status === "reviewed") state = "done";
     else if (instance?.status === "submitted") {
@@ -195,12 +251,12 @@ export const getEvaluationQueue = cache(async (): Promise<EvaluationRow[]> => {
       submittedAt: instance?.submitted_at ?? null,
       reviewOpenedAt: instance?.review_opened_at ?? null,
       reviewedAt: instance?.reviewed_at ?? null,
-      late: state === "awaiting_checkin" && instance?.status === "late",
+      late: state === "awaiting_checkin" && (lateDerived === true || isStoredLateOverdue(instance?.status, periodEnd)),
     };
   });
 
   return sortRows(rows);
-});
+}
 
 export type EvaluationCounts = {
   active: number;
@@ -281,6 +337,9 @@ export type EvaluationDetail = {
   context: ContextWeek[];
   /** `adherence_pct` é uma pergunta de escala (mostrar "X de 5") ou um número livre? */
   adherenceIsScale: boolean;
+  /** Sessões de treino CONCLUÍDAS no app na semana avaliada (`workout_sessions`); `null` se a leitura falhou.
+   *  Complementa o "Treinos" autodeclarado no check-in — o coach vê os dois, com a fonte de cada um. */
+  sessionsDone: number | null;
   orientation: OrientationRecord | null;
   previousOrientation: { weekNumber: number; text: string; sentAt: string | null } | null;
 };
@@ -291,11 +350,25 @@ function toNumber(value: string | number | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function formatAnswer(value: string, type: string | undefined, unit: string | null | undefined): string {
+function formatAnswer(
+  value: string,
+  type: string | undefined,
+  unit: string | null | undefined,
+  key?: string
+): string {
+  // Perguntas do catálogo do sistema (V3): rótulo das opções, Sim/Não, unidade do catálogo, data
+  // dd/mm/aaaa — o mesmo formatador da revisão do check-in do aluno.
+  // Sim/Não ("boolean", inclusive criadas pelo coach): grava yes/no, exibe "Sim"/"Não".
+  if ((key && getCatalogQuestion(key)) || type === "boolean") {
+    return formatCheckinAnswer({ key: key ?? "", type: type ?? "text", unit }, value);
+  }
   if (type === "scale") return `${value} de 5`;
   if (type === "number" || type === "number+text") {
     const n = toNumber(value);
-    if (n != null) return `${n.toLocaleString("pt-BR")}${unit ? ` ${unit}` : ""}`;
+    if (n != null) {
+      const u = unitForValue(unit, n);
+      return `${n.toLocaleString("pt-BR")}${u ? ` ${u}` : ""}`;
+    }
   }
   return value;
 }
@@ -362,13 +435,31 @@ export async function getEvaluationDetail(clientId: string): Promise<EvaluationD
       .eq("id", row.instanceId)
       .maybeSingle();
 
+    // Instância criada sem `template_id` (ex.: criada antes do modelo "Padrão" da conta existir):
+    // sem isto as respostas apareciam com a chave crua ("workouts_count"). Cai no modelo ativo da
+    // conta — o mesmo critério do formulário do aluno (`getTemplateWithQuestions`: o mais antigo).
+    let templateId: string | null = (instanceRow?.template_id as string | null) ?? null;
+    if (!templateId) {
+      const { data: clientRow } = await supabase.from("clients").select("account_id").eq("id", clientId).maybeSingle();
+      if (clientRow?.account_id) {
+        const { data: tpl } = await supabase
+          .from("checkin_templates")
+          .select("id")
+          .eq("account_id", clientRow.account_id)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        templateId = (tpl?.id as string | undefined) ?? null;
+      }
+    }
+
     const [answersRes, questionsRes] = await Promise.all([
       supabase.from("checkin_answers").select("question_key, value").eq("checkin_id", row.instanceId),
-      instanceRow?.template_id
+      templateId
         ? supabase
             .from("checkin_questions")
             .select("key, label, type, unit, sort_order")
-            .eq("template_id", instanceRow.template_id)
+            .eq("template_id", templateId)
             .order("sort_order", { ascending: true })
         : Promise.resolve({ data: [], error: null }),
     ]);
@@ -392,7 +483,7 @@ export async function getEvaluationDetail(clientId: string): Promise<EvaluationD
       const raw = answerValues[q.key];
       if (raw == null) continue;
       seen.add(q.key);
-      answers.push({ key: q.key, label: q.label, display: formatAnswer(raw, q.type, q.unit) });
+      answers.push({ key: q.key, label: q.label, display: formatAnswer(raw, q.type, q.unit, q.key) });
     }
     // Respostas fora do template: métricas CUSTOM do aluno (perguntas sintéticas do check-in,
     // `applyMetricSettingsToQuestions`) ganham o rótulo/unidade configurados; pergunta que não
@@ -407,7 +498,9 @@ export async function getEvaluationDetail(clientId: string): Promise<EvaluationD
         answers.push(
           metric
             ? { key, label: metric.label, display: formatAnswer(raw, "number", metric.unit) }
-            : { key, label: key, display: raw }
+            : getCatalogQuestion(key)
+              ? { key, label: getCatalogQuestion(key)!.label, display: formatAnswer(raw, undefined, null, key) }
+              : { key, label: key, display: raw }
         );
       }
     }
@@ -415,7 +508,7 @@ export async function getEvaluationDetail(clientId: string): Promise<EvaluationD
 
   // Métricas: contexto das últimas 4 semanas + peso anterior.
   const firstContextWeek = Math.max(1, weekNumber - 3);
-  const [metricsRes, prevWeightRes, goalsRes, orientationsRes, submittedRes] = await Promise.all([
+  const [metricsRes, prevWeightRes, goalsRes, orientationsRes, submittedRes, sessionsRes] = await Promise.all([
     supabase
       .from("metrics")
       .select("week_number, key, value")
@@ -451,6 +544,12 @@ export async function getEvaluationDetail(clientId: string): Promise<EvaluationD
       .gte("week_number", firstContextWeek)
       .lte("week_number", weekNumber)
       .in("status", ["submitted", "reviewed"]),
+    supabase
+      .from("workout_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("client_id", clientId)
+      .eq("week_number", weekNumber)
+      .eq("status", "completed"),
   ]);
   for (const res of [metricsRes, prevWeightRes, goalsRes, orientationsRes, submittedRes]) {
     if (res.error) {
@@ -531,6 +630,7 @@ export async function getEvaluationDetail(clientId: string): Promise<EvaluationD
     })),
     context,
     adherenceIsScale,
+    sessionsDone: sessionsRes.error ? null : (sessionsRes.count ?? 0),
     orientation,
     previousOrientation: prev
       ? { weekNumber: prev.week_number, text: prev.text, sentAt: prev.sent_at }

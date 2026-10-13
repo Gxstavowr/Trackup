@@ -3,7 +3,8 @@ import { formatBRL, formatDateShort } from "@/lib/finance/format";
 import type { FinancePayment } from "@/lib/finance/queries";
 import type { Client, ClientPaymentStatus } from "@/lib/repository";
 import { formatRelativeTime } from "@/lib/format-relative-time";
-import { STATE_META, formatDateOnlyShort } from "../avaliacoes/evaluation-ui";
+import { SITUATION_META } from "@/lib/evaluation-situation";
+import { formatDateOnlyShort, whatsappDigits } from "../avaliacoes/evaluation-ui";
 
 /**
  * Situação de cada aluno na lista (`/coach/alunos`) — módulo PURO (sem I/O), usado pelo
@@ -35,19 +36,20 @@ export type PrimaryAction =
 export const PRIMARY_ACTION_LABEL: Record<PrimaryAction, string> = {
   open_evaluation: "Abrir avaliação",
   continue_evaluation: "Continuar avaliação",
-  finish_orientation: "Finalizar orientação",
+  finish_orientation: "Finalizar avaliação",
   charge_checkin: "Cobrar check-in",
   charge_payment: "Cobrar pagamento",
   copy_invite: "Copiar link do convite",
   view_tracking: "Ver acompanhamento",
 };
 
+/** Nomes iguais aos de /coach e /coach/avaliacoes (`SITUATION_META`). */
 export const TRACKING_LABEL: Record<TrackingState, string> = {
-  pending: STATE_META.pending.label,
-  in_progress: STATE_META.in_progress.label,
-  draft: STATE_META.draft.label,
-  awaiting_checkin: STATE_META.awaiting_checkin.label,
-  done: STATE_META.done.label,
+  pending: SITUATION_META.review_pending.label,
+  in_progress: SITUATION_META.review_in_progress.label,
+  draft: SITUATION_META.awaiting_orientation.label,
+  awaiting_checkin: SITUATION_META.checkin_waiting.label,
+  done: SITUATION_META.done.label,
   invite_pending: "Convite pendente",
   invite_sent: "Convite enviado",
   paused: "Acompanhamento pausado",
@@ -111,6 +113,22 @@ export type StudentEntry = {
 };
 
 export const NEEDS_ACTION_MAX_TIER = 4;
+
+export type ListGroup = "action" | "waiting" | "ok" | "paused";
+
+/** Grupo da lista (ordenada por urgência). Quem tem ação disponível nunca cai em "Em dia". */
+export function groupOf(e: StudentEntry): ListGroup {
+  if (e.tier <= NEEDS_ACTION_MAX_TIER) return "action";
+  if (e.tier <= 6) return "waiting";
+  return e.tier === 9 ? "paused" : "ok";
+}
+
+export const GROUP_LABEL: Record<ListGroup, string> = {
+  action: "Precisam da sua ação",
+  waiting: "Aguardando o aluno",
+  ok: "Em dia",
+  paused: "Pausados",
+};
 
 function trackingStateOf(client: Client, evaluation: EvaluationRow | null): TrackingState {
   if (client.status === "paused") return "paused";
@@ -199,36 +217,43 @@ export function buildStudentEntry(input: {
   //  5 aguardando o check-in do aluno (no prazo)
   //  6 convite enviado, aguardando aceite
   //  8 ciclo concluído / 9 pausado — nada a fazer, só consultar
+  // Ações por WhatsApp só valem com telefone válido; sem ele a ação é pulada na escolha da
+  // principal (continua no menu "Mais ações", desabilitada, com a explicação).
+  const canWhatsapp = whatsappDigits(client.phone) !== null;
+  const canChargePayment = canWhatsapp || latePayment === null; // sem detalhes -> link pro Financeiro
   let tier: number;
   let primary: PrimaryAction;
   let tierKey = 0;
+  let urgentTier = 0;
+  const lateKey = Date.parse(`${evaluation?.periodEnd}T00:00:00Z`) || 0;
   if (state === "pending" || state === "in_progress" || state === "draft") {
     tier = 1;
     primary =
       state === "pending" ? "open_evaluation" : state === "in_progress" ? "continue_evaluation" : "finish_orientation";
-    // O check-in que espera há mais tempo aparece primeiro.
     tierKey = Date.parse(evaluation?.submittedAt ?? "") || 0;
-  } else if (late) {
-    tier = 2;
-    primary = "charge_checkin";
-    tierKey = Date.parse(`${evaluation?.periodEnd}T00:00:00Z`) || 0;
-  } else if (paymentLate) {
-    tier = 3;
-    primary = "charge_payment";
-    tierKey = -(latePayment?.daysLate ?? 0);
-  } else if (state === "invite_pending") {
-    tier = 4;
-    primary = "copy_invite";
-  } else if (state === "awaiting_checkin") {
-    tier = 5;
-    primary = "charge_checkin";
-  } else if (state === "invite_sent") {
-    tier = 6;
-    primary = "copy_invite";
   } else {
-    tier = state === "paused" ? 9 : 8;
-    primary = "view_tracking";
+    // Candidatas em ordem de prioridade; a principal é a primeira DISPONÍVEL.
+    const candidates: { tier: number; action: PrimaryAction; ok: boolean; key: number }[] = [];
+    if (late) candidates.push({ tier: 2, action: "charge_checkin", ok: canWhatsapp, key: lateKey });
+    if (paymentLate)
+      candidates.push({ tier: 3, action: "charge_payment", ok: canChargePayment, key: -(latePayment?.daysLate ?? 0) });
+    if (state === "invite_pending") candidates.push({ tier: 4, action: "copy_invite", ok: true, key: 0 });
+    if (state === "awaiting_checkin" && !late)
+      candidates.push({ tier: 5, action: "charge_checkin", ok: canWhatsapp, key: 0 });
+    if (state === "invite_sent") candidates.push({ tier: 6, action: "copy_invite", ok: true, key: 0 });
+    const chosen = candidates.find((c) => c.ok);
+    if (chosen) {
+      tier = chosen.tier;
+      primary = chosen.action;
+      tierKey = chosen.key;
+    } else {
+      // Nada disponível: abre o acompanhamento. A urgência (se houver) continua valendo na ordem.
+      primary = "view_tracking";
+      tier = candidates[0]?.tier ?? (state === "paused" ? 9 : 8);
+      tierKey = candidates[0]?.key ?? 0;
+    }
   }
+  urgentTier = tier;
 
   return {
     id: client.id,
@@ -254,7 +279,7 @@ export function buildStudentEntry(input: {
     tier,
     tierKey,
     needsAction: tier <= NEEDS_ACTION_MAX_TIER,
-    urgentLate: tier === 2 || tier === 3,
+    urgentLate: urgentTier === 2 || urgentTier === 3,
     lastUpdate: lastUpdateOf(client, evaluation),
   };
 }

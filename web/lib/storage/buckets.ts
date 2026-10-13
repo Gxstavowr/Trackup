@@ -1,11 +1,12 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { PHOTO_FILE_RE, type PhotoAngle } from "./photo-angles";
 
 /**
  * Storage real das fotos de check-in (item 5 do master TODO).
  *
  * Um único bucket PRIVADO (`public: false`) com o `account_id` como primeiro segmento do
- * path — `{account_id}/{client_id}/week-{n}/{front|back|side}.jpg`. Um bucket por conta
+ * path — `{account_id}/{client_id}/week-{n}/{front|left|right|back}.jpg` (legado: `side.jpg`). Um bucket por conta
  * (como o ARCHITECTURE.md descreve) seria criar/gerenciar N buckets sem ganho: o isolamento
  * vem do prefixo `account_id/` (e é exatamente esse prefixo que uma policy futura de
  * `storage.objects` usaria via `storage.foldername(name)`).
@@ -23,12 +24,25 @@ export const CHECKIN_PHOTOS_BUCKET = "checkin-photos";
 /** Teto por objeto no bucket (defesa em profundidade — a action já limita a ~1MB). */
 export const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 
-export type PhotoAngle = "front" | "back" | "side";
-export const PHOTO_ANGLES: readonly PhotoAngle[] = ["front", "back", "side"];
-
-export function isPhotoAngle(value: unknown): value is PhotoAngle {
-  return typeof value === "string" && (PHOTO_ANGLES as readonly string[]).includes(value);
-}
+// Ângulos: fonte única em `./photo-angles` (módulo puro, também usado por componentes de cliente).
+// Novos check-ins: front/left/right/back. Legado `side` segue válido pra leitura e paths.
+export {
+  CHECKIN_PHOTO_ANGLES,
+  LEGACY_PHOTO_ANGLES,
+  PHOTO_ANGLES,
+  PHOTO_ANGLE_LABEL,
+  PHOTO_ANGLE_PHRASE,
+  PHOTO_ANGLE_SHORT_LABEL,
+  REQUIRED_PHOTO_COUNT,
+  isCheckinPhotoAngle,
+  isLegacyPhotoAngle,
+  isPhotoAngle,
+  missingCheckinPhotoAngles,
+  sortPhotoAngles,
+  type CheckinPhotoAngle,
+  type LegacyPhotoAngle,
+  type PhotoAngle,
+} from "./photo-angles";
 
 /** Path canônico do objeto no bucket. Sempre gerado no servidor, nunca vem do cliente. */
 export function buildPhotoPath(
@@ -53,7 +67,7 @@ export function isOwnedPhotoPath(
 ): boolean {
   const prefix = `${accountId}/${clientId}/`;
   if (!storagePath.startsWith(prefix)) return false;
-  return /^week-\d+\/(front|back|side)\.jpg$/.test(storagePath.slice(prefix.length));
+  return PHOTO_FILE_RE.test(storagePath.slice(prefix.length));
 }
 
 let ensuredBucket: Promise<void> | null = null;

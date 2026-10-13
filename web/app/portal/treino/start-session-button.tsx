@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { buttonClass } from "@/components/ui/button";
 import { startSessionAction, type SessionActionState } from "./actions";
 
 const initialState: SessionActionState = null;
@@ -23,7 +24,7 @@ export default function StartSessionButton({
   const [state, action, pending] = useActionState(startSessionAction, initialState);
 
   return (
-    <form action={action} className="flex shrink-0 flex-col items-end gap-1">
+    <form action={action} className="flex flex-col gap-1">
       <input type="hidden" name="clientId" value={clientId} />
       <input type="hidden" name="planId" value={planId} />
       <input type="hidden" name="dayId" value={dayId} />
@@ -31,15 +32,11 @@ export default function StartSessionButton({
       <button
         type="submit"
         disabled={pending}
-        className={
-          primary
-            ? "inline-flex min-h-11 items-center justify-center rounded-md bg-brand px-4 text-sm font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
-            : "inline-flex min-h-11 items-center justify-center rounded-md border border-line px-4 text-sm text-ink hover:border-brand disabled:opacity-60"
-        }
+        className={buttonClass({ variant: primary ? "primary" : "secondary", size: "lg", width: "full" })}
       >
         {pending ? "Iniciando…" : "Iniciar treino"}
       </button>
-      {state?.error && <p className="max-w-40 text-right text-xs text-coral-text">{state.error}</p>}
+      {state?.error && <p className="text-xs text-coral-text">{state.error}</p>}
     </form>
   );
 }

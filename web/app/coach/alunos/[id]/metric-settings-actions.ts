@@ -8,6 +8,7 @@ import {
 } from "@/lib/metrics-settings";
 import type { MetricDirection } from "@/lib/metrics-catalog";
 import { actionErrorMessage } from "@/lib/action-errors";
+import { isAlwaysTrackedMetric } from "@/lib/checkin-steps";
 
 /**
  * Server Actions da configuração de métricas por aluno (item 17 do master TODO) — painel em
@@ -54,6 +55,8 @@ export async function toggleMetricTrackedAction(formData: FormData): Promise<voi
   const metricKey = String(formData.get("metricKey") || "");
   const nextTracked = formData.get("nextTracked") === "true";
   if (!clientId || !metricKey) return;
+  // Peso é obrigatório em todo check-in: pedido de ocultar é ignorado (o painel nem oferece).
+  if (!nextTracked && isAlwaysTrackedMetric(metricKey)) return;
 
   await setMetricTracked(clientId, metricKey, nextTracked);
   revalidatePath(pathFor(clientId));

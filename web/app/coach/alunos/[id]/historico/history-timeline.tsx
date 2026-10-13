@@ -1,8 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import type { StudentTimeline, TimelineEvent, TimelineGoal, TimelineWeek } from "@/lib/history";
 import { formatDateOnlyShort, formatDateTime } from "../../../avaliacoes/evaluation-ui";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 
 /**
  * Timeline do histórico do aluno (item 16 do TODO) — uma linha por semana, mais recente
@@ -31,7 +35,7 @@ export default function HistoryTimeline({ timeline }: { timeline: StudentTimelin
     <div className="flex flex-col gap-3">
       {unmatchedEvents.length > 0 && (
         <section aria-label="Outros eventos" className="flex flex-col gap-2">
-          <h2 className="font-mono text-label uppercase tracking-widest text-ink-faint">Outros eventos</h2>
+          <h2 className="t-label text-ink-faint">Outros eventos</h2>
           <ul className="flex flex-col gap-2">
             {unmatchedEvents.map((event) => (
               <li key={event.id}>
@@ -62,25 +66,41 @@ export default function HistoryTimeline({ timeline }: { timeline: StudentTimelin
   );
 }
 
-const BADGE = "rounded-full px-2.5 py-0.5 font-mono text-xs uppercase tracking-wide";
-
+/** Selo do check-in. "Pendente"/"atrasado" só na semana corrente; semana passada sem envio é
+ *  "Não enviado" (`timelineCheckinState`, `lib/history-weeks.ts`). */
 function checkinBadge(week: TimelineWeek) {
-  if (!week.checkin) return null;
-  switch (week.checkin.status) {
+  switch (week.checkinState) {
     case "reviewed":
-      return <span className={`${BADGE} bg-ok-tint text-ok`}>Avaliação concluída</span>;
+      return <Badge tone="success">Avaliação concluída</Badge>;
     case "submitted":
-      return <span className={`${BADGE} bg-brand-tint text-brand`}>Check-in enviado</span>;
+      return <Badge tone="accent">Check-in enviado</Badge>;
     case "late":
-      return <span className={`${BADGE} bg-warn-tint text-warn`}>Check-in atrasado</span>;
+      return <Badge tone="warning">Check-in atrasado</Badge>;
     case "pending":
-      return <span className={`${BADGE} bg-surface-sunken text-ink-muted`}>Check-in pendente</span>;
+      return <Badge tone="neutral">Check-in pendente</Badge>;
+    case "not_sent":
+      return <Badge tone="neutral">Não enviado</Badge>;
+  }
+}
+
+function checkinText(week: TimelineWeek): string {
+  switch (week.checkinState) {
+    case "reviewed":
+    case "submitted":
+      return week.checkin?.submittedAt ? `Enviado em ${formatDateTime(week.checkin.submittedAt)}.` : "Enviado.";
+    case "late":
+      return "Atrasado — o aluno ainda não enviou.";
+    case "pending":
+      return "Ainda não enviado pelo aluno.";
+    case "not_sent":
+      return "Não enviado — o aluno não mandou o check-in desta semana.";
   }
 }
 
 /** Cabeçalho compacto de UM cartão de semana — o que já dá pra saber sem abrir. */
 function WeekSummary({ week }: { week: TimelineWeek }) {
   const parts: string[] = [];
+  if (week.photosCount > 0) parts.push(`${week.photosCount} foto${week.photosCount > 1 ? "s" : ""}`);
   if (week.orientation) parts.push("Orientação enviada");
   if (week.goals.length > 0) parts.push(`${week.goals.length} meta${week.goals.length > 1 ? "s" : ""}`);
   if (week.events.length > 0) parts.push(`${week.events.length} evento${week.events.length > 1 ? "s" : ""}`);
@@ -105,10 +125,11 @@ function WeekSummary({ week }: { week: TimelineWeek }) {
 
 function WeekCard({ week, open, onToggle }: { week: TimelineWeek; open: boolean; onToggle: () => void }) {
   const panelId = `historico-semana-${week.weekNumber}`;
+  const { id: clientId } = useParams<{ id: string }>();
   const hasPeriod = week.periodStart && week.periodEnd;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-line bg-surface shadow-[var(--surface-raised-shadow)]">
+    <div className="overflow-hidden card">
       <button
         type="button"
         onClick={onToggle}
@@ -117,7 +138,10 @@ function WeekCard({ week, open, onToggle }: { week: TimelineWeek; open: boolean;
         className="flex min-h-11 w-full flex-col gap-2 px-4 py-3 text-left transition-colors hover:bg-surface-sunken sm:flex-row sm:items-center sm:justify-between sm:gap-4"
       >
         <div className="flex min-w-0 items-baseline gap-2">
-          <span className="font-medium text-ink">Semana {week.weekNumber}</span>
+          <span className="font-medium text-ink">
+            Semana {week.weekNumber}
+            {week.isCurrent && <span className="text-sm font-normal text-ink-muted"> (atual)</span>}
+          </span>
           {hasPeriod && (
             <span className="text-sm text-ink-muted">
               {formatDateOnlyShort(week.periodStart)} a {formatDateOnlyShort(week.periodEnd)}
@@ -133,28 +157,65 @@ function WeekCard({ week, open, onToggle }: { week: TimelineWeek; open: boolean;
       {open && (
         <div id={panelId} className="flex flex-col gap-4 border-t border-line px-4 py-4">
           <WeekDetail week={week} />
+          {clientId && hasWeekRecord(week) && (
+            <Link
+              href={`/coach/alunos/${clientId}/avaliacao?semana=${week.weekNumber}`}
+              className="inline-flex min-h-11 items-center self-start text-sm font-semibold text-brand hover:underline"
+            >
+              Abrir avaliação da semana {week.weekNumber}
+            </Link>
+          )}
         </div>
       )}
     </div>
   );
 }
 
+/**
+ * Só linka semanas com algo registrado que a visão somente leitura (`?semana=N`) mostra: check-in
+ * enviado, avaliação, orientação, metas, fotos ou métricas. Semana sem nenhum dado (ausência) não
+ * abre uma tela vazia.
+ */
+function hasWeekRecord(week: TimelineWeek): boolean {
+  const sent = week.checkinState === "submitted" || week.checkinState === "reviewed";
+  return (
+    sent ||
+    Boolean(week.evaluation) ||
+    Boolean(week.orientation) ||
+    week.goals.length > 0 ||
+    week.photosCount > 0 ||
+    week.metricsCount > 0
+  );
+}
+
 function WeekDetail({ week }: { week: TimelineWeek }) {
-  const nothing = !week.checkin && !week.orientation && week.goals.length === 0 && week.events.length === 0;
-  if (nothing) {
-    return <p className="text-sm text-ink-muted">Sem registros nesta semana.</p>;
-  }
+  const nothingElse =
+    !week.evaluation &&
+    !week.orientation &&
+    week.goals.length === 0 &&
+    week.events.length === 0 &&
+    week.photosCount === 0 &&
+    week.metricsCount === 0;
 
   return (
     <div className="flex flex-col gap-4">
-      {week.checkin && (
-        <DetailBlock title="Check-in">
+      <DetailBlock title="Check-in">
+        <p className="text-sm text-ink">{checkinText(week)}</p>
+      </DetailBlock>
+
+      {nothingElse && !week.isCurrent && (
+        <EmptyState compact icon="clock" title="Sem registros nesta semana" />
+      )}
+
+      {(week.photosCount > 0 || week.metricsCount > 0) && (
+        <DetailBlock title="Registros do aluno">
           <p className="text-sm text-ink">
-            {week.checkin.status === "pending" && "Ainda não enviado pelo aluno."}
-            {week.checkin.status === "late" && "Atrasado — o aluno ainda não enviou."}
-            {(week.checkin.status === "submitted" || week.checkin.status === "reviewed") &&
-              week.checkin.submittedAt &&
-              `Enviado em ${formatDateTime(week.checkin.submittedAt)}.`}
+            {[
+              week.photosCount > 0 && `${week.photosCount} foto${week.photosCount > 1 ? "s" : ""}`,
+              week.metricsCount > 0 && `${week.metricsCount} métrica${week.metricsCount > 1 ? "s" : ""}`,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
         </DetailBlock>
       )}
@@ -206,17 +267,17 @@ function WeekDetail({ week }: { week: TimelineWeek }) {
 function DetailBlock({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <h3 className="font-mono text-label uppercase tracking-widest text-ink-faint">{title}</h3>
+      <h3 className="t-label text-ink-faint">{title}</h3>
       {children}
     </div>
   );
 }
 
-const RESULT_LABEL: Record<TimelineGoal["resultStatus"], { label: string; className: string }> = {
-  success: { label: "Atingida", className: "bg-ok-tint text-ok" },
-  partial: { label: "Parcial", className: "bg-warn-tint text-warn" },
-  fail: { label: "Não atingida", className: "bg-late-tint text-late-text" },
-  pending: { label: "Em aberto", className: "bg-surface-sunken text-ink-muted" },
+const RESULT_LABEL: Record<TimelineGoal["resultStatus"], { label: string; tone: BadgeTone }> = {
+  success: { label: "Atingida", tone: "success" },
+  partial: { label: "Parcial", tone: "warning" },
+  fail: { label: "Não atingida", tone: "danger" },
+  pending: { label: "Em aberto", tone: "neutral" },
 };
 
 function formatGoalValue(value: number, unit: string | null): string {
@@ -229,7 +290,7 @@ function GoalRow({ goal }: { goal: TimelineGoal }) {
     <li className="flex flex-col gap-1 rounded-md border border-line px-3 py-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm text-ink">{goal.label}</span>
-        <span className={`${BADGE} ${result.className}`}>{result.label}</span>
+        <Badge tone={result.tone}>{result.label}</Badge>
       </div>
       <p className="text-xs text-ink-muted">
         Meta: {formatGoalValue(goal.targetValue, goal.unit)}

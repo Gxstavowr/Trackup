@@ -6,8 +6,10 @@ import {
   MAX_PHOTO_BYTES,
   buildPhotoPath,
   ensureCheckinPhotosBucket,
+  isCheckinPhotoAngle,
   isOwnedPhotoPath,
-  isPhotoAngle,
+  missingCheckinPhotoAngles,
+  type CheckinPhotoAngle,
   type PhotoAngle,
 } from "./buckets";
 
@@ -194,7 +196,9 @@ export async function uploadCheckinPhoto(input: {
   file: File | null;
 }): Promise<UploadPhotoResult> {
   const { checkinId, file } = input;
-  if (!isPhotoAngle(input.angle)) throw new Error("Posição da foto inválida.");
+  // Upload novo só nas 4 posições do check-in (frente, laterais esquerda/direita, costas). O
+  // legado `side` continua legível, mas não recebe foto nova.
+  if (!isCheckinPhotoAngle(input.angle)) throw new Error("Posição da foto inválida.");
   const angle = input.angle;
   if (!UUID_RE.test(checkinId)) throw new Error("Check-in inválido.");
   if (!file || file.size === 0) throw new Error("Nenhuma foto enviada.");
@@ -279,6 +283,13 @@ export async function uploadCheckinPhoto(input: {
     if (error || !inserted) {
       // Não deixa objeto órfão no bucket se o registro falhou (best-effort).
       await admin.storage.from(CHECKIN_PHOTOS_BUCKET).remove([path]);
+      // 23514 = CHECK de `photos.angle`: banco ainda sem a migration 0017 (só aceita
+      // front/back/side). Vira um erro normal de upload, com "Tentar de novo" no formulário.
+      if (error?.code === "23514") {
+        throw new Error(
+          "Esta posição de foto ainda não está liberada no servidor. Tente de novo mais tarde ou avise o seu coach."
+        );
+      }
       throw new Error(`Não foi possível registrar a foto: ${error?.message ?? "erro desconhecido"}`);
     }
     photoId = inserted.id;
@@ -295,4 +306,56 @@ export async function uploadCheckinPhoto(input: {
       url: signed.get(path) ?? null,
     },
   };
+}
+
+/**
+ * Posições OBRIGATÓRIAS (front/left/right/back) que ainda faltam no check-in — usada no ENVIO
+ * (`submitCheckin`), nunca confiando no que o formulário diz. Uma posição só conta se:
+ *  1. existe linha em `photos` do aluno na semana do check-in com esse `angle` (client
+ *     autenticado, RLS), com `storage_path` no formato canônico, deste aluno/conta e da MESMA
+ *     semana (`{account}/{client}/week-{n}/{angle}.jpg`); e
+ *  2. o objeto existe de fato no bucket (listagem da pasta da semana com o client admin, depois
+ *     da checagem de acesso).
+ * Foto legada `side` não conta para nenhuma das 4 posições. Lança `Error` se não tem acesso.
+ */
+export async function getMissingCheckinPhotoAngles(checkinId: string): Promise<CheckinPhotoAngle[]> {
+  if (!UUID_RE.test(checkinId)) throw new Error("Check-in inválido.");
+  const supabase = await createSupabaseServerClient();
+  const { data: instance } = await supabase
+    .from("checkin_instances")
+    .select("client_id, week_number")
+    .eq("id", checkinId)
+    .maybeSingle();
+  if (!instance) throw new Error("Check-in inválido.");
+
+  const access = await resolveAccess(instance.client_id);
+  if (!access) throw new Error("Check-in inválido.");
+  const { account_id: accountId, id: clientId } = access.client;
+  const week = instance.week_number as number;
+
+  const { data: rows, error } = await supabase
+    .from("photos")
+    .select("angle, storage_path")
+    .eq("client_id", clientId)
+    .eq("week_number", week);
+  if (error) throw new Error("Não foi possível conferir as fotos do check-in. Tente de novo.");
+
+  const registered = new Set<string>();
+  for (const r of (rows ?? []) as { angle: string; storage_path: string }[]) {
+    if (!isCheckinPhotoAngle(r.angle)) continue;
+    if (!isOwnedPhotoPath(r.storage_path, accountId, clientId)) continue;
+    if (r.storage_path !== buildPhotoPath(accountId, clientId, week, r.angle)) continue;
+    registered.add(r.angle);
+  }
+  if (registered.size === 0) return missingCheckinPhotoAngles([]);
+
+  await ensureCheckinPhotosBucket();
+  const admin = createAdminClient();
+  const { data: objects, error: listError } = await admin.storage
+    .from(CHECKIN_PHOTOS_BUCKET)
+    .list(`${accountId}/${clientId}/week-${week}`, { limit: 100 });
+  if (listError) throw new Error("Não foi possível conferir as fotos do check-in. Tente de novo.");
+  const stored = new Set((objects ?? []).map((o) => o.name));
+
+  return missingCheckinPhotoAngles([...registered].filter((a) => stored.has(`${a}.jpg`)));
 }

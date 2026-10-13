@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { addCustomMetricAction, type MetricSettingsActionState } from "./metric-settings-actions";
+import { buttonClass } from "@/components/ui/button";
 
 const initialState: MetricSettingsActionState = null;
 
@@ -30,7 +31,7 @@ export default function AddCustomMetricForm({ clientId }: { clientId: string }) 
             required
             maxLength={60}
             placeholder="Ex.: Circunferência do braço"
-            className="min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
+            className="min-h-11 rounded-md border border-line-control bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
           />
         </label>
         <label className="flex flex-col gap-1.5 text-sm sm:col-span-2">
@@ -40,7 +41,7 @@ export default function AddCustomMetricForm({ clientId }: { clientId: string }) 
             type="text"
             maxLength={20}
             placeholder="Ex.: cm"
-            className="min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
+            className="min-h-11 rounded-md border border-line-control bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
           />
         </label>
       </div>
@@ -54,7 +55,7 @@ export default function AddCustomMetricForm({ clientId }: { clientId: string }) 
       <button
         type="submit"
         disabled={pending}
-        className="min-h-11 self-start rounded-md border border-line px-4 py-2 text-sm text-ink hover:border-brand disabled:opacity-60"
+        className={buttonClass({ variant: "secondary", className: "self-start" })}
       >
         {pending ? "Criando…" : "+ Nova métrica"}
       </button>

@@ -5,14 +5,16 @@ import {
   getPreviousPerformance,
   getSessionSetLogs,
   getWorkoutDayForSession,
-  getWorkoutLogsForWeek,
+  getCompletedWorkoutDaysForWeek,
   type WorkoutSetLog,
 } from "@/lib/repository";
-import { pickNextWorkoutDay } from "@/lib/portal-today";
+import { pickNextWorkoutDay, resolveCompletedDayIds } from "@/lib/portal-today";
 import { CARD, EmptyState, PageHeader } from "../portal-ui";
 import { requireClient } from "../require-client";
 import SessionView from "./session-view";
+import DayExerciseList from "./day-preview";
 import StartSessionButton from "./start-session-button";
+import { Badge } from "@/components/ui/badge";
 
 /**
  * Tela "Treino" do aluno (item 19 do master TODO — execução completa do que o coach construiu
@@ -40,6 +42,7 @@ export default async function PortalWorkoutPage() {
       <>
         <PageHeader title="Treino" />
         <EmptyState
+          icon="workout"
           title="Nenhum treino publicado ainda"
           text="Seu coach ainda não publicou um treino para você. Assim que estiver pronto, ele aparece aqui."
         />
@@ -75,8 +78,11 @@ export default async function PortalWorkoutPage() {
     );
   }
 
-  const logsThisWeek = weekNumber != null ? await getWorkoutLogsForWeek(client.id, weekNumber) : [];
-  const { next } = pickNextWorkoutDay(plan.days, new Set(logsThisWeek.map((l) => l.exercise_id)));
+  const doneDayIds = resolveCompletedDayIds(
+    plan.days,
+    weekNumber != null ? await getCompletedWorkoutDaysForWeek(client.id, weekNumber) : []
+  );
+  const { next } = pickNextWorkoutDay(plan.days, doneDayIds);
 
   return (
     <>
@@ -88,17 +94,16 @@ export default async function PortalWorkoutPage() {
         </div>
 
         <ul className="flex flex-col gap-3">
-          {plan.days.map((day) => (
-            <li key={day.id} className={`${CARD} p-4`}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
+          {plan.days.map((day) => {
+            const isNext = next?.id === day.id;
+            const list = day.exercises.length > 0 ? <DayExerciseList exercises={day.exercises} /> : null;
+            return (
+              <li key={day.id} className={`${CARD} flex flex-col gap-3 p-4 ${isNext ? "border-brand/50" : ""}`}>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="break-words font-medium text-ink">{day.name}</h3>
-                    {next?.id === day.id && (
-                      <span className="rounded-full bg-brand-tint px-2 py-0.5 font-mono text-[11px] uppercase tracking-wide text-brand">
-                        Hoje
-                      </span>
-                    )}
+                    <h3 className="break-words font-display text-xl font-bold text-ink">{day.name}</h3>
+                    {isNext && <Badge tone="accent">Hoje</Badge>}
+                    {!isNext && doneDayIds.has(day.id) && <Badge tone="success">Feito nesta semana</Badge>}
                   </div>
                   <p className="text-sm text-ink-muted">
                     {[
@@ -111,18 +116,30 @@ export default async function PortalWorkoutPage() {
                   {day.notes && <p className="mt-1 break-words text-xs text-ink-faint">{day.notes}</p>}
                 </div>
 
+                {list &&
+                  (isNext ? (
+                    list
+                  ) : (
+                    <details className="group">
+                      <summary className="flex min-h-11 cursor-pointer list-none items-center text-sm text-ink-muted marker:hidden group-open:mb-2">
+                        Ver exercícios
+                      </summary>
+                      {list}
+                    </details>
+                  ))}
+
                 {day.exercises.length > 0 && weekNumber != null && (
                   <StartSessionButton
                     clientId={client.id}
                     planId={plan.id}
                     dayId={day.id}
                     weekNumber={weekNumber}
-                    primary={next?.id === day.id}
+                    primary={isNext}
                   />
                 )}
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
 
         {weekNumber == null && (

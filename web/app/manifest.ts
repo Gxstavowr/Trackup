@@ -9,7 +9,7 @@ import type { MetadataRoute } from "next";
  * instalável separado por enquanto).
  *
  * Cores replicadas dos tokens reais de app/globals.css (tema dark premium): --paper (fundo)
- * e --brand (accent champagne) — não são valores inventados.
+ * e --brand (accent amarelo vivo) — não são valores inventados.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
@@ -23,8 +23,8 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: "portrait-primary",
     lang: "pt-BR",
     dir: "ltr",
-    background_color: "#0a0a09",
-    theme_color: "#0a0a09",
+    background_color: "#060606",
+    theme_color: "#060606",
     categories: ["health", "fitness", "lifestyle"],
     icons: [
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },

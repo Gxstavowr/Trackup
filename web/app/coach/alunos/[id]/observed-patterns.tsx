@@ -52,7 +52,7 @@ export function ObservedPatternsCard({
             : `Ainda não há histórico suficiente. Os padrões aparecem depois de ${MIN_HISTORY_WEEKS} semanas com registros do aluno.`}
         </p>
       ) : (
-        <ul className="overflow-hidden rounded-lg border border-line bg-surface">
+        <ul className="overflow-hidden card">
           {report.insights.map((insight) => (
             <li
               key={insight.id}

@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import Link from "next/link";
 import { signupCoach, type SignupState } from "./actions";
+import { buttonClass } from "@/components/ui/button";
 
 const initialState: SignupState = null;
 
@@ -35,7 +36,7 @@ export default function CadastroForm() {
           type="text"
           required
           autoComplete="name"
-          className="min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
+          className="min-h-11 rounded-md border border-line-control bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
         />
       </label>
 
@@ -46,7 +47,7 @@ export default function CadastroForm() {
           type="email"
           required
           autoComplete="email"
-          className="min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
+          className="min-h-11 rounded-md border border-line-control bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
         />
       </label>
 
@@ -58,7 +59,7 @@ export default function CadastroForm() {
           required
           minLength={8}
           autoComplete="new-password"
-          className="min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
+          className="min-h-11 rounded-md border border-line-control bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
         />
       </label>
 
@@ -67,7 +68,7 @@ export default function CadastroForm() {
           name="accept_terms"
           type="checkbox"
           required
-          className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--brand)]"
+          className="mt-0.5 size-5 shrink-0 accent-[var(--brand)]"
         />
         <span>
           Li e aceito os{" "}
@@ -91,7 +92,7 @@ export default function CadastroForm() {
       <button
         type="submit"
         disabled={pending}
-        className="mt-2 w-full rounded-md bg-brand py-2.5 font-medium text-on-accent transition-opacity disabled:opacity-60"
+        className={buttonClass({ width: "full", className: "mt-2" })}
       >
         {pending ? "Criando conta…" : "Criar conta"}
       </button>

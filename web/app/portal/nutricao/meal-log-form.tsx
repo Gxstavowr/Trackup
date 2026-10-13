@@ -1,9 +1,11 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { compressImageToJpeg } from "@/lib/storage/compress-image";
 import { MEAL_STATUS_OPTIONS, type MealLogStatus } from "@/lib/nutrition-session";
 import { logMealAction, logMealPhotoAction, type MealLogActionState } from "./actions";
+import { buttonClass } from "@/components/ui/button";
+import Icon from "@/components/ui/icon";
 
 const initialState: MealLogActionState = null;
 const DIFFICULTY_OPTIONS = [1, 2, 3, 4, 5];
@@ -26,6 +28,7 @@ export default function MealLogForm({
   initialNote,
   initialStoragePath,
   initialPhotoUrl,
+  onSaved,
 }: {
   clientId: string;
   logDate: string;
@@ -36,9 +39,10 @@ export default function MealLogForm({
   initialNote: string;
   initialStoragePath: string | null;
   initialPhotoUrl: string | null;
+  onSaved?: () => void;
 }) {
   const [state, action, pending] = useActionState(logMealAction, initialState);
-  const [status, setStatus] = useState<MealLogStatus | null>(initialStatus);
+  const [status, setStatus] = useState<MealLogStatus | null>(initialStatus ?? "done");
   const [difficulty, setDifficulty] = useState(initialDifficulty != null ? String(initialDifficulty) : "");
   const [note, setNote] = useState(initialNote);
   const [storagePath, setStoragePath] = useState(initialStoragePath);
@@ -46,6 +50,10 @@ export default function MealLogForm({
   const [photoBusy, setPhotoBusy] = useState<"compressing" | "uploading" | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const localUrl = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (state?.success) onSaved?.();
+  }, [state, onSaved]);
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
@@ -88,7 +96,7 @@ export default function MealLogForm({
   }
 
   return (
-    <form action={action} className="flex flex-col gap-3 border-t border-line pt-3">
+    <form action={action} className="flex flex-col gap-4">
       <input type="hidden" name="clientId" value={clientId} />
       <input type="hidden" name="mealId" value={mealId} />
       <input type="hidden" name="mealName" value={mealName} />
@@ -121,7 +129,7 @@ export default function MealLogForm({
             name="difficulty"
             value={difficulty}
             onChange={(e) => setDifficulty(e.target.value)}
-            className="min-h-11 rounded-md border border-line bg-surface-sunken px-3 text-ink outline-none focus:border-brand"
+            className="min-h-11 rounded-md border border-line-control bg-surface-sunken px-3 text-ink outline-none focus:border-brand"
           >
             <option value="">Sem dificuldade</option>
             {DIFFICULTY_OPTIONS.map((n) => (
@@ -170,7 +178,7 @@ export default function MealLogForm({
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="Como foi, o que você trocou, dificuldades..."
-          className="min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+          className="min-h-11 rounded-md border border-line-control bg-surface-sunken px-3 py-2 text-sm text-ink outline-none focus:border-brand"
         />
       </label>
 
@@ -179,9 +187,20 @@ export default function MealLogForm({
       <button
         type="submit"
         disabled={pending || !status}
-        className="min-h-11 self-start rounded-md bg-brand px-5 text-sm font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
+        className={buttonClass({ className: "self-start" })}
       >
-        {pending ? "Salvando…" : state?.success ? "Salvo ✓" : "Salvar registro"}
+        {pending ? (
+          "Salvando…"
+        ) : state?.success ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="tk-pop inline-flex">
+              <Icon name="check" size={18} strokeWidth={2.5} />
+            </span>
+            Salvo
+          </span>
+        ) : (
+          "Salvar registro"
+        )}
       </button>
     </form>
   );

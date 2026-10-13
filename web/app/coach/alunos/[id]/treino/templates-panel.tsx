@@ -2,12 +2,14 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import type { WorkoutPlanWithDays } from "@/lib/repository";
+import { buttonClass } from "@/components/ui/button";
 import {
   applyTemplateAction,
   deleteTemplateAction,
   saveAsTemplateAction,
   type TreinoActionState,
 } from "./actions";
+import { EmptyState } from "@/components/ui/empty-state";
 
 const initialState: TreinoActionState = null;
 
@@ -30,9 +32,9 @@ export default function TemplatesPanel({
       <h2 className="text-lg font-medium text-ink">Templates de treino {templates.length > 0 && `(${templates.length})`}</h2>
 
       {templates.length === 0 ? (
-        <p className="text-sm text-ink-muted">Nenhum template salvo ainda nesta conta.</p>
+        <EmptyState compact icon="workout" title="Nenhum template salvo ainda" text="Salve um plano deste aluno como template para reaproveitar em outros." />
       ) : (
-        <ul className="overflow-hidden rounded-lg border border-line bg-surface">
+        <ul className="overflow-hidden card">
           {templates.map((template) => (
             <li key={template.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3 last:border-b-0">
               <div>
@@ -55,7 +57,7 @@ export default function TemplatesPanel({
   );
 }
 
-function SaveAsTemplateForm({
+export function SaveAsTemplateForm({
   clientId,
   planId,
   defaultLabel,
@@ -86,14 +88,19 @@ function SaveAsTemplateForm({
           type="text"
           required
           placeholder="Nome do template"
-          className="w-full min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
+          className="w-full min-h-11 rounded-md border border-line-control bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
         />
       </label>
-      {state?.error && <p className="w-full text-sm text-coral-text">{state.error}</p>}
+      {state?.error && <p role="alert" className="w-full text-sm text-coral-text">{state.error}</p>}
+      {state?.success && (
+        <p role="status" className="tk-fade w-full text-sm text-success">
+          Template salvo. Ele já aparece na lista de templates.
+        </p>
+      )}
       <button
         type="submit"
         disabled={pending}
-        className="min-h-11 rounded-md border border-line px-4 py-2 text-sm text-ink hover:border-brand disabled:opacity-60"
+        className={buttonClass({ variant: "secondary" })}
       >
         {pending ? "Salvando…" : "Salvar como template"}
       </button>
@@ -111,7 +118,7 @@ function ApplyTemplateForm({ clientId, templateId }: { clientId: string; templat
       <button
         type="submit"
         disabled={pending}
-        className="min-h-11 rounded-md border border-line px-3 text-sm text-ink hover:border-brand disabled:opacity-60"
+        className={buttonClass({ variant: "secondary" })}
       >
         {pending ? "Aplicando…" : "Aplicar (criar rascunho)"}
       </button>
@@ -122,10 +129,14 @@ function ApplyTemplateForm({ clientId, templateId }: { clientId: string; templat
 
 function DeleteTemplateForm({ clientId, templateId }: { clientId: string; templateId: string }) {
   return (
-    <form action={deleteTemplateAction}>
+    <form
+      action={async (formData) => {
+        await deleteTemplateAction(formData);
+      }}
+    >
       <input type="hidden" name="clientId" value={clientId} />
       <input type="hidden" name="templateId" value={templateId} />
-      <button type="submit" className="min-h-11 rounded-md border border-line px-3 text-sm text-late-text hover:border-late">
+      <button type="submit" className={buttonClass({ variant: "danger" })}>
         Excluir
       </button>
     </form>

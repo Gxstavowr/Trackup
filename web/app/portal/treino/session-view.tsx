@@ -1,39 +1,57 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import type { WorkoutDayWithExercises, WorkoutExerciseWithDetails, WorkoutSession, WorkoutSetLog } from "@/lib/repository";
+import { formatPrescription } from "@/lib/workout-format";
 import { groupDayExercises, groupKindLabel } from "@/lib/workout-builder";
 import {
+  buildHighlights,
   buildSessionSummary,
   computeElapsedSeconds,
   computeSessionProgress,
-  formatDuration,
+  firstIncompleteIndex,
+  formatElapsedClock,
+  isExerciseDone,
+  nextAfterSet,
+  restSecondsForRound,
   setKey,
+  setNumbersFor,
+  type Highlight,
   type SessionSummary,
   type SetKey,
   type SummaryLogLike,
 } from "@/lib/workout-session";
-import { BUTTON_GHOST, BUTTON_PRIMARY, CARD } from "../portal-ui";
-import { completeSessionAction, pauseSessionAction, resumeSessionAction, type SessionActionState } from "./actions";
-import ExerciseBlock, { type LoggedSetsByNumber } from "./exercise-block";
+import { buttonClass } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import Icon from "@/components/ui/icon";
+import { CARD } from "../portal-ui";
+import {
+  completeSessionAction,
+  logSetAction,
+  pauseSessionAction,
+  resumeSessionAction,
+} from "./actions";
+import ExerciseFocus, { isCardioOnly, type GroupInfo, type LoggedSetsByNumber, type SetValues } from "./exercise-focus";
 import RestTimer from "./rest-timer";
+import { REST_ADD_MS, restReducer } from "./rest-timer-state";
 import SessionSummaryScreen from "./session-summary";
 
-const initialState: SessionActionState = null;
+type LoggedByExercise = Record<string, LoggedSetsByNumber>;
 
-type LoggedSetsByExercise = Record<string, LoggedSetsByNumber>;
-type RestTimerState = { key: string; seconds: number; label: string };
+function fd(values: Record<string, string | number | null | undefined>): FormData {
+  const f = new FormData();
+  for (const [k, v] of Object.entries(values)) f.set(k, v == null ? "" : String(v));
+  return f;
+}
 
 /**
- * A sessão de treino em execução (item 19) — orquestra progresso da sessão, blocos do dia
- * (aquecimento/normal/cardio/superset/circuito, via `groupDayExercises` do item 18), timer de
- * descanso, pausa/retomada e finalização com resumo. Estado (séries marcadas, pausa, nota)
- * vive aqui e é otimista: cada `ExerciseBlock`/botão só atualiza o servidor via Server Action
- * e, no sucesso, atualiza este estado local — nenhuma tela recarrega/pisca a cada série.
+ * A sessão de treino em execução (V2 tarefa 20): um exercício por vez em foco (com lista de
+ * todos disponível), progresso claro, timer de descanso automático, pausa/retomada, notas por
+ * exercício e resumo final. O estado das séries é otimista: cada série vai ao servidor
+ * (`logSetAction`, upsert por sessão+prescrição+série) e, no sucesso, atualiza o estado local.
+ * O exercício em foco ao reabrir é derivado das séries já gravadas (primeiro com pendência).
  *
- * `day === null` é o caso raro em que o coach republicou o plano NO MEIO desta sessão (a versão
- * que ela referenciava foi arquivada) — a sessão continua podendo ser pausada/retomada/
- * finalizada (ela já existe no banco), só não há mais exercício pra mostrar/registrar.
+ * `day === null`: o coach republicou o plano no meio da sessão — ela ainda pode ser finalizada.
  */
 export default function SessionView({
   clientId,
@@ -48,326 +66,582 @@ export default function SessionView({
   initialLogs: WorkoutSetLog[];
   previousPerformance: Record<string, WorkoutSetLog[]>;
 }) {
+  const flat = [...(day?.exercises ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+
   const [status, setStatus] = useState(session.status);
   const [pausedAt, setPausedAt] = useState<string | null>(session.paused_at);
   const [pausedTotalSec, setPausedTotalSec] = useState(session.paused_total_sec);
-  const [note, setNote] = useState(session.student_note ?? "");
-  const [restTimer, setRestTimer] = useState<RestTimerState | null>(null);
-  const [completedSummary, setCompletedSummary] = useState<SessionSummary | null>(null);
-  const [, forceTick] = useState(0);
+  const [sessionNote, setSessionNote] = useState(session.student_note ?? "");
+  // Descanso: um único estado (ver rest-timer-state.ts) — pausar nunca descarta o restante.
+  const [rest, dispatchRest] = useReducer(restReducer, null);
+  const [view, setView] = useState<"focus" | "list">("focus");
+  const [completed, setCompleted] = useState<{ summary: SessionSummary; highlights: Highlight[] } | null>(null);
+  const [popped, setPopped] = useState<{ weId: string; set: number } | null>(null);
+  const [pauseError, setPauseError] = useState<string | null>(null);
+  const [pauseBusy, setPauseBusy] = useState(false);
 
-  const [loggedSets, setLoggedSets] = useState<LoggedSetsByExercise>(() => {
-    const map: LoggedSetsByExercise = {};
+  const [logged, setLogged] = useState<LoggedByExercise>(() => {
+    const map: LoggedByExercise = {};
     for (const log of initialLogs) {
       if (!log.workout_exercise_id || log.set_number == null) continue;
       const bucket = map[log.workout_exercise_id] ?? {};
-      bucket[log.set_number] = { load: log.load, reps: log.reps };
+      bucket[log.set_number] = { load: log.load, reps: log.reps, rir: log.perceived_rir, exerciseId: log.exercise_id };
       map[log.workout_exercise_id] = bucket;
     }
     return map;
   });
-
-  // Só pra re-renderizar o relógio de duração a cada segundo (pausar/retomar já é otimista,
-  // não depende deste tick — ver `computeElapsedSeconds`).
-  useEffect(() => {
-    const id = setInterval(() => forceTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const exercises = day?.exercises ?? [];
-  const doneKeys = new Set<SetKey>();
-  for (const [workoutExerciseId, bySet] of Object.entries(loggedSets)) {
-    for (const setNumberStr of Object.keys(bySet)) {
-      doneKeys.add(setKey(workoutExerciseId, Number(setNumberStr)));
+  // Substituto escolhido por exercício (id do exercício substituto; ausente = o prescrito). Ao
+  // retomar, infere das séries já gravadas: todas com o mesmo substituto -> ele segue escolhido.
+  const [substituteOn, setSubstituteOn] = useState<Record<string, string | null>>(() => {
+    const map: Record<string, string | null> = {};
+    for (const we of day?.exercises ?? []) {
+      if (we.substitutes.length === 0) continue;
+      const used = Object.values(logged_init(initialLogs, we.id));
+      const first = used[0]?.exerciseId;
+      if (
+        first &&
+        first !== we.exercise_id &&
+        used.every((l) => l.exerciseId === first) &&
+        we.substitutes.some((s) => s.id === first)
+      ) {
+        map[we.id] = first;
+      }
     }
-  }
-  const progress = computeSessionProgress(exercises, doneKeys);
-  const elapsedSec = computeElapsedSeconds({
-    started_at: session.started_at,
-    paused_at: pausedAt,
-    paused_total_sec: pausedTotalSec,
-    ended_at: null,
+    return map;
   });
-  const blocks = groupDayExercises(exercises);
+  const [notes, setNotes] = useState<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    const sorted = [...initialLogs].sort((a, b) => a.completed_at.localeCompare(b.completed_at));
+    for (const log of sorted) {
+      if (log.workout_exercise_id && log.student_note) map[log.workout_exercise_id] = log.student_note;
+    }
+    return map;
+  });
+  const savedNotes = useRef<Record<string, string>>({ ...notes });
+
+  const doneKeys = new Set<SetKey>();
+  for (const [weId, bySet] of Object.entries(logged)) {
+    for (const n of Object.keys(bySet)) doneKeys.add(setKey(weId, Number(n)));
+  }
+  const progress = computeSessionProgress(flat, doneKeys);
+  const exercisesDone = flat.filter((ex) => isExerciseDone(ex, doneKeys)).length;
+  const allDone = flat.length > 0 && progress.done === progress.total;
+
+  const [idx, setIdx] = useState(() => firstIncompleteIndex(flat, doneKeys) ?? 0);
+  const safeIdx = Math.min(idx, Math.max(0, flat.length - 1));
   const paused = status === "paused";
 
-  const flatLogsForSummary: SummaryLogLike[] = [];
-  for (const [workoutExerciseId, bySet] of Object.entries(loggedSets)) {
-    for (const [setNumberStr, values] of Object.entries(bySet)) {
-      flatLogsForSummary.push({
-        workout_exercise_id: workoutExerciseId,
-        set_number: Number(setNumberStr),
-        load: values.load,
-        reps: values.reps,
-      });
-    }
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [safeIdx, view, paused]);
+
+  const getElapsed = () =>
+    computeElapsedSeconds({
+      started_at: session.started_at,
+      paused_at: pausedAt,
+      paused_total_sec: pausedTotalSec,
+      ended_at: null,
+    });
+
+  function groupInfoFor(i: number): GroupInfo | null {
+    const we = flat[i];
+    if (!we?.group_key || !we.group_kind) return null;
+    const same = (o: WorkoutExerciseWithDetails | undefined) =>
+      !!o && o.group_key === we.group_key && o.group_kind === we.group_kind;
+    let start = i;
+    let end = i;
+    while (same(flat[start - 1])) start--;
+    while (same(flat[end + 1])) end++;
+    return { kind: we.group_kind, key: we.group_key, pos: i - start + 1, size: end - start + 1 };
   }
 
-  function renderExercise(we: WorkoutExerciseWithDetails) {
-    return (
-      <ExerciseBlock
-        key={we.id}
-        clientId={clientId}
-        sessionId={session.id}
-        weekNumber={session.week_number}
-        we={we}
-        loggedSets={loggedSets[we.id] ?? {}}
-        previousSets={previousPerformance[we.id]}
-        disabled={paused}
-        onSetLogged={(setNumber, load, reps) =>
-          setLoggedSets((prev) => ({
-            ...prev,
-            [we.id]: { ...(prev[we.id] ?? {}), [setNumber]: { load, reps } },
-          }))
-        }
-        onRestStart={(seconds, label) =>
-          setRestTimer({ key: `${we.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`, seconds, label })
-        }
-      />
+  /**
+   * Descanso configurado pelo coach a usar depois da série `setNumber` do exercício `i` — o da
+   * própria série quando o coach variou por série, senão o `rest_sec` uniforme. Superset/
+   * circuito: o descanso só acontece ao fechar a rodada, então vale o maior descanso configurado
+   * no bloco para aquela série — o coach pode ter preenchido só um dos membros.
+   */
+  function restSecondsAfter(i: number, setNumber: number): number | null {
+    const g = groupInfoFor(i);
+    if (!g) return flat[i] ? restSecondsForRound([flat[i]], setNumber) : null;
+    const start = i - g.pos + 1;
+    return restSecondsForRound(flat.slice(start, start + g.size), setNumber);
+  }
+
+  function activeExerciseOf(we: WorkoutExerciseWithDetails) {
+    const chosen = substituteOn[we.id];
+    return (chosen && we.substitutes.find((s) => s.id === chosen)) || we.exercise;
+  }
+
+  async function logSet(i: number, setNumber: number, v: SetValues): Promise<string | null> {
+    const we = flat[i];
+    const exercise = activeExerciseOf(we);
+    const res = await logSetAction(
+      null,
+      fd({
+        clientId,
+        sessionId: session.id,
+        workoutExerciseId: we.id,
+        exerciseId: exercise.id,
+        setNumber,
+        weekNumber: session.week_number,
+        load: v.load,
+        reps: v.reps,
+        perceivedRir: v.rir,
+        studentNote: notes[we.id] ?? "",
+      })
     );
+    if (res?.error) return res.error;
+
+    savedNotes.current[we.id] = notes[we.id] ?? "";
+    const next: LoggedByExercise = {
+      ...logged,
+      [we.id]: { ...(logged[we.id] ?? {}), [setNumber]: { ...v, exerciseId: exercise.id } },
+    };
+    setLogged(next);
+    setPopped({ weId: we.id, set: setNumber });
+
+    const keys = new Set<SetKey>();
+    for (const [weId, bySet] of Object.entries(next)) for (const n of Object.keys(bySet)) keys.add(setKey(weId, Number(n)));
+    const { next: nextIdx, rest: wantsRest } = nextAfterSet(flat, i, keys);
+    if (nextIdx != null) setIdx(nextIdx);
+
+    const restSec = restSecondsAfter(i, setNumber);
+    if (wantsRest && nextIdx != null && restSec != null && restSec > 0) {
+      const target = flat[nextIdx];
+      const nextSet = setNumbersFor(target).find((n) => !keys.has(setKey(target.id, n)));
+      const now = Date.now();
+      dispatchRest({
+        type: "start",
+        now,
+        key: `${we.id}-${setNumber}-${now}`,
+        seconds: restSec,
+        label:
+          nextIdx === i
+            ? `Próxima: série ${nextSet} de ${activeExerciseOf(target).name}`
+            : `Próximo: ${activeExerciseOf(target).name}`,
+      });
+    } else if (nextIdx == null) {
+      dispatchRest({ type: "skip" });
+    }
+    return null;
   }
 
-  if (completedSummary) {
+  /** Salva a nota do exercício reaproveitando a última série registrada (upsert idempotente). */
+  async function commitNote(i: number) {
+    const we = flat[i];
+    const text = notes[we.id] ?? "";
+    if (text === (savedNotes.current[we.id] ?? "")) return;
+    const bySet = logged[we.id];
+    if (!bySet) return; // sem série ainda: a nota vai junto com a primeira
+    const last = Math.max(...Object.keys(bySet).map(Number));
+    const l = bySet[last];
+    const res = await logSetAction(
+      null,
+      fd({
+        clientId,
+        sessionId: session.id,
+        workoutExerciseId: we.id,
+        exerciseId: l.exerciseId,
+        setNumber: last,
+        weekNumber: session.week_number,
+        load: l.load,
+        reps: l.reps,
+        perceivedRir: l.rir,
+        studentNote: text,
+      })
+    );
+    if (!res?.error) savedNotes.current[we.id] = text;
+  }
+
+  async function pause() {
+    setPauseBusy(true);
+    setPauseError(null);
+    const res = await pauseSessionAction(null, fd({ sessionId: session.id, clientId }));
+    setPauseBusy(false);
+    if (res?.error) return setPauseError(res.error);
+    // Congela o descanso (não descarta): retomar o treino devolve o mesmo tempo restante.
+    dispatchRest({ type: "sessionPause", now: Date.now() });
+    setPausedAt(new Date().toISOString());
+    setStatus("paused");
+  }
+
+  async function resume() {
+    setPauseBusy(true);
+    setPauseError(null);
+    const res = await resumeSessionAction(null, fd({ sessionId: session.id, clientId }));
+    setPauseBusy(false);
+    if (res?.error) return setPauseError(res.error);
+    const added = pausedAt ? Math.max(0, Math.round((Date.now() - new Date(pausedAt).getTime()) / 1000)) : 0;
+    setPausedTotalSec((s) => s + added);
+    setPausedAt(null);
+    setStatus("in_progress");
+    dispatchRest({ type: "sessionResume", now: Date.now() });
+  }
+
+  async function finish(): Promise<string | null> {
+    const flatLogs: SummaryLogLike[] = [];
+    for (const [weId, bySet] of Object.entries(logged)) {
+      for (const [n, v] of Object.entries(bySet)) {
+        flatLogs.push({ workout_exercise_id: weId, set_number: Number(n), load: v.load, reps: v.reps });
+      }
+    }
+    const summary = buildSessionSummary(flat, flatLogs, getElapsed());
+    const res = await completeSessionAction(
+      null,
+      fd({ sessionId: session.id, clientId, studentNote: sessionNote, summary: JSON.stringify(summary) })
+    );
+    if (res?.error) return res.error;
+
+    const highlights = buildHighlights(
+      flat.map((we) => {
+        const sets = Object.values(logged[we.id] ?? {});
+        const usedSub = sets.length > 0 && sets.every((s) => s.exerciseId !== we.exercise_id);
+        const subName = usedSub ? we.substitutes.find((s) => s.id === sets[0].exerciseId)?.name : undefined;
+        return {
+          name: subName ?? we.exercise.name,
+          // Trocar para o substituto quebra a comparação com a última vez.
+          current: usedSub ? [] : sets,
+          previous: previousPerformance[we.id] ?? [],
+        };
+      })
+    ).slice(0, 4);
+    setCompleted({ summary, highlights });
+    return null;
+  }
+
+  if (completed) {
     return (
       <SessionSummaryScreen
         dayName={day?.name ?? "Treino"}
-        summary={completedSummary}
-        studentNote={note.trim() || null}
+        summary={completed.summary}
+        studentNote={sessionNote.trim() || null}
+        highlights={completed.highlights}
       />
     );
   }
 
+  const current = flat[safeIdx];
+
   return (
-    <section className="flex flex-col gap-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <span className="font-mono text-label uppercase tracking-widest text-ink-faint">
-            {paused ? "Treino pausado" : "Treino em andamento"}
-          </span>
-          <h2 className="break-words font-display text-2xl text-ink">{day?.name ?? "Sessão de treino"}</h2>
-          <p className="text-sm text-ink-muted">
-            {formatDuration(elapsedSec)}
-            {progress.total > 0 && ` · ${progress.done}/${progress.total} séries`}
-          </p>
+    <section className="flex flex-col gap-4">
+      <header className="flex flex-col gap-3">
+        {/* Status + cronômetro numa linha própria, acima dos botões, para nunca quebrar. */}
+        <span className="t-label block whitespace-nowrap text-ink-faint">
+          {paused ? "Treino pausado" : "Em andamento"} ·{" "}
+          <Elapsed
+            startedAt={session.started_at}
+            pausedAt={pausedAt}
+            pausedTotalSec={pausedTotalSec}
+          />
+        </span>
+        <div className="-mt-1.5 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="break-words font-display text-2xl font-bold text-ink">{day?.name ?? "Sessão de treino"}</h1>
+          </div>
+          {!paused && flat.length > 0 && (
+            <div className="flex shrink-0 gap-1">
+              <button
+                type="button"
+                onClick={() => setView(view === "list" ? "focus" : "list")}
+                aria-pressed={view === "list"}
+                className={buttonClass({ variant: "secondary", size: "sm" })}
+              >
+                {view === "list" ? "Em foco" : "Ver todos"}
+              </button>
+              <button type="button" onClick={pause} disabled={pauseBusy} className={buttonClass({ variant: "tertiary", size: "sm" })}>
+                {pauseBusy ? "…" : "Pausar"}
+              </button>
+            </div>
+          )}
         </div>
 
-        {paused ? (
-          <ResumeButton
-            sessionId={session.id}
-            clientId={clientId}
-            onSuccess={() => {
-              const addedSec = pausedAt
-                ? Math.max(0, Math.round((Date.now() - new Date(pausedAt).getTime()) / 1000))
-                : 0;
-              setPausedTotalSec((s) => s + addedSec);
-              setPausedAt(null);
-              setStatus("in_progress");
-            }}
-          />
-        ) : (
-          <PauseButton
-            sessionId={session.id}
-            clientId={clientId}
-            onSuccess={() => {
-              setPausedAt(new Date().toISOString());
-              setStatus("paused");
-            }}
-          />
+        {progress.total > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <div
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={progress.total}
+              aria-valuenow={progress.done}
+              aria-valuetext={`${progress.done} de ${progress.total} séries concluídas`}
+              aria-label="Progresso do treino"
+              className="h-2.5 overflow-hidden rounded-full bg-surface-raised"
+            >
+              <div className="h-full rounded-full bg-brand transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${progress.pct}%` }} />
+            </div>
+            <p className="flex justify-between text-xs tabular-nums text-ink-muted">
+              <span>
+                {progress.done}/{progress.total} séries
+              </span>
+              <span>
+                {exercisesDone}/{flat.length} exercícios
+              </span>
+            </p>
+          </div>
+        )}
+        {pauseError && (
+          <p role="alert" className="text-sm text-danger-text">
+            {pauseError}
+          </p>
         )}
       </header>
 
-      {progress.total > 0 && (
-        <div
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={progress.total}
-          aria-valuenow={progress.done}
-          aria-label="Progresso da sessão"
-          className="h-1.5 overflow-hidden rounded-full bg-surface-sunken"
-        >
-          <div className="h-full rounded-full bg-brand transition-[width]" style={{ width: `${progress.pct}%` }} />
-        </div>
-      )}
-
-      {restTimer && (
+      {rest && (
         <RestTimer
-          key={restTimer.key}
-          seconds={restTimer.seconds}
-          label={restTimer.label}
-          onDismiss={() => setRestTimer(null)}
+          key={rest.key}
+          rest={rest}
+          onPause={() => dispatchRest({ type: "pause", now: Date.now() })}
+          onResume={() => dispatchRest({ type: "resume", now: Date.now() })}
+          onAdd={() => dispatchRest({ type: "add", ms: REST_ADD_MS, now: Date.now() })}
+          onDismiss={() => dispatchRest({ type: "skip" })}
         />
       )}
 
       {!day ? (
-        <p className={`${CARD} p-4 text-sm text-ink-muted`}>
-          O treino mudou desde que esta sessão começou (seu coach publicou uma nova versão) — não
-          é mais possível mostrar os exercícios dela. Finalize para liberar o treino atual.
-        </p>
+        <>
+          <p className={`${CARD} p-4 text-sm text-ink-muted`}>
+            O treino mudou desde que esta sessão começou (seu coach publicou uma nova versão) — não é mais possível
+            mostrar os exercícios dela. Finalize para liberar o treino atual.
+          </p>
+          <FinishPanel note={sessionNote} onNoteChange={setSessionNote} onFinish={finish} allDone={false} />
+        </>
       ) : paused ? (
-        <p className="text-sm text-ink-muted">Retome o treino para continuar registrando as séries.</p>
-      ) : blocks.length === 0 ? (
+        <div className={`${CARD} flex flex-col gap-3 p-5`}>
+          <h2 className="font-display text-xl font-bold text-ink">Treino pausado</h2>
+          <p className="text-sm text-ink-muted">
+            O relógio está parado e as séries já feitas continuam salvas. Continue quando estiver pronto.
+          </p>
+          <button
+            type="button"
+            onClick={resume}
+            disabled={pauseBusy}
+            className={buttonClass({ variant: "primary", size: "lg", width: "full", className: "min-h-14 text-lg" })}
+          >
+            {pauseBusy ? "Retomando…" : "Continuar treino"}
+          </button>
+        </div>
+      ) : flat.length === 0 ? (
         <p className="text-sm text-ink-muted">Este dia não tem exercícios.</p>
+      ) : view === "list" ? (
+        <>
+          <OverviewList
+            flat={flat}
+            doneKeys={doneKeys}
+            currentIdx={safeIdx}
+            substituteOn={substituteOn}
+            onPick={(i) => {
+              setIdx(i);
+              setView("focus");
+            }}
+          />
+          <FinishPanel note={sessionNote} onNoteChange={setSessionNote} onFinish={finish} allDone={allDone} />
+        </>
+      ) : allDone ? (
+        <div className="flex flex-col gap-4">
+          <div className={`${CARD} flex flex-col gap-1 p-5`}>
+            <span className="tk-pop flex size-10 items-center justify-center rounded-full bg-success-tint text-success">
+              <Icon name="check" size={22} strokeWidth={2.5} />
+            </span>
+            <h2 className="font-display text-2xl font-bold text-ink">Todas as séries feitas</h2>
+            <p className="text-sm text-ink-muted">Bom trabalho. Finalize para ver o resumo do treino.</p>
+          </div>
+          <FinishPanel note={sessionNote} onNoteChange={setSessionNote} onFinish={finish} allDone />
+          <button type="button" onClick={() => setView("list")} className={buttonClass({ variant: "tertiary", size: "sm", width: "full" })}>
+            Revisar exercícios
+          </button>
+        </div>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {blocks.map((block, blockIndex) =>
-            block.kind === "single" ? (
-              <li key={block.item.id}>{renderExercise(block.item)}</li>
-            ) : (
-              <li
-                key={`${block.groupKey}-${blockIndex}`}
-                className="rounded-md border border-brand/30 bg-brand-tint/40 p-3"
-              >
-                <span className="mb-2 inline-block rounded-full bg-brand-tint px-2.5 py-0.5 font-mono text-xs uppercase tracking-wide text-brand">
-                  {groupKindLabel(block.groupKind)} {block.groupKey}
-                </span>
-                <ul className="flex flex-col gap-3">
-                  {block.items.map((we) => (
-                    <li key={we.id}>{renderExercise(we)}</li>
-                  ))}
-                </ul>
-              </li>
-            )
-          )}
-        </ul>
+        <ExerciseFocus
+          key={current.id}
+          we={current}
+          index={safeIdx}
+          total={flat.length}
+          group={groupInfoFor(safeIdx)}
+          loggedSets={logged[current.id] ?? {}}
+          previousSets={previousPerformance[current.id]}
+          substituteId={substituteOn[current.id] ?? null}
+          onSubstituteChange={(id) => setSubstituteOn((s) => ({ ...s, [current.id]: id }))}
+          note={notes[current.id] ?? ""}
+          onNoteChange={(text) => setNotes((n) => ({ ...n, [current.id]: text }))}
+          onNoteCommit={() => commitNote(safeIdx)}
+          onLogSet={(setNumber, values) => logSet(safeIdx, setNumber, values)}
+          popSet={popped?.weId === current.id ? popped.set : null}
+          onPrev={safeIdx > 0 ? () => setIdx(safeIdx - 1) : undefined}
+          onNext={safeIdx < flat.length - 1 ? () => setIdx(safeIdx + 1) : undefined}
+        />
       )}
-
-      <FinishForm
-        sessionId={session.id}
-        clientId={clientId}
-        exercises={exercises}
-        loggedLogs={flatLogsForSummary}
-        elapsedSec={elapsedSec}
-        note={note}
-        onNoteChange={setNote}
-        onFinished={setCompletedSummary}
-      />
     </section>
   );
 }
 
-function PauseButton({
-  sessionId,
-  clientId,
-  onSuccess,
+/** Séries da sessão (do estado inicial) de um exercício, para inferir o uso do substituto. */
+function logged_init(logs: WorkoutSetLog[], weId: string): Record<number, { exerciseId: string }> {
+  const out: Record<number, { exerciseId: string }> = {};
+  for (const l of logs) if (l.workout_exercise_id === weId && l.set_number != null) out[l.set_number] = { exerciseId: l.exercise_id };
+  return out;
+}
+
+function Elapsed({
+  startedAt,
+  pausedAt,
+  pausedTotalSec,
 }: {
-  sessionId: string;
-  clientId: string;
-  onSuccess: () => void;
+  startedAt: string;
+  pausedAt: string | null;
+  pausedTotalSec: number;
 }) {
-  const [state, action, pending] = useActionState(pauseSessionAction, initialState);
-
+  const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    if (state?.success) onSuccess();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
-
+    if (pausedAt) return;
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, [pausedAt]);
+  const sec = computeElapsedSeconds(
+    { started_at: startedAt, paused_at: pausedAt, paused_total_sec: pausedTotalSec, ended_at: null },
+    now
+  );
   return (
-    <form action={action} className="flex shrink-0 flex-col items-end gap-1">
-      <input type="hidden" name="sessionId" value={sessionId} />
-      <input type="hidden" name="clientId" value={clientId} />
-      <button type="submit" disabled={pending} className={BUTTON_GHOST}>
-        {pending ? "Pausando…" : "Pausar treino"}
-      </button>
-      {state?.error && <p className="text-xs text-coral-text">{state.error}</p>}
-    </form>
+    <span className="whitespace-nowrap tabular-nums" suppressHydrationWarning>
+      {formatElapsedClock(sec)}
+    </span>
   );
 }
 
-function ResumeButton({
-  sessionId,
-  clientId,
-  onSuccess,
+function OverviewList({
+  flat,
+  doneKeys,
+  currentIdx,
+  substituteOn,
+  onPick,
 }: {
-  sessionId: string;
-  clientId: string;
-  onSuccess: () => void;
+  flat: WorkoutExerciseWithDetails[];
+  doneKeys: ReadonlySet<SetKey>;
+  currentIdx: number;
+  substituteOn: Record<string, string | null>;
+  onPick: (i: number) => void;
 }) {
-  const [state, action, pending] = useActionState(resumeSessionAction, initialState);
+  const blocks = groupDayExercises(flat);
+  const indexOf = (we: WorkoutExerciseWithDetails) => flat.findIndex((f) => f.id === we.id);
 
-  useEffect(() => {
-    if (state?.success) onSuccess();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
-
-  return (
-    <form action={action} className="flex shrink-0 flex-col items-end gap-1">
-      <input type="hidden" name="sessionId" value={sessionId} />
-      <input type="hidden" name="clientId" value={clientId} />
+  function row(we: WorkoutExerciseWithDetails) {
+    const i = indexOf(we);
+    const nums = setNumbersFor(we);
+    const done = nums.filter((n) => doneKeys.has(setKey(we.id, n))).length;
+    const complete = done === nums.length;
+    const chosen = substituteOn[we.id];
+    const name = (chosen && we.substitutes.find((s) => s.id === chosen)?.name) || we.exercise.name;
+    const isCurrent = i === currentIdx;
+    return (
       <button
-        type="submit"
-        disabled={pending}
-        className="inline-flex min-h-11 items-center justify-center rounded-md bg-brand px-5 text-sm font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
+        type="button"
+        onClick={() => onPick(i)}
+        aria-current={isCurrent ? "step" : undefined}
+        className={`flex min-h-14 w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
+          isCurrent ? "border-brand bg-brand-tint" : "border-line bg-surface hover:border-line-strong"
+        }`}
       >
-        {pending ? "Retomando…" : "Continuar treino"}
+        <span
+          aria-hidden
+          className={`flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold tabular-nums ${
+            complete ? "bg-success-tint text-success" : "bg-surface-raised text-ink-muted"
+          }`}
+        >
+          {complete ? <Icon name="check" size={16} /> : i + 1}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block break-words text-sm font-medium text-ink">{name}</span>
+          <span className="block text-xs tabular-nums text-ink-muted">
+            {formatPrescription(we).join(" · ") || (isCardioOnly(we) ? "Cardio" : "")}
+          </span>
+        </span>
+        <span className="shrink-0 text-xs tabular-nums text-ink-faint">
+          {done}/{nums.length}
+          <span className="sr-only"> séries</span>
+        </span>
       </button>
-      {state?.error && <p className="text-xs text-coral-text">{state.error}</p>}
-    </form>
+    );
+  }
+
+  return (
+    <ol className="flex flex-col gap-2" aria-label="Exercícios do treino">
+      {blocks.map((block, bi) =>
+        block.kind === "single" ? (
+          <li key={block.item.id}>{row(block.item)}</li>
+        ) : (
+          <li key={`${block.groupKey}-${bi}`} className="rounded-md border border-brand/30 bg-brand-tint/40 p-2">
+            <Badge tone="accent" className="mb-2">
+              {groupKindLabel(block.groupKind)} {block.groupKey}
+            </Badge>
+            <ol className="flex flex-col gap-2">
+              {block.items.map((we) => (
+                <li key={we.id}>{row(we)}</li>
+              ))}
+            </ol>
+          </li>
+        )
+      )}
+    </ol>
   );
 }
 
-function FinishForm({
-  sessionId,
-  clientId,
-  exercises,
-  loggedLogs,
-  elapsedSec,
+function FinishPanel({
   note,
   onNoteChange,
-  onFinished,
+  onFinish,
+  allDone,
 }: {
-  sessionId: string;
-  clientId: string;
-  exercises: WorkoutExerciseWithDetails[];
-  loggedLogs: SummaryLogLike[];
-  elapsedSec: number;
   note: string;
-  onNoteChange: (note: string) => void;
-  onFinished: (summary: SessionSummary) => void;
+  onNoteChange: (n: string) => void;
+  onFinish: () => Promise<string | null>;
+  allDone: boolean;
 }) {
-  const [state, action, pending] = useActionState(completeSessionAction, initialState);
-  const summaryInputRef = useRef<HTMLInputElement>(null);
-  const lastSummary = useRef<SessionSummary | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (state?.success && lastSummary.current) {
-      onFinished(lastSummary.current);
+  async function go() {
+    setPending(true);
+    setError(null);
+    try {
+      const err = await onFinish();
+      if (err) setError(err);
+    } catch {
+      setError("Falha de conexão. Tente de novo.");
+    } finally {
+      setPending(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
+  }
 
   return (
     <div className={`${CARD} flex flex-col gap-3 p-4`}>
-      <form
-        action={action}
-        onSubmit={() => {
-          const summary = buildSessionSummary(exercises, loggedLogs, elapsedSec);
-          lastSummary.current = summary;
-          if (summaryInputRef.current) summaryInputRef.current.value = JSON.stringify(summary);
-        }}
-        className="flex flex-col gap-3"
+      <label className="flex flex-col gap-1.5 text-sm">
+        <span className="text-ink-muted">Nota sobre o treino (opcional)</span>
+        <textarea
+          rows={2}
+          value={note}
+          onChange={(e) => onNoteChange(e.target.value)}
+          placeholder="Como você se sentiu, dor, dificuldade..."
+          className="min-h-16 rounded-md border border-line-control bg-surface-sunken px-3 py-2 text-base text-ink outline-none placeholder:text-ink-faint focus:border-brand focus-visible:shadow-[var(--focus-ring)]"
+        />
+      </label>
+      {error && (
+        <p role="alert" className="text-sm text-danger-text">
+          {error}
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={go}
+        disabled={pending}
+        className={buttonClass({
+          variant: allDone ? "primary" : "secondary",
+          size: "lg",
+          width: "full",
+          className: allDone ? "min-h-14 text-lg" : "",
+        })}
       >
-        <input type="hidden" name="sessionId" value={sessionId} />
-        <input type="hidden" name="clientId" value={clientId} />
-        <input ref={summaryInputRef} type="hidden" name="summary" defaultValue="{}" />
-
-        <label className="flex flex-col gap-1.5 text-sm">
-          <span className="text-ink-muted">Notas sobre o treino (opcional)</span>
-          <textarea
-            name="studentNote"
-            rows={2}
-            value={note}
-            onChange={(e) => onNoteChange(e.target.value)}
-            placeholder="Como você se sentiu, dor, dificuldade..."
-            className="min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink outline-none focus:border-brand"
-          />
-        </label>
-
-        {state?.error && <p className="text-xs text-coral-text">{state.error}</p>}
-
-        <button type="submit" disabled={pending} className={BUTTON_PRIMARY}>
-          {pending ? "Finalizando…" : "Finalizar treino"}
-        </button>
-      </form>
+        {pending ? "Finalizando…" : allDone ? "Finalizar treino" : "Encerrar treino agora"}
+      </button>
+      {!allDone && <p className="text-center text-xs text-ink-faint">As séries não feitas ficam de fora do resumo.</p>}
     </div>
   );
 }

@@ -12,6 +12,8 @@ import {
 } from "@/lib/legal/documents";
 import { revokeHealthConsentAction } from "./actions";
 import PrivacyRequestForm from "./privacy-request-form";
+import { buttonClass } from "@/components/ui/button";
+import { SubmitButton } from "@/components/ui/submit-button";
 
 export const metadata: Metadata = { title: "Meus dados · Trackly" };
 
@@ -87,7 +89,7 @@ export default async function MyDataPage(props: PageProps<"/meus-dados">) {
         <a
           href="/meus-dados/exportar"
           download
-          className="inline-flex min-h-11 w-fit items-center rounded-md border border-line px-4 py-2 text-sm font-medium text-ink hover:border-brand"
+          className={buttonClass({ variant: "secondary", className: "w-fit" })}
         >
           Baixar arquivo (JSON)
         </a>
@@ -111,12 +113,9 @@ export default async function MyDataPage(props: PageProps<"/meus-dados">) {
                 />
                 Entendo que meu acompanhamento pelo Trackly será pausado.
               </label>
-              <button
-                type="submit"
-                className="inline-flex min-h-11 w-fit items-center rounded-md border border-coral/40 px-4 py-2 text-sm font-medium text-coral-text hover:bg-coral-tint"
-              >
+              <SubmitButton variant="danger" className="w-fit" pendingLabel="Revogando…">
                 Revogar autorização
-              </button>
+              </SubmitButton>
             </form>
           </>
         ) : (
@@ -146,7 +145,7 @@ export default async function MyDataPage(props: PageProps<"/meus-dados">) {
               <li key={r.id} className="flex flex-col gap-1 px-4 py-3 text-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-ink">{REQUEST_TYPE_LABELS[r.request_type]}</span>
-                  <span className="font-mono text-label uppercase tracking-widest text-ink-faint">
+                  <span className="t-label text-ink-faint">
                     {REQUEST_STATUS_LABELS[r.status]} · {fmt(r.created_at)}
                   </span>
                 </div>

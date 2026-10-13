@@ -3,10 +3,11 @@
 import { useActionState, useEffect, useRef } from "react";
 import { WEEKDAY_OPTIONS } from "@/lib/nutrition-builder";
 import { duplicateDayAction, type NutricaoActionState } from "./actions";
+import { buttonClass } from "@/components/ui/button";
 
 const initialState: NutricaoActionState = null;
 const SELECT =
-  "min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand";
+  "min-h-11 rounded-md border border-line-control bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand";
 
 /** "Duplicar dia" (item 20) — copia TODAS as refeições de um dia da semana pra outro,
  * dentro do mesmo plano (`duplicate_nutrition_day`, 0008). `<details>` fechado por padrão. */
@@ -56,7 +57,7 @@ export default function DuplicateDayForm({ clientId, planId }: { clientId: strin
         <button
           type="submit"
           disabled={pending}
-          className="min-h-11 rounded-md border border-line px-4 py-2 text-sm text-ink hover:border-brand disabled:opacity-60"
+          className={buttonClass({ variant: "secondary" })}
         >
           {pending ? "Duplicando…" : "Duplicar dia"}
         </button>

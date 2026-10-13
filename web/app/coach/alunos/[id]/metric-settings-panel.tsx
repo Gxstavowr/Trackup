@@ -1,13 +1,14 @@
 import { GOAL_DIRECTION_OPTIONS } from "@/lib/metrics-catalog";
+import { isAlwaysTrackedMetric } from "@/lib/checkin-steps";
 import { getEffectiveClientMetrics, type EffectiveMetric } from "@/lib/metrics-settings";
 import AddCustomMetricForm from "./add-custom-metric-form";
 import { setMetricGoalAction, toggleMetricTrackedAction } from "./metric-settings-actions";
+import { inputClass } from "@/components/ui/field";
+import { SubmitButton } from "@/components/ui/submit-button";
 
-const PANEL = "flex min-w-0 flex-col gap-3 rounded-lg border border-line bg-surface p-4";
+const PANEL = "flex min-w-0 flex-col gap-3 card p-4";
 const PANEL_TITLE =
-  "flex items-center gap-1.5 font-mono text-label uppercase tracking-widest text-ink-faint";
-const INPUT =
-  "min-h-11 rounded-md border border-line bg-surface-sunken px-2.5 py-1.5 text-sm text-ink outline-none focus:border-brand";
+  "flex items-center gap-1.5 t-label text-ink-faint";
 
 /**
  * Painel "Métricas acompanhadas" (item 17 do master TODO) — dentro do Resumo do aluno
@@ -56,12 +57,12 @@ function MetricRow({ clientId, metric }: { clientId: string; metric: EffectiveMe
           <span className="break-words text-sm font-medium text-ink">{metric.label}</span>
           {metric.unit && <span className="text-xs text-ink-faint">({metric.unit})</span>}
           {metric.source === "custom" && (
-            <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-[11px] text-ink-faint">
+            <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-ink-faint">
               própria do aluno
             </span>
           )}
           {!metric.tracked && (
-            <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-[11px] text-ink-faint">
+            <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-ink-faint">
               não acompanhada
             </span>
           )}
@@ -79,14 +80,14 @@ function MetricRow({ clientId, metric }: { clientId: string; metric: EffectiveMe
               name="targetValue"
               defaultValue={metric.targetValue ?? ""}
               placeholder="—"
-              className={`${INPUT} w-20`}
+              className={`${inputClass} w-20`}
               aria-label={`Valor-alvo de ${metric.label}`}
             />
           </label>
           <select
             name="goalDirection"
             defaultValue={metric.goalDirection ?? ""}
-            className={INPUT}
+            className={inputClass}
             aria-label={`Direção da meta de ${metric.label}`}
           >
             <option value="">Sem direção</option>
@@ -96,30 +97,39 @@ function MetricRow({ clientId, metric }: { clientId: string; metric: EffectiveMe
               </option>
             ))}
           </select>
-          <button
-            type="submit"
-            className="min-h-11 rounded-md border border-line px-3 text-xs text-ink hover:border-brand"
-          >
+          <SubmitButton variant="secondary" size="sm">
             Salvar meta
-          </button>
+          </SubmitButton>
         </form>
       </div>
 
-      <form action={toggleMetricTrackedAction} className="shrink-0">
-        <input type="hidden" name="clientId" value={clientId} />
-        <input type="hidden" name="metricKey" value={metric.key} />
-        <input type="hidden" name="nextTracked" value={metric.tracked ? "false" : "true"} />
+      {isAlwaysTrackedMetric(metric.key) ? (
+        // Peso: obrigatório em todo check-in — não dá pra ocultar (o servidor também recusa).
         <button
-          type="submit"
-          className={`min-h-11 rounded-md border px-3 text-xs transition-colors ${
-            metric.tracked
-              ? "border-line text-ink-muted hover:border-coral hover:text-coral-text"
-              : "border-brand-tint-strong bg-brand-tint text-brand"
-          }`}
+          type="button"
+          disabled
+          title="O peso é obrigatório em todo check-in"
+          className="min-h-11 shrink-0 cursor-not-allowed rounded-md border border-brand-tint-strong bg-brand-tint px-3 text-xs font-medium text-brand opacity-80"
         >
-          {metric.tracked ? "Ocultar" : "Acompanhar"}
+          Obrigatório
         </button>
-      </form>
+      ) : (
+        <form action={toggleMetricTrackedAction} className="shrink-0">
+          <input type="hidden" name="clientId" value={clientId} />
+          <input type="hidden" name="metricKey" value={metric.key} />
+          <input type="hidden" name="nextTracked" value={metric.tracked ? "false" : "true"} />
+          <button
+            type="submit"
+            className={`min-h-11 rounded-md border px-3 text-xs transition-colors ${
+              metric.tracked
+                ? "border-line text-ink-muted hover:border-coral hover:text-coral-text"
+                : "border-brand-tint-strong bg-brand-tint text-brand"
+            }`}
+          >
+            {metric.tracked ? "Ocultar" : "Acompanhar"}
+          </button>
+        </form>
+      )}
     </li>
   );
 }

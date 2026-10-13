@@ -1,10 +1,12 @@
 import Link from "next/link";
-import { getCurrentCheckin } from "@/lib/repository";
+import { getCompletedWorkoutSessionCountForWeek, getCurrentCheckin } from "@/lib/repository";
 import { checkinWindow } from "@/lib/portal-today";
+import { listPhotosForCheckin, type CheckinPhoto } from "@/lib/storage/checkin-photos";
 import CheckinForm from "../checkin-form";
 import CheckinSent from "../checkin-sent";
 import { BUTTON_GHOST, CARD, EmptyState, PageHeader } from "../portal-ui";
 import { requireClient } from "../require-client";
+import { Badge } from "@/components/ui/badge";
 
 /**
  * Aba "Check-in" do aluno (item 25: check-in premium). A página decide QUAL estado mostrar:
@@ -22,6 +24,7 @@ export default async function PortalCheckinPage() {
       <>
         <PageHeader title="Check-in" />
         <EmptyState
+          icon="checkin"
           title="Check-in ainda não disponível"
           text="Seu cadastro ainda está sendo finalizado pelo seu coach. Assim que estiver tudo pronto, o check-in da semana aparece aqui."
         />
@@ -46,13 +49,7 @@ export default async function PortalCheckinPage() {
       <>
         <PageHeader title="Check-in" eyebrow={`Semana ${instance.week_number}`} />
         <div className={`${CARD} flex flex-col items-start gap-3 p-5`}>
-          <span
-            className={`rounded-full px-3 py-1 font-mono text-xs uppercase tracking-wide ${
-              reminder ? "bg-warn-tint text-warn" : "bg-surface-sunken text-ink-muted"
-            }`}
-          >
-            {reminder ? "Abre amanhã" : "Fechado por enquanto"}
-          </span>
+          <Badge tone={reminder ? "warning" : "neutral"}>{reminder ? "Abre amanhã" : "Fechado por enquanto"}</Badge>
           <p className="font-display text-xl text-ink">
             {reminder
               ? "Amanhã é dia de check-in"
@@ -80,6 +77,7 @@ export default async function PortalCheckinPage() {
       <>
         <PageHeader title="Check-in" eyebrow={`Semana ${instance.week_number}`} />
         <EmptyState
+          icon="checkin"
           title="Nenhuma pergunta configurada"
           text="Seu coach ainda não configurou o modelo de check-in desta conta."
         />
@@ -87,15 +85,35 @@ export default async function PortalCheckinPage() {
     );
   }
 
+  // "Treinos realizados": sugestão a partir das sessões concluídas da semana (editável).
+  let suggestedWorkouts: number | null = null;
+  try {
+    suggestedWorkouts = await getCompletedWorkoutSessionCountForWeek(client.id, instance.week_number);
+  } catch {
+    suggestedWorkouts = null; // sem sugestão não é fatal: o campo continua manual
+  }
+
+  // Fotos já enviadas na semana: o formulário já nasce com o contador e o passo inicial certos
+  // (sem "0 de 4" piscando antes da hidratação). Falha aqui não é fatal: quadros vazios.
+  let initialPhotos: CheckinPhoto[] = [];
+  try {
+    initialPhotos = (await listPhotosForCheckin(instance.id)) ?? [];
+  } catch {
+    initialPhotos = [];
+  }
+
   return (
     <>
       <PageHeader title="Check-in" eyebrow={`Semana ${instance.week_number}`} />
       <CheckinForm
+        suggestedWorkouts={suggestedWorkouts}
         checkinId={instance.id}
         weekNumber={instance.week_number}
         period={`Período ${formatDateOnly(instance.period_start)} a ${formatDateOnly(instance.period_end)} · aberto até domingo`}
         questions={checkin.questions}
         answers={checkin.answers}
+        context={checkin.context}
+        initialPhotos={initialPhotos}
       />
     </>
   );

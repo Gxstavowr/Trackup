@@ -5,12 +5,17 @@ import {
   getWaterLogForDate,
   type FoodEquivalenceWithFoods,
 } from "@/lib/repository";
-import { getSaoPauloClock, pickNextMeal, todayDateSP } from "@/lib/portal-today";
-import { mealsForDay } from "@/lib/nutrition-builder";
-import { computeDaySummary, indexMealLogsByMealId, jsWeekdayToDayOfWeek } from "@/lib/nutrition-session";
+import { getSaoPauloClock, todayDateSP } from "@/lib/portal-today";
+import { daysWithMeals, mealsForDay, sortMealsForStudent, type WeekDay } from "@/lib/nutrition-builder";
+import { computeDaySummary, indexMealLogsByMealId, jsWeekdayToDayOfWeek, mealCountsAsEaten } from "@/lib/nutrition-session";
 import { getMealPhotoUrl } from "@/lib/storage/meal-photos";
-import { CARD, EmptyState, PageHeader } from "../portal-ui";
+import Link from "next/link";
+import { sumKnownMacros } from "@/lib/food-macros";
+import { mealsKcal } from "@/lib/meal-kcal";
+import type { ClockLogStatus } from "@/lib/meal-clock";
+import { EmptyState, PageHeader } from "../portal-ui";
 import { requireClient } from "../require-client";
+import { MealClockProvider, NextMealStrip } from "../meal-clock";
 import DaySummaryCard from "./day-summary";
 import NutritionMealCard from "./meal-card";
 import WaterTracker from "./water-tracker";
@@ -25,13 +30,20 @@ import WaterTracker from "./water-tracker";
  * (`water_logs` x `target_water_ml`) e resumo do dia. Só lê o plano PUBLICADO
  * (`getActiveNutritionPlanForClient` já filtra `is_draft = false`).
  */
-export default async function PortalNutritionPage() {
+const DAY_SHORT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+const DAY_LONG = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"];
+
+export default async function PortalNutritionPage({ searchParams }: { searchParams: Promise<{ dia?: string }> }) {
+  const { dia } = await searchParams;
   const { client } = await requireClient();
 
   const now = new Date();
   const clock = getSaoPauloClock(now);
   const logDate = todayDateSP(now);
   const todayDow = jsWeekdayToDayOfWeek(clock.weekday);
+  const diaNum = Number(dia);
+  const viewDow = (Number.isInteger(diaNum) && diaNum >= 1 && diaNum <= 7 ? diaNum : todayDow) as WeekDay;
+  const isToday = viewDow === todayDow;
 
   const plan = await getActiveNutritionPlanForClient(client.id);
 
@@ -40,6 +52,7 @@ export default async function PortalNutritionPage() {
       <>
         <PageHeader title="Nutrição" />
         <EmptyState
+          icon="nutrition"
           title="Nenhum plano de nutrição publicado ainda"
           text="Seu coach ainda não publicou um plano de nutrição para você. Assim que estiver pronto, ele aparece aqui."
         />
@@ -49,23 +62,38 @@ export default async function PortalNutritionPage() {
 
   // "Todo dia" primeiro, depois por sort_order dentro de cada grupo — mesma ordenação visual
   // da visualização diária do coach (`daily-view.tsx`, item 20), só de leitura aqui.
-  const todayMeals = mealsForDay(plan.meals, todayDow)
-    .slice()
-    .sort((a, b) => (a.day_of_week == null ? 0 : 1) - (b.day_of_week == null ? 0 : 1) || a.sort_order - b.sort_order);
+  const todayMeals = sortMealsForStudent(mealsForDay(plan.meals, viewDow));
 
   const foodIdsToday = Array.from(
     new Set(todayMeals.flatMap((m) => m.items.map((item) => item.food_id)).filter((id): id is string => id != null))
   );
 
+  // Registros (aderência/água) só existem para HOJE; outros dias são só consulta do plano.
   const [logs, waterLog, equivalences] = await Promise.all([
-    getMealLogsForDate(client.id, logDate),
-    getWaterLogForDate(client.id, logDate),
+    isToday ? getMealLogsForDate(client.id, logDate) : Promise.resolve([]),
+    isToday ? getWaterLogForDate(client.id, logDate) : Promise.resolve(null),
     getFoodEquivalencesForFoods(foodIdsToday),
   ]);
 
   const logsByMealId = indexMealLogsByMealId(logs);
   const summary = computeDaySummary(todayMeals, logsByMealId);
-  const next = pickNextMeal(todayMeals, clock.minutes);
+
+  // Totais com o helper único (`—`/null quando o dado não existe; nunca 0 inventado).
+  const allItems = todayMeals.flatMap((m) => m.items);
+  const eatenItems = todayMeals
+    .filter((m) => mealCountsAsEaten(logsByMealId.get(m.id)?.status))
+    .flatMap((m) => m.items);
+  const planned = sumKnownMacros(allItems);
+  // Sem refeição registrada como feita/parcial: `null` ("nada registrado"), nunca 0 kcal.
+  const consumed = eatenItems.length === 0 ? null : sumKnownMacros(eatenItems);
+  const plannedKcal = mealsKcal(todayMeals);
+  const consumedKcal = eatenItems.length === 0 ? null : mealsKcal([{ items: eatenItems }]);
+
+  // Relógio ao vivo (Agora / Próxima / horário passou) — `app/portal/meal-clock.tsx` +
+  // `lib/meal-clock.ts`, mesma regra da Home. Só faz sentido no dia de hoje.
+  const clockMeals = plan.meals.map((m) => ({ id: m.id, name: m.name, time: m.time, day_of_week: m.day_of_week }));
+  const clockStatuses: Record<string, ClockLogStatus> = {};
+  for (const [mealId, log] of logsByMealId) clockStatuses[mealId] = log.status;
 
   const equivalencesByFoodId = new Map<string, FoodEquivalenceWithFoods[]>();
   for (const eq of equivalences) {
@@ -84,13 +112,24 @@ export default async function PortalNutritionPage() {
       })
   );
 
-  return (
+  const variesByDay = daysWithMeals(plan.meals).length > 0;
+
+  const dayContent = (
     <>
-      <PageHeader title="Nutrição" eyebrow={plan.name} />
+      <DaySummaryCard
+        mode={isToday ? "today" : "plan"}
+        plannedKcal={plannedKcal}
+        consumedKcal={isToday ? consumedKcal : null}
+        plannedMacros={planned}
+        consumedMacros={isToday ? consumed : null}
+        targets={plan}
+        mealsTotal={summary.mealsTotal}
+        mealsEaten={summary.mealsDone + summary.mealsPartial}
+        mealsSkipped={summary.mealsSkipped}
+        dayLabel={DAY_LONG[viewDow - 1]}
+      />
 
-      <DaySummaryCard summary={summary} targets={plan} />
-
-      {plan.target_water_ml != null && (
+      {isToday && plan.target_water_ml != null && (
         <WaterTracker
           clientId={client.id}
           logDate={logDate}
@@ -100,15 +139,14 @@ export default async function PortalNutritionPage() {
       )}
 
       {todayMeals.length === 0 ? (
-        <div className={`${CARD} p-4`}>
-          <p className="text-sm text-ink-muted">
-            {plan.meals.length === 0
-              ? "Este plano ainda não tem refeições configuradas."
-              : "Nenhuma refeição configurada para hoje — confira outro dia com seu coach, se for o caso."}
-          </p>
-        </div>
+        <EmptyState
+          compact
+          icon="nutrition"
+          title={plan.meals.length === 0 ? "Este plano ainda não tem refeições" : "Nenhuma refeição neste dia"}
+          text="Confira com seu coach se deveria haver algo por aqui."
+        />
       ) : (
-        <ul className="flex flex-col gap-4">
+        <ul className="flex flex-col gap-3">
           {todayMeals.map((meal) => {
             const log = logsByMealId.get(meal.id) ?? null;
             return (
@@ -117,8 +155,7 @@ export default async function PortalNutritionPage() {
                 clientId={client.id}
                 logDate={logDate}
                 meal={meal}
-                status={log?.status ?? null}
-                isNext={next?.meal.id === meal.id}
+                readOnly={!isToday}
                 equivalencesByFoodId={equivalencesByFoodId}
                 formProps={{
                   initialStatus: log?.status ?? null,
@@ -131,6 +168,49 @@ export default async function PortalNutritionPage() {
             );
           })}
         </ul>
+      )}
+    </>
+  );
+
+  return (
+    <>
+      <PageHeader title="Nutrição" eyebrow={plan.name} />
+
+      {variesByDay && (
+        <nav aria-label="Dia da semana" className="grid grid-cols-7 gap-1">
+          {DAY_SHORT.map((label, i) => {
+            const dow = i + 1;
+            const selected = dow === viewDow;
+            return (
+              <Link
+                key={label}
+                href={dow === todayDow ? "/portal/nutricao" : `/portal/nutricao?dia=${dow}`}
+                aria-current={selected ? "page" : undefined}
+                className={`flex min-h-11 flex-col items-center justify-center rounded-md border text-xs font-semibold ${
+                  selected ? "border-brand bg-brand-tint text-brand" : "border-line text-ink-muted"
+                }`}
+              >
+                {label}
+                {dow === todayDow && <span aria-hidden className="mt-0.5 size-1 rounded-full bg-current" />}
+              </Link>
+            );
+          })}
+        </nav>
+      )}
+
+      {!isToday && (
+        <p className="rounded-md bg-info-tint px-3 py-2 text-sm text-ink">
+          Plano de <b>{DAY_LONG[viewDow - 1]}</b> — só consulta. O registro é feito no próprio dia.
+        </p>
+      )}
+
+      {isToday ? (
+        <MealClockProvider meals={clockMeals} statuses={clockStatuses} initialNowMs={now.getTime()}>
+          <NextMealStrip />
+          {dayContent}
+        </MealClockProvider>
+      ) : (
+        dayContent
       )}
     </>
   );

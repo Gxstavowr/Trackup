@@ -105,7 +105,7 @@ export default function CompareSlider({
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
-      className="relative mx-auto aspect-[3/4] w-full max-w-md touch-pan-y select-none overflow-hidden rounded-md border border-line bg-surface-sunken"
+      className="relative mx-auto aspect-[3/4] w-full max-w-lg touch-pan-y select-none overflow-hidden rounded-md border border-line bg-surface-sunken"
     >
       {/* Camada de baixo: semana atual (direita). */}
       <div className="absolute inset-0" data-compare-side="right" data-week={right.weekNumber}>

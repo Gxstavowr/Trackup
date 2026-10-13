@@ -77,6 +77,11 @@ export type CheckinWindow =
   | { state: "closed"; daysUntilOpen: number };
 
 export function checkinWindow(now: Date = new Date()): CheckinWindow {
+  // Só para testar localmente fora de sex–dom: CHECKIN_ALWAYS_OPEN=1 em web/.env.local.
+  // Ignorado em produção (o build de produção roda com NODE_ENV=production).
+  if (process.env.CHECKIN_ALWAYS_OPEN === "1" && process.env.NODE_ENV !== "production") {
+    return { state: "open", closesLabel: "domingo" };
+  }
   const { weekday } = getSaoPauloClock(now);
   if (weekday === 5 || weekday === 6 || weekday === 0) {
     return { state: "open", closesLabel: "domingo" };
@@ -124,25 +129,79 @@ export function isTodaySP(iso: string, now: Date = new Date()): boolean {
 // Treino de hoje
 // ----------------------------------------------------------------------------
 
-type DayLike = { id: string; exercises: { exercise_id: string }[] };
+type DayLike = { id: string; exercises: unknown[] };
 
 /**
  * O schema NÃO tem dia da semana em `workout_days` (só nome + ordem), então "treino de hoje" é
- * o PRÓXIMO dia da sequência do plano cujos exercícios ainda não foram todos registrados nesta
- * semana (`workout_logs`). Dia sem exercício nunca é escolhido (não há o que executar).
+ * o PRÓXIMO dia da sequência do plano que ainda não tem sessão CONCLUÍDA nesta semana
+ * (`workout_sessions.status = 'completed'` com `day_id` = o dia; ver
+ * `getCompletedWorkoutDaysForWeek` + `resolveCompletedDayIds`). Independe de quais exercícios foram logados, então
+ * exercício repetido entre dias, substituto e exercício pulado não distorcem. Dia sem exercício
+ * nunca é escolhido (não há o que executar).
  */
+/** Dia de uma sessão concluída na semana, como `getCompletedWorkoutDaysForWeek` devolve. */
+export type CompletedWorkoutDayRef = { day_id: string; name: string | null; sort_order: number | null };
+
+type PlanDayLike = { id: string; name: string; sort_order: number };
+
+const normDayName = (name: string) => name.trim().toLocaleLowerCase("pt-BR");
+
+/**
+ * Traduz as sessões concluídas na semana para os `id`s dos dias do plano ATIVO. Republicar o
+ * plano (`publish_workout_plan`) cria dias novos (ids novos) numa versão nova, mas a sessão
+ * continua apontando pro dia da versão ANTERIOR — sem esta ponte o "feito nesta semana" zerava
+ * no meio da semana. Casa pelo id (mesma versão); senão pelo nome do dia (o rascunho copia o
+ * nome, sobrevive a reordenação); senão pela posição (`sort_order`, sobrevive a renomear).
+ */
+export function resolveCompletedDayIds(
+  days: PlanDayLike[],
+  completed: CompletedWorkoutDayRef[]
+): Set<string> {
+  const ids = new Set(days.map((d) => d.id));
+  const result = new Set<string>();
+  for (const ref of completed) {
+    if (ids.has(ref.day_id)) {
+      result.add(ref.day_id);
+      continue;
+    }
+    const byName = ref.name ? days.find((d) => normDayName(d.name) === normDayName(ref.name!)) : undefined;
+    const match = byName ?? (ref.sort_order != null ? days.find((d) => d.sort_order === ref.sort_order) : undefined);
+    if (match) result.add(match.id);
+  }
+  return result;
+}
+
 export function pickNextWorkoutDay<T extends DayLike>(
   days: T[],
-  loggedExerciseIds: Set<string>
+  completedDayIds: Set<string>
 ): { next: T | null; doneCount: number; totalCount: number } {
   const runnable = days.filter((d) => d.exercises.length > 0);
-  const isDone = (d: T) => d.exercises.every((e) => loggedExerciseIds.has(e.exercise_id));
+  const isDone = (d: T) => completedDayIds.has(d.id);
   const doneCount = runnable.filter(isDone).length;
   return {
     next: runnable.find((d) => !isDone(d)) ?? null,
     doneCount,
     totalCount: runnable.length,
   };
+}
+
+export type WorkoutCardMode = "continue" | "done_today" | "week_done" | "start";
+
+/**
+ * Qual estado o card "Treino de hoje" da Home mostra. Sessão ABERTA (`in_progress`/`paused`)
+ * vence tudo: é exatamente o que `/portal/treino` exibe (`getOpenWorkoutSession`, sem filtro de
+ * dia/idade), então a Home oferece "Continuar treino" — nunca "Começar" (criaria a sensação de
+ * um treino novo) nem "concluído" (uma série logada hoje numa sessão aberta não fecha o treino).
+ */
+export function pickWorkoutCardMode(input: {
+  hasOpenSession: boolean;
+  trainedToday: boolean;
+  hasNext: boolean;
+}): WorkoutCardMode {
+  if (input.hasOpenSession) return "continue";
+  if (input.trainedToday) return "done_today";
+  if (!input.hasNext) return "week_done";
+  return "start";
 }
 
 // ----------------------------------------------------------------------------

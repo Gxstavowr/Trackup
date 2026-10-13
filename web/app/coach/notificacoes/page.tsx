@@ -3,6 +3,8 @@ import { getNotifications, getUnreadNotificationCount } from "@/lib/repository";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import { requireCoach } from "../require-coach";
 import { markAllNotificationsAsReadAction, markNotificationAsReadAction } from "./actions";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SubmitButton } from "@/components/ui/submit-button";
 
 const EVENT_LABEL: Record<string, string> = {
   checkin_received: "Check-in",
@@ -32,7 +34,7 @@ export default async function CoachNotificationsPage() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <span className="font-mono text-label uppercase tracking-widest text-ink-faint">
+          <span className="t-label text-ink-faint">
             Trackly · Coach
           </span>
           <h1 className="font-display text-hero text-ink">Notificações</h1>
@@ -40,17 +42,14 @@ export default async function CoachNotificationsPage() {
         <div className="flex items-center gap-3">
           {unreadCount > 0 && (
             <form action={markAllNotificationsAsReadAction}>
-              <button
-                type="submit"
-                className="inline-flex min-h-11 items-center rounded-full border border-line px-5 py-2 font-mono text-sm text-ink hover:border-brand"
-              >
+              <SubmitButton variant="secondary" pendingLabel="Marcando…">
                 Marcar todas como lidas
-              </button>
+              </SubmitButton>
             </form>
           )}
           <Link
             href="/coach"
-            className="inline-flex min-h-11 items-center rounded-full border border-line px-5 py-2 font-mono text-sm text-ink hover:border-brand"
+            className="inline-flex min-h-11 items-center rounded-full border border-line px-5 py-2 text-sm font-medium text-ink hover:border-brand"
           >
             Voltar
           </Link>
@@ -58,14 +57,9 @@ export default async function CoachNotificationsPage() {
       </header>
 
       {notifications.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-line px-6 py-14 text-center">
-          <p className="font-display text-hero text-ink">Nenhuma notificação ainda</p>
-          <p className="max-w-sm text-sm text-ink-muted">
-            Avisos sobre check-ins enviados pelos seus alunos e outros eventos aparecem aqui.
-          </p>
-        </div>
+        <EmptyState icon="bell" title="Nenhuma notificação ainda" text="Avisos sobre check-ins enviados pelos seus alunos e outros eventos aparecem aqui." />
       ) : (
-        <ul className="overflow-hidden rounded-lg border border-line bg-surface">
+        <ul className="overflow-hidden card">
           {notifications.map((notification) => (
             <li
               key={notification.id}
@@ -79,7 +73,7 @@ export default async function CoachNotificationsPage() {
                     <span className="h-2 w-2 shrink-0 rounded-full bg-brand" aria-hidden />
                   )}
                   <span
-                    className={`font-mono text-xs uppercase tracking-wide ${
+                    className={`text-xs font-semibold ${
                       notification.read ? "text-ink-faint" : "text-ink-muted"
                     }`}
                   >
@@ -98,12 +92,9 @@ export default async function CoachNotificationsPage() {
               {!notification.read && (
                 <form action={markNotificationAsReadAction}>
                   <input type="hidden" name="notificationId" value={notification.id} />
-                  <button
-                    type="submit"
-                    className="inline-flex min-h-11 shrink-0 items-center rounded-full border border-line px-4 font-mono text-xs text-ink hover:border-brand"
-                  >
+                  <SubmitButton variant="secondary" size="sm" className="shrink-0" pendingLabel="Marcando…">
                     Marcar como lida
-                  </button>
+                  </SubmitButton>
                 </form>
               )}
             </li>

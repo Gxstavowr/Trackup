@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getInvitePreview } from "@/lib/invite-preview";
 import AcceptInviteForm from "./accept-invite-form";
 import LegalLinks from "../legal-links";
+import Brand from "@/components/brand";
 
 export default async function ConvitePage({
   searchParams,
@@ -14,12 +15,10 @@ export default async function ConvitePage({
   return (
     <main className="flex flex-1 items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
-        <div className="mb-6 text-center">
-          <span className="font-mono text-label uppercase tracking-widest text-ink-faint">
-            Trackly
-          </span>
+        <div className="mb-8 flex justify-center">
+          <Brand variant="full" />
         </div>
-        <div className="rounded-lg border border-line bg-surface p-7 shadow-[var(--surface-raised-shadow)]">
+        <div className="card p-7 shadow-[var(--surface-raised-shadow)]">
           {!invite ? (
             <div className="flex flex-col items-center gap-3 text-center">
               <h1 className="font-display text-hero text-ink">

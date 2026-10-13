@@ -36,10 +36,10 @@ export default async function CoachFinancePage({ searchParams }: PageProps<"/coa
     <div className="flex flex-col gap-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <span className="font-mono text-label uppercase tracking-widest text-ink-faint">
+          <span className="t-label text-ink-faint">
             Trackly · Coach
           </span>
-          <h1 className="font-display text-hero text-ink">Financeiro</h1>
+          <h1 className="t-title text-ink">Financeiro</h1>
         </div>
         <MonthNav month={month} currentMonth={currentMonth} status={status} />
       </header>

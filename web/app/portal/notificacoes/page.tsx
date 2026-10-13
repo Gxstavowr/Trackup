@@ -3,6 +3,7 @@ import { formatRelativeTime } from "@/lib/format-relative-time";
 import { CARD, EmptyState, PageHeader } from "../portal-ui";
 import { requireClient } from "../require-client";
 import { markAllNotificationsAsReadAction, markNotificationAsReadAction } from "./actions";
+import { SubmitButton } from "@/components/ui/submit-button";
 
 const EVENT_LABEL: Record<string, string> = {
   checkin_received: "Check-in",
@@ -32,18 +33,16 @@ export default async function PortalNotificationsPage() {
       <PageHeader title="Notificações">
         {unreadCount > 0 && (
           <form action={markAllNotificationsAsReadAction}>
-            <button
-              type="submit"
-              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-md border border-line px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-line-strong"
-            >
+            <SubmitButton variant="secondary" className="shrink-0" pendingLabel="Marcando…">
               Marcar todas
-            </button>
+            </SubmitButton>
           </form>
         )}
       </PageHeader>
 
       {notifications.length === 0 ? (
         <EmptyState
+          icon="bell"
           title="Nenhuma notificação ainda"
           text="Avisos sobre treino, nutrição e outros eventos do seu acompanhamento aparecem aqui."
         />
@@ -62,7 +61,7 @@ export default async function PortalNotificationsPage() {
                     <span className="h-2 w-2 shrink-0 rounded-full bg-brand" aria-hidden />
                   )}
                   <span
-                    className={`font-mono text-xs uppercase tracking-wide ${
+                    className={`text-xs font-semibold ${
                       notification.read ? "text-ink-faint" : "text-ink-muted"
                     }`}
                   >
@@ -80,12 +79,9 @@ export default async function PortalNotificationsPage() {
               {!notification.read && (
                 <form action={markNotificationAsReadAction}>
                   <input type="hidden" name="notificationId" value={notification.id} />
-                  <button
-                    type="submit"
-                    className="inline-flex min-h-11 shrink-0 items-center rounded-md border border-line px-3.5 text-xs font-medium text-ink transition-colors hover:border-line-strong"
-                  >
+                  <SubmitButton variant="secondary" size="sm" className="shrink-0" pendingLabel="Marcando…">
                     Marcar como lida
-                  </button>
+                  </SubmitButton>
                 </form>
               )}
             </li>

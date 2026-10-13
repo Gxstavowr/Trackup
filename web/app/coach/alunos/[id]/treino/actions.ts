@@ -25,6 +25,11 @@ import {
   type WorkoutGroupKind,
 } from "@/lib/repository";
 import { moveItem, toFriendlyActionError, validateWorkoutExerciseInput } from "@/lib/workout-builder";
+import {
+  normalizeSetRows,
+  normalizeSubstituteIds,
+  type SetPrescription,
+} from "@/lib/workout-prescription";
 
 export type TreinoActionState = {
   error?: string;
@@ -91,6 +96,48 @@ function readWorkoutExerciseInput(formData: FormData, exerciseId: string) {
     groupKey: parseOptionalText(formData.get("group_key")),
     substituteExerciseId: parseOptionalText(formData.get("substitute_exercise_id")),
   };
+}
+
+function finiteOrNull(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = typeof value === "number" ? value : Number(String(value).replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+
+function intOrNull(value: unknown): number | null {
+  const n = finiteOrNull(value);
+  return n == null ? null : Math.round(n);
+}
+
+/** `set_rows` (JSON do editor) → linhas por série cruas; lixo vira lista vazia. */
+function readSetRows(formData: FormData): SetPrescription[] {
+  try {
+    const parsed: unknown = JSON.parse(String(formData.get("set_rows") || "[]"));
+    if (!Array.isArray(parsed)) return [];
+    return parsed.slice(0, 50).map((r) => {
+      const o = (r ?? {}) as Record<string, unknown>;
+      return {
+        set_number: intOrNull(o.set_number) ?? 0,
+        reps_min: intOrNull(o.reps_min),
+        reps_max: intOrNull(o.reps_max),
+        load: finiteOrNull(o.load),
+        rir: intOrNull(o.rir),
+        rest_sec: intOrNull(o.rest_sec),
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** `substitute_ids` (JSON do editor, em ordem) → ids de texto. */
+function readSubstituteIds(formData: FormData): string[] {
+  try {
+    const parsed: unknown = JSON.parse(String(formData.get("substitute_ids") || "[]"));
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string").slice(0, 20) : [];
+  } catch {
+    return [];
+  }
 }
 
 // ============================================================================
@@ -305,16 +352,18 @@ export async function duplicateToClientAction(
   return { success: true };
 }
 
-export async function deleteTemplateAction(formData: FormData): Promise<void> {
+export async function deleteTemplateAction(formData: FormData): Promise<TreinoActionState> {
   const clientId = String(formData.get("clientId") || "");
   const templateId = String(formData.get("templateId") || "");
-  if (!templateId) return;
+  if (!templateId) return { error: "Template inválido." };
   try {
     await deleteWorkoutTemplate(templateId);
   } catch (err) {
     console.error("Não foi possível excluir o template:", err);
+    return { error: "Não foi possível excluir o template." };
   }
   if (clientId) revalidatePath(pathFor(clientId));
+  return { success: true };
 }
 
 // ============================================================================
@@ -373,33 +422,37 @@ export async function updateWorkoutDayAction(
   return { success: true };
 }
 
-export async function deleteWorkoutDayAction(formData: FormData): Promise<void> {
+export async function deleteWorkoutDayAction(formData: FormData): Promise<TreinoActionState> {
   const clientId = String(formData.get("clientId") || "");
   const dayId = String(formData.get("dayId") || "");
-  if (!dayId) return;
+  if (!dayId) return { error: "Dia inválido." };
   try {
     await deleteWorkoutDay(dayId);
   } catch (err) {
     console.error("Não foi possível remover o dia de treino:", err);
+    return { error: "Não foi possível remover o dia de treino." };
   }
   if (clientId) revalidatePath(pathFor(clientId));
+  return { success: true };
 }
 
-export async function duplicateWorkoutDayAction(formData: FormData): Promise<void> {
+export async function duplicateWorkoutDayAction(formData: FormData): Promise<TreinoActionState> {
   const clientId = String(formData.get("clientId") || "");
   const dayId = String(formData.get("dayId") || "");
-  if (!dayId) return;
+  if (!dayId) return { error: "Dia inválido." };
   try {
     await duplicateWorkoutDay(dayId);
   } catch (err) {
     console.error("Não foi possível duplicar o dia de treino:", err);
+    return { error: "Não foi possível duplicar o dia de treino." };
   }
   if (clientId) revalidatePath(pathFor(clientId));
+  return { success: true };
 }
 
 /** Move um dia ↑/↓ na lista — `orderJson` é a ordem ATUAL (ids), já renderizada; calcula a
  * nova ordem em memória (`moveItem`) e só chama o banco se algo de fato mudou. */
-export async function moveWorkoutDayAction(formData: FormData): Promise<void> {
+export async function moveWorkoutDayAction(formData: FormData): Promise<TreinoActionState> {
   const clientId = String(formData.get("clientId") || "");
   const planId = String(formData.get("planId") || "");
   const dayId = String(formData.get("dayId") || "");
@@ -409,14 +462,16 @@ export async function moveWorkoutDayAction(formData: FormData): Promise<void> {
   try {
     const currentOrder: string[] = JSON.parse(orderJson);
     const index = currentOrder.indexOf(dayId);
-    if (index === -1) return;
+    if (index === -1) return { error: "Item não encontrado — recarregue a página." };
     const nextOrder = moveItem(currentOrder, index, direction as -1 | 1);
-    if (nextOrder === currentOrder) return;
+    if (nextOrder === currentOrder) return { success: true };
     await reorderWorkoutDays(planId, nextOrder);
   } catch (err) {
     console.error("Não foi possível reordenar os dias:", err);
+    return { error: "Não foi possível reordenar os dias." };
   }
   if (clientId) revalidatePath(pathFor(clientId));
+  return { success: true };
 }
 
 // ============================================================================
@@ -475,8 +530,14 @@ export async function updateWorkoutExerciseAction(
   if (!workoutExerciseId) return { error: "Exercício inválido." };
 
   const draft = readWorkoutExerciseInput(formData, exerciseId);
-  const validationError = validateWorkoutExerciseInput(draft);
+  const validationError = validateWorkoutExerciseInput({ ...draft, substituteExerciseId: null });
   if (validationError) return { error: validationError };
+
+  // Variar por série (0020): só fora do cardio e com o toggle ligado; senão, limpa os overrides.
+  const varySets = String(formData.get("vary_sets") || "") === "1" && draft.blockType !== "cardio";
+  const normalized = normalizeSetRows(varySets ? readSetRows(formData) : [], draft.sets);
+  if ("error" in normalized) return { error: normalized.error };
+  const substituteIds = normalizeSubstituteIds(readSubstituteIds(formData), exerciseId);
 
   try {
     await updateWorkoutExercise(workoutExerciseId, {
@@ -491,10 +552,9 @@ export async function updateWorkoutExerciseAction(
       block_type: draft.blockType,
       group_kind: draft.groupKind,
       group_key: draft.groupKey,
-      substitute_exercise_id: draft.substituteExerciseId,
       duration_sec: draft.durationSec,
       notes: parseOptionalText(formData.get("notes")),
-    });
+    }, { sets: normalized.rows, substituteIds });
   } catch (err) {
     return { error: actionErrorMessage(err, "Não foi possível editar o exercício.") };
   }
@@ -503,31 +563,35 @@ export async function updateWorkoutExerciseAction(
   return { success: true };
 }
 
-export async function deleteWorkoutExerciseAction(formData: FormData): Promise<void> {
+export async function deleteWorkoutExerciseAction(formData: FormData): Promise<TreinoActionState> {
   const clientId = String(formData.get("clientId") || "");
   const workoutExerciseId = String(formData.get("workoutExerciseId") || "");
-  if (!workoutExerciseId) return;
+  if (!workoutExerciseId) return { error: "Exercício inválido." };
   try {
     await deleteWorkoutExercise(workoutExerciseId);
   } catch (err) {
     console.error("Não foi possível remover o exercício:", err);
+    return { error: "Não foi possível remover o exercício." };
   }
   if (clientId) revalidatePath(pathFor(clientId));
+  return { success: true };
 }
 
-export async function duplicateWorkoutExerciseAction(formData: FormData): Promise<void> {
+export async function duplicateWorkoutExerciseAction(formData: FormData): Promise<TreinoActionState> {
   const clientId = String(formData.get("clientId") || "");
   const workoutExerciseId = String(formData.get("workoutExerciseId") || "");
-  if (!workoutExerciseId) return;
+  if (!workoutExerciseId) return { error: "Exercício inválido." };
   try {
     await duplicateWorkoutExercise(workoutExerciseId);
   } catch (err) {
     console.error("Não foi possível duplicar o exercício:", err);
+    return { error: "Não foi possível duplicar o exercício." };
   }
   if (clientId) revalidatePath(pathFor(clientId));
+  return { success: true };
 }
 
-export async function moveWorkoutExerciseAction(formData: FormData): Promise<void> {
+export async function moveWorkoutExerciseAction(formData: FormData): Promise<TreinoActionState> {
   const clientId = String(formData.get("clientId") || "");
   const dayId = String(formData.get("dayId") || "");
   const workoutExerciseId = String(formData.get("workoutExerciseId") || "");
@@ -537,12 +601,14 @@ export async function moveWorkoutExerciseAction(formData: FormData): Promise<voi
   try {
     const currentOrder: string[] = JSON.parse(orderJson);
     const index = currentOrder.indexOf(workoutExerciseId);
-    if (index === -1) return;
+    if (index === -1) return { error: "Item não encontrado — recarregue a página." };
     const nextOrder = moveItem(currentOrder, index, direction as -1 | 1);
-    if (nextOrder === currentOrder) return;
+    if (nextOrder === currentOrder) return { success: true };
     await reorderWorkoutExercises(dayId, nextOrder);
   } catch (err) {
     console.error("Não foi possível reordenar os exercícios:", err);
+    return { error: "Não foi possível reordenar os exercícios." };
   }
   if (clientId) revalidatePath(pathFor(clientId));
+  return { success: true };
 }

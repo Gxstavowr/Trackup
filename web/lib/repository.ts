@@ -1,9 +1,20 @@
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { todayInSaoPaulo } from "@/lib/finance/dates";
-import { MAX_TEXT_LENGTH, checkSubmission, commaToDot } from "@/lib/checkin-steps";
-import { checkinSubmitGate, todayDateSP } from "@/lib/portal-today";
+import {
+  CHECKIN_PHOTOS_FIELD,
+  MAX_TEXT_LENGTH,
+  WEIGHT_QUESTION_KEY,
+  checkSubmission,
+  commaToDot,
+  todayIsoSaoPaulo,
+} from "@/lib/checkin-steps";
+import { normalizeGender, specForQuestion, type CheckinContext } from "@/lib/checkin-catalog";
+import { getMissingCheckinPhotoAngles } from "@/lib/storage/checkin-photos";
+import { PHOTO_ANGLE_LABEL } from "@/lib/storage/photo-angles";
+import { checkinSubmitGate, todayDateSP, type CompletedWorkoutDayRef } from "@/lib/portal-today";
 import { computeWeekInfo } from "@/lib/checkin-week";
+import { clientWantsNotification, resolveClientNotificationPrefs } from "@/lib/student-profile";
 import {
   applyMetricSettingsToQuestions,
   getEffectiveClientMetrics,
@@ -222,6 +233,8 @@ export type CheckinQuestion = {
   label: string;
   type: CheckinQuestionType;
   unit: string | null;
+  /** Ajuda curta escrita pelo coach (0019). Opcional no tipo: linhas lidas antes da migration não têm a coluna. */
+  help_text?: string | null;
   step: number;
   tracks: string | null;
   required: boolean;
@@ -259,6 +272,8 @@ export type CurrentCheckin = {
   instance: CheckinInstance;
   questions: CheckinQuestion[];
   answers: Record<string, string>;
+  /** Contexto das perguntas condicionais (sexo normalizado de `clients.gender`). */
+  context: CheckinContext;
 };
 
 /** Semana corrente do aluno — regra (segunda a domingo, calendário) em `lib/checkin-week.ts`. */
@@ -391,7 +406,7 @@ export async function getCurrentCheckin(clientId: string): Promise<CurrentChecki
 
   const { data: client, error: clientError } = await supabase
     .from("clients")
-    .select("id, account_id, start_date")
+    .select("id, account_id, start_date, gender")
     .eq("id", clientId)
     .maybeSingle();
 
@@ -440,6 +455,7 @@ export async function getCurrentCheckin(clientId: string): Promise<CurrentChecki
     instance,
     questions,
     answers,
+    context: { gender: normalizeGender((client as { gender?: string | null }).gender) },
   };
 }
 
@@ -492,7 +508,12 @@ async function recordMetricsFromAnswers(
 async function loadCheckinForWrite(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   checkinId: string
-): Promise<{ status: CheckinInstanceStatus; questions: CheckinQuestion[]; customMetricKeys: Set<string> }> {
+): Promise<{
+  status: CheckinInstanceStatus;
+  questions: CheckinQuestion[];
+  customMetricKeys: Set<string>;
+  context: CheckinContext;
+}> {
   const { data: current, error: currentError } = await supabase
     .from("checkin_instances")
     .select("status, client_id")
@@ -508,7 +529,7 @@ async function loadCheckinForWrite(
 
   const { data: client } = await supabase
     .from("clients")
-    .select("account_id")
+    .select("account_id, gender")
     .eq("id", row.client_id)
     .maybeSingle();
   const template = client
@@ -525,7 +546,13 @@ async function loadCheckinForWrite(
     template?.template.id ?? ""
   );
 
-  return { status: row.status, questions, customMetricKeys: trackedCustomMetricKeys(metrics) };
+  return {
+    status: row.status,
+    questions,
+    customMetricKeys: trackedCustomMetricKeys(metrics),
+    // Condições (ciclo menstrual) recalculadas no servidor com o sexo gravado pelo coach.
+    context: { gender: normalizeGender((client as { gender?: string | null } | null)?.gender) },
+  };
 }
 
 /**
@@ -585,10 +612,14 @@ export async function saveCheckinDraft(
   const cleared: string[] = [];
   for (const question of questions) {
     if (question.type === "photos" || !(question.key in answers)) continue;
+    // Rascunho: só normaliza (vírgula decimal, tamanho). Validação completa só no envio — o aluno
+    // pode estar no meio da digitação. Respostas sensíveis PODEM ficar aqui (servidor, RLS); o
+    // que não pode é o rascunho local (localStorage) do formulário.
+    const spec = specForQuestion(question);
     let value = String(answers[question.key] ?? "").trim();
-    if (question.type === "number") value = commaToDot(value);
+    if (spec.input === "number") value = commaToDot(value);
     if (value === "") cleared.push(question.key);
-    else filled[question.key] = value.slice(0, MAX_TEXT_LENGTH);
+    else filled[question.key] = value.slice(0, Math.min(spec.maxLength, MAX_TEXT_LENGTH));
   }
 
   await writeAnswers(supabase, checkinId, filled, cleared);
@@ -614,7 +645,8 @@ export class CheckinFieldError extends Error {
  *   1. já enviado/avaliado -> no-op (clique duplo, ou reenvio de um `reviewed` que voltaria o
  *      status pra `submitted`; sem notificar o coach de novo);
  *   2. FORA DA JANELA (`checkinSubmitGate`, America/Sao_Paulo) -> erro, sem escrever;
- *   3. respostas inválidas/obrigatórias faltando (`checkSubmission`) -> erro, sem escrever;
+ *   3. respostas inválidas/obrigatórias faltando (`checkSubmission`), peso ausente ou alguma
+ *      das 4 fotos obrigatórias não registrada/armazenada -> erro, sem escrever;
  *   4. só então escreve: respostas, MÉTRICAS e por último o status. As métricas vão ANTES de
  *      virar `submitted` porque o banco (`private.client_can_write_metric`, migration 0015) só
  *      deixa o aluno gravar métrica com o check-in ainda aberto (pending/late) — depois de
@@ -629,15 +661,36 @@ export async function submitCheckin(
 ): Promise<void> {
   const supabase = await createSupabaseServerClient();
 
-  const { status, questions, customMetricKeys } = await loadCheckinForWrite(supabase, checkinId);
+  const { status, questions, customMetricKeys, context } = await loadCheckinForWrite(supabase, checkinId);
   if (status === "submitted" || status === "reviewed") return;
 
   const gate = checkinSubmitGate(now);
   if (!gate.ok) throw new Error(gate.message);
 
-  const checked = checkSubmission(questions, answers);
+  // Tipos, opções do catálogo, limites, datas, obrigatórias e CONDIÇÕES (visibilidade recalculada
+  // a partir das respostas + sexo do aluno). Pergunta oculta não é obrigatória e a resposta dela
+  // não é gravada (vira `null` abaixo, junto das esvaziadas).
+  const checked = checkSubmission(questions, answers, { ...context, today: todayIsoSaoPaulo(now) });
   if (!checked.ok) throw new CheckinFieldError(checked.message, checked.field);
   const clean = checked.answers;
+
+  // V3: peso + quatro fotos são obrigatórios em TODO check-in, independente do template.
+  // O peso já entra como pergunta obrigatória (`applyMetricSettingsToQuestions` ->
+  // `ensureWeightQuestion`); esta checagem é a última barreira caso a lista mude.
+  if (!clean[WEIGHT_QUESTION_KEY]) {
+    throw new CheckinFieldError("Peso: informe o seu peso para enviar o check-in.", WEIGHT_QUESTION_KEY);
+  }
+  // Fotos: confere no banco E no Storage (não no que o formulário diz) as 4 posições da semana.
+  const missingPhotos = await getMissingCheckinPhotoAngles(checkinId);
+  if (missingPhotos.length > 0) {
+    const names = missingPhotos.map((a) => PHOTO_ANGLE_LABEL[a].toLowerCase()).join(", ");
+    throw new CheckinFieldError(
+      missingPhotos.length === 1
+        ? `Fotos: falta a foto ${names}. As quatro fotos são obrigatórias.`
+        : `Fotos: faltam ${missingPhotos.length} fotos (${names}). As quatro fotos são obrigatórias.`,
+      CHECKIN_PHOTOS_FIELD
+    );
+  }
   const cleared = questions
     .filter((q) => q.type !== "photos" && !(q.key in clean))
     .map((q) => q.key);
@@ -795,6 +848,11 @@ import {
   type WorkoutGroupKind,
 } from "@/lib/workout-builder";
 import { groupPreviousPerformance } from "@/lib/workout-session";
+import {
+  copyExerciseDetails,
+  effectiveSubstituteIds,
+  type SetPrescription,
+} from "@/lib/workout-prescription";
 
 export type { WorkoutBlockType, WorkoutGroupKind };
 
@@ -920,10 +978,23 @@ export type LogWorkoutExerciseInput = {
   reps?: number;
 };
 
-/** `workout_exercises` com o exercício da biblioteca (e o substituto, se houver) resolvidos. */
+/** Linha de `workout_exercise_sets` (0020): override OPCIONAL da prescrição de uma série. */
+export type WorkoutExerciseSet = SetPrescription & { id: string; workout_exercise_id: string };
+
+/** Séries variadas + substitutos (em ordem) de um exercício — o que `set_workout_exercise_details`
+ * (0020) grava de uma vez. */
+export type WorkoutExerciseDetailsInput = {
+  sets: SetPrescription[];
+  substituteIds: string[];
+};
+
+/** `workout_exercises` com o exercício da biblioteca, os substitutos (0020, em ordem) e os
+ * overrides por série resolvidos. `substitute` = o 1º substituto (compatibilidade). */
 export type WorkoutExerciseWithDetails = WorkoutExercise & {
   exercise: Exercise;
   substitute: Exercise | null;
+  substitutes: Exercise[];
+  set_prescriptions: WorkoutExerciseSet[];
 };
 
 /** `workout_days` com os exercícios do dia, em ordem. */
@@ -1224,6 +1295,77 @@ async function getExercisesByIds(
   return map;
 }
 
+/** Tabela da 0020 ainda não aplicada neste banco (PostgREST: PGRST205 / Postgres: 42P01) —
+ * a leitura cai no comportamento anterior (sem variação por série, substituto da coluna antiga)
+ * em vez de derrubar a tela de treino. */
+function isMissingTableError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return error.code === "PGRST205" || error.code === "42P01" || /does not exist|schema cache/i.test(error.message ?? "");
+}
+
+/**
+ * Resolve, para exercícios-do-dia já lidos (com RLS), o exercício da biblioteca, os substitutos
+ * (tabela `workout_exercise_substitutes`, 0020, em ordem — ou a coluna antiga se a tabela não
+ * tiver linha) e os overrides por série (`workout_exercise_sets`). Compartilhado pela visão do
+ * coach, do aluno (plano ativo) e da sessão (dia por id). RLS das tabelas novas espelha a de
+ * `workout_exercises`, então quem leu o exercício lê os filhos.
+ */
+async function attachWorkoutExerciseDetails(
+  workoutExercises: WorkoutExercise[],
+  viewer: "coach" | "client",
+  supabase: ServerSupabaseClient
+): Promise<WorkoutExerciseWithDetails[]> {
+  const weIds = workoutExercises.map((we) => we.id);
+  const setsByWe = new Map<string, WorkoutExerciseSet[]>();
+  const subRowsByWe = new Map<string, { exercise_id: string; sort_order: number }[]>();
+
+  if (weIds.length > 0) {
+    const [setsResult, subsResult] = await Promise.all([
+      supabase.from("workout_exercise_sets").select("*").in("workout_exercise_id", weIds),
+      supabase.from("workout_exercise_substitutes").select("workout_exercise_id, exercise_id, sort_order").in("workout_exercise_id", weIds),
+    ]);
+    if (setsResult.error && !isMissingTableError(setsResult.error)) {
+      throw new Error(`Não foi possível carregar as séries do treino: ${setsResult.error.message}`);
+    }
+    if (subsResult.error && !isMissingTableError(subsResult.error)) {
+      throw new Error(`Não foi possível carregar os substitutos do treino: ${subsResult.error.message}`);
+    }
+    for (const row of (setsResult.data ?? []) as WorkoutExerciseSet[]) {
+      const list = setsByWe.get(row.workout_exercise_id) ?? [];
+      list.push(row);
+      setsByWe.set(row.workout_exercise_id, list);
+    }
+    type SubRow = { workout_exercise_id: string; exercise_id: string; sort_order: number };
+    for (const row of (subsResult.data ?? []) as SubRow[]) {
+      const list = subRowsByWe.get(row.workout_exercise_id) ?? [];
+      list.push(row);
+      subRowsByWe.set(row.workout_exercise_id, list);
+    }
+  }
+
+  const substituteIdsByWe = new Map<string, string[]>();
+  for (const we of workoutExercises) {
+    substituteIdsByWe.set(we.id, effectiveSubstituteIds(subRowsByWe.get(we.id) ?? [], we.substitute_exercise_id));
+  }
+
+  const exerciseIds = Array.from(
+    new Set(workoutExercises.flatMap((we) => [we.exercise_id, ...(substituteIdsByWe.get(we.id) ?? [])]))
+  );
+  const exercisesById = await getExercisesByIds(exerciseIds, viewer, supabase);
+
+  const out: WorkoutExerciseWithDetails[] = [];
+  for (const we of workoutExercises) {
+    const exercise = exercisesById.get(we.exercise_id);
+    if (!exercise) continue; // não deveria acontecer — FK garante a linha, RLS já filtrou os ids.
+    const substitutes = (substituteIdsByWe.get(we.id) ?? [])
+      .map((id) => exercisesById.get(id))
+      .filter((e): e is Exercise => !!e);
+    const setPrescriptions = (setsByWe.get(we.id) ?? []).sort((a, b) => a.set_number - b.set_number);
+    out.push({ ...we, exercise, substitute: substitutes[0] ?? null, substitutes, set_prescriptions: setPrescriptions });
+  }
+  return out;
+}
+
 /**
  * Busca UM plano de treino (linha de `workout_plans`) por critério, junto dos dias e
  * exercícios de cada dia (e do exercício substituto de cada um), em ordem (`sort_order`).
@@ -1268,20 +1410,12 @@ async function hydrateWorkoutPlan(
     workoutExercises = (data ?? []) as WorkoutExercise[];
   }
 
-  const exerciseIds = Array.from(
-    new Set(
-      workoutExercises.flatMap((we) => [we.exercise_id, we.substitute_exercise_id]).filter((id): id is string => !!id)
-    )
-  );
-  const exercisesById = await getExercisesByIds(exerciseIds, viewer, supabase);
+  const detailed = await attachWorkoutExerciseDetails(workoutExercises, viewer, supabase);
 
   const exercisesByDay = new Map<string, WorkoutExerciseWithDetails[]>();
-  for (const we of workoutExercises) {
-    const exercise = exercisesById.get(we.exercise_id);
-    if (!exercise) continue; // não deveria acontecer — FK garante a linha, RLS já filtrou os ids.
-    const substitute = we.substitute_exercise_id ? exercisesById.get(we.substitute_exercise_id) ?? null : null;
+  for (const we of detailed) {
     const list = exercisesByDay.get(we.day_id) ?? [];
-    list.push({ ...we, exercise, substitute });
+    list.push(we);
     exercisesByDay.set(we.day_id, list);
   }
 
@@ -1952,7 +2086,8 @@ export async function addExerciseToDay(
  * que de fato mudou). */
 export async function updateWorkoutExercise(
   workoutExerciseId: string,
-  input: WorkoutExerciseInput
+  input: WorkoutExerciseInput,
+  details?: WorkoutExerciseDetailsInput
 ): Promise<WorkoutExercise> {
   const supabase = await createSupabaseServerClient();
   const coach = await getCurrentCoach(supabase);
@@ -1993,6 +2128,10 @@ export async function updateWorkoutExercise(
     throw new Error(`Não foi possível editar o exercício: ${error?.message ?? "erro desconhecido"}`);
   }
 
+  if (details) {
+    await writeWorkoutExerciseDetails(supabase, workoutExerciseId, details);
+  }
+
   type CurrentRow = {
     exercise_id: string;
     workout_days: { name: string; workout_plans: { client_id: string | null; id: string } };
@@ -2013,6 +2152,24 @@ export async function updateWorkoutExercise(
   });
 
   return data as WorkoutExercise;
+}
+
+/** Grava (substituindo o conjunto inteiro, atômico) as séries variadas e os substitutos de um
+ * exercício do dia — função SQL `set_workout_exercise_details` (0020), que também mantém a coluna
+ * antiga `substitute_exercise_id` igual ao 1º substituto. */
+async function writeWorkoutExerciseDetails(
+  supabase: ServerSupabaseClient,
+  workoutExerciseId: string,
+  details: WorkoutExerciseDetailsInput
+): Promise<void> {
+  const { error } = await supabase.rpc("set_workout_exercise_details", {
+    p_workout_exercise_id: workoutExerciseId,
+    p_sets: details.sets,
+    p_substitute_ids: details.substituteIds,
+  });
+  if (error) {
+    throw new Error(translateTracklyError(`Não foi possível salvar séries/substitutos: ${error.message}`));
+  }
 }
 
 /** Remove um exercício do dia. */
@@ -2113,6 +2270,23 @@ export async function duplicateWorkoutExercise(workoutExerciseId: string): Promi
     .single();
   if (copyError || !copy) {
     throw new Error(`Não foi possível duplicar o exercício: ${copyError?.message ?? "erro desconhecido"}`);
+  }
+
+  // Séries variadas + substitutos (0020) vão junto com a cópia.
+  const [srcSets, srcSubs] = await Promise.all([
+    supabase.from("workout_exercise_sets").select("*").eq("workout_exercise_id", workoutExerciseId),
+    supabase.from("workout_exercise_substitutes").select("exercise_id, sort_order").eq("workout_exercise_id", workoutExerciseId),
+  ]);
+  if (srcSets.error || srcSubs.error) {
+    throw new Error(`Não foi possível copiar séries/substitutos: ${(srcSets.error ?? srcSubs.error)!.message}`);
+  }
+  const srcSubRows = (srcSubs.data ?? []) as { exercise_id: string; sort_order: number }[];
+  const copied = copyExerciseDetails(
+    (srcSets.data ?? []) as WorkoutExerciseSet[],
+    effectiveSubstituteIds(srcSubRows, row.substitute_exercise_id).map((exercise_id, sort_order) => ({ exercise_id, sort_order }))
+  );
+  if (copied.sets.length > 0 || copied.substituteIds.length > 0) {
+    await writeWorkoutExerciseDetails(supabase, copy.id as string, copied);
   }
 
   const orderedIds = insertIdAfter(
@@ -2310,6 +2484,41 @@ export async function getWorkoutLogsForWeek(
 }
 
 /**
+ * Dias de treino JÁ CONCLUÍDOS na semana (`workout_sessions.status = 'completed'`), com nome e
+ * ordem do dia — `resolveCompletedDayIds` os traduz pro plano ativo. Base de `pickNextWorkoutDay`:
+ * o progresso é por sessão concluída do dia, não por exercício
+ * logado (que errava com exercício repetido entre dias, substituto e exercício pulado).
+ */
+export async function getCompletedWorkoutDaysForWeek(
+  clientId: string,
+  weekNumber: number
+): Promise<CompletedWorkoutDayRef[]> {
+  const supabase = await createSupabaseServerClient();
+
+  // Nome/ordem do dia vêm junto porque a sessão pode ser de uma versão ANTERIOR do plano
+  // (republicado no meio da semana); `resolveCompletedDayIds` usa isso pra casar com o plano
+  // ativo. Versões arquivadas seguem legíveis pelo aluno (RLS `workout_days_client_read`).
+  const { data, error } = await supabase
+    .from("workout_sessions")
+    .select("day_id, workout_days(name, sort_order)")
+    .eq("client_id", clientId)
+    .eq("week_number", weekNumber)
+    .eq("status", "completed")
+    .not("day_id", "is", null);
+
+  if (error) {
+    throw new Error(`Não foi possível carregar os treinos concluídos da semana: ${error.message}`);
+  }
+
+  type Row = { day_id: string; workout_days: DayMeta | DayMeta[] | null };
+  type DayMeta = { name: string; sort_order: number };
+  return ((data ?? []) as unknown as Row[]).map((s) => {
+    const day = Array.isArray(s.workout_days) ? (s.workout_days[0] ?? null) : s.workout_days;
+    return { day_id: s.day_id, name: day?.name ?? null, sort_order: day?.sort_order ?? null };
+  });
+}
+
+/**
  * Leitura simples pra Home do aluno (item 24): primeiro e último peso registrados
  * (`metrics.key = 'weight_kg'`, gravado pelo check-in). `null` se ainda não há nenhum peso.
  */
@@ -2480,21 +2689,7 @@ export async function getWorkoutDayForSession(dayId: string): Promise<WorkoutDay
     throw new Error(`Não foi possível carregar os exercícios do dia: ${error.message}`);
   }
 
-  const workoutExercises = (data ?? []) as WorkoutExercise[];
-  const exerciseIds = Array.from(
-    new Set(
-      workoutExercises.flatMap((we) => [we.exercise_id, we.substitute_exercise_id]).filter((id): id is string => !!id)
-    )
-  );
-  const exercisesById = await getExercisesByIds(exerciseIds, "client", supabase);
-
-  const exercises: WorkoutExerciseWithDetails[] = [];
-  for (const we of workoutExercises) {
-    const exercise = exercisesById.get(we.exercise_id);
-    if (!exercise) continue; // não deveria acontecer — FK garante a linha, RLS já filtrou os ids.
-    const substitute = we.substitute_exercise_id ? exercisesById.get(we.substitute_exercise_id) ?? null : null;
-    exercises.push({ ...we, exercise, substitute });
-  }
+  const exercises = await attachWorkoutExerciseDetails((data ?? []) as WorkoutExercise[], "client", supabase);
 
   return { ...(day as WorkoutDay), exercises };
 }
@@ -2745,6 +2940,7 @@ import {
   translateTracklyError as translateNutritionTracklyError,
 } from "@/lib/nutrition-builder";
 import type { MealLogStatus } from "@/lib/nutrition-session";
+import { foodBase, formatQuantity, parseQuantityText, scaleFoodMacros } from "@/lib/food-macros";
 
 /**
  * Espelha 1:1 as colunas da tabela `foods` (biblioteca por `account_id`, 0001/0003).
@@ -2757,6 +2953,10 @@ export type FoodMacros = {
   protein_g?: number;
   carbs_g?: number;
   fat_g?: number;
+  /** Porção-base a que os valores acima se referem (convenção V2, ver `lib/food-macros.ts`).
+   * Ausente = 100 (g/ml) ou 1 (unidade). Só existe em `foods.macros`. */
+  base_qty?: number;
+  base_unit?: string;
 };
 
 export type Food = {
@@ -3763,6 +3963,81 @@ export async function duplicateMeal(mealId: string): Promise<string> {
 }
 
 /**
+ * Copia uma refeição (de outro dia do mesmo plano, de outro plano da conta ou de um template)
+ * para o plano/dia de destino: refeição + itens + substituições, no fim da lista do dia.
+ * Sem migration: usa só inserts em `meals`/`meal_items`/`meal_substitutions` (RLS por conta).
+ * Os macros dos itens são copiados como estão (já escalados pela quantidade).
+ */
+export async function copyMealToPlan(
+  sourceMealId: string,
+  targetPlanId: string,
+  targetDay: number | null
+): Promise<string> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data: src, error: srcError } = await supabase.from("meals").select("*").eq("id", sourceMealId).maybeSingle();
+  if (srcError || !src) {
+    throw new Error(`Refeição de origem não encontrada: ${srcError?.message ?? ""}`);
+  }
+  const source = src as Meal;
+
+  const created = await addMeal(targetPlanId, {
+    name: source.name,
+    time: source.time ? source.time.slice(0, 5) : null,
+    day_of_week: targetDay,
+    notes: source.notes,
+  });
+
+  const { data: items, error: itemsError } = await supabase
+    .from("meal_items")
+    .select("*")
+    .eq("meal_id", sourceMealId)
+    .order("sort_order", { ascending: true });
+  if (itemsError) {
+    throw new Error(`Não foi possível ler os itens da refeição: ${itemsError.message}`);
+  }
+  const sourceItems = (items ?? []) as MealItem[];
+
+  for (const [index, item] of sourceItems.entries()) {
+    const { data: newItem, error } = await supabase
+      .from("meal_items")
+      .insert({
+        meal_id: created.id,
+        food_id: item.food_id,
+        qty: item.qty,
+        quantity: item.quantity,
+        unit: item.unit,
+        notes: item.notes,
+        macros: item.macros ?? {},
+        sort_order: index,
+      })
+      .select("id")
+      .single();
+    if (error || !newItem) {
+      throw new Error(`Não foi possível copiar os itens: ${error?.message ?? "erro desconhecido"}`);
+    }
+
+    const { data: subs } = await supabase.from("meal_substitutions").select("*").eq("meal_item_id", item.id);
+    const rows = ((subs ?? []) as MealSubstitution[]).map((sub) => ({
+      meal_item_id: (newItem as { id: string }).id,
+      alternative_food_id: sub.alternative_food_id,
+      alternative_label: sub.alternative_label,
+      alternative_qty: sub.alternative_qty,
+      macros: sub.macros ?? {},
+      note: sub.note,
+    }));
+    if (rows.length > 0) {
+      const { error: subError } = await supabase.from("meal_substitutions").insert(rows);
+      if (subError) {
+        throw new Error(`Não foi possível copiar as substituições: ${subError.message}`);
+      }
+    }
+  }
+
+  return created.id;
+}
+
+/**
  * Duplica TODAS as refeições de um "dia" pra outro (função SQL `duplicate_nutrition_day`,
  * 0008 — atômico), no fim da lista do dia de destino. Devolve quantas refeições foram
  * copiadas. `null` = "todo dia" nos dois parâmetros.
@@ -3848,9 +4123,7 @@ export async function reorderMeals(planId: string, dayOfWeek: number | null, ord
  * do aluno, que só lê `qty`) — ex.: `quantity=150, unit="g"` -> `"150g"`. `null` se
  * nenhuma quantidade foi informada (o item pode continuar só com `notes`). */
 function formatQty(quantity: number | null | undefined, unit: string | null | undefined): string | null {
-  if (quantity == null) return null;
-  const trimmedUnit = unit?.trim() || "";
-  return `${quantity}${trimmedUnit}`;
+  return formatQuantity(quantity, unit);
 }
 
 /**
@@ -3884,16 +4157,21 @@ export async function addMealItem(
     throw new Error(`Não foi possível preparar o item: ${countResult.error.message}`);
   }
 
+  // Macros do item = alimento ESCALADO pela quantidade (`lib/food-macros.ts`); a unidade
+  // vazia assume a da porção-base do alimento.
+  const food = foodResult.data as Food;
+  const itemUnit = input.unit?.trim() || (input.quantity != null ? foodBase(food).unit : null);
+
   const { data, error } = await supabase
     .from("meal_items")
     .insert({
       meal_id: mealId,
       food_id: foodId,
       quantity: input.quantity ?? null,
-      unit: input.unit?.trim() || null,
-      qty: formatQty(input.quantity, input.unit),
+      unit: itemUnit,
+      qty: formatQty(input.quantity, itemUnit),
       notes: input.notes?.trim() || null,
-      macros: (foodResult.data as Food).macros ?? {},
+      macros: scaleFoodMacros(food, input.quantity, itemUnit),
       sort_order: countResult.count ?? 0,
     })
     .select("*")
@@ -3916,10 +4194,26 @@ export async function updateMealItem(itemId: string, input: UpdateMealItemInput)
   if (input.quantity !== undefined) patch.quantity = input.quantity;
   if (input.unit !== undefined) patch.unit = input.unit?.trim() || null;
   if (input.quantity !== undefined || input.unit !== undefined) {
-    const { data: current } = await supabase.from("meal_items").select("quantity, unit").eq("id", itemId).maybeSingle();
-    const row = current as { quantity: number | null; unit: string | null } | null;
+    const { data: current } = await supabase
+      .from("meal_items")
+      .select("quantity, unit, food_id")
+      .eq("id", itemId)
+      .maybeSingle();
+    const row = current as { quantity: number | null; unit: string | null; food_id: string | null } | null;
     const quantity = input.quantity !== undefined ? input.quantity : (row?.quantity ?? null);
-    const unit = input.unit !== undefined ? input.unit : (row?.unit ?? null);
+    let unit = input.unit !== undefined ? input.unit?.trim() || null : (row?.unit ?? null);
+    // Os macros do item acompanham a quantidade: recalcula a partir do alimento da biblioteca
+    // (se ele ainda existe). Macros passados explicitamente (ajuste manual) têm prioridade.
+    if (row?.food_id && input.macros === undefined) {
+      const { data: food } = await supabase.from("foods").select("*").eq("id", row.food_id).maybeSingle();
+      if (food) {
+        if (!unit && quantity != null) {
+          unit = foodBase(food as Food).unit;
+          patch.unit = unit;
+        }
+        patch.macros = scaleFoodMacros(food as Food, quantity, unit);
+      }
+    }
     patch.qty = formatQty(quantity, unit);
   }
   if (input.notes !== undefined) patch.notes = input.notes?.trim() || null;
@@ -3965,17 +4259,20 @@ export async function addMealSubstitution(
     throw new Error("Informe um alimento substituto ou descreva a alternativa.");
   }
 
+  // Macros da substituição = alimento escalado pela quantidade digitada ("150 g"), quando o
+  // texto tem número + unidade da porção-base; senão ficam desconhecidos (nunca inventados).
   let macros: FoodMacros = {};
   if (input.alternativeFoodId) {
     const { data: food, error: foodError } = await supabase
       .from("foods")
-      .select("macros")
+      .select("*")
       .eq("id", input.alternativeFoodId)
       .maybeSingle();
     if (foodError) {
       throw new Error(`Não foi possível carregar o alimento substituto: ${foodError.message}`);
     }
-    macros = (food as { macros: FoodMacros } | null)?.macros ?? {};
+    const parsed = parseQuantityText(input.alternativeQty);
+    if (food && parsed) macros = scaleFoodMacros(food as Food, parsed.quantity, parsed.unit) as FoodMacros;
   }
 
   const { data, error } = await supabase
@@ -4639,15 +4936,16 @@ export async function getPaymentStatusForClients(
 
   const { data: subscriptions, error: subError } = await supabase
     .from("subscriptions")
-    .select("id, client_id")
+    .select("id, client_id, status")
     .in("client_id", clientIds);
 
   if (subError) {
     throw new Error(`Não foi possível carregar as assinaturas: ${subError.message}`);
   }
 
-  const subList = (subscriptions ?? []) as { id: string; client_id: string }[];
+  const subList = (subscriptions ?? []) as { id: string; client_id: string; status: string }[];
   const clientBySubscription = new Map(subList.map((s) => [s.id, s.client_id]));
+  const cancelledSubscriptions = new Set(subList.filter((s) => s.status === "cancelled").map((s) => s.id));
   const subscriptionIds = subList.map((s) => s.id);
 
   for (const clientId of clientIds) {
@@ -4669,7 +4967,9 @@ export async function getPaymentStatusForClients(
     throw new Error(`Não foi possível carregar as cobranças: ${paymentsError.message}`);
   }
 
-  const today = new Date();
+  // Dia de hoje em São Paulo (mesma regra de `displayPaymentStatus`, usada no Financeiro e na aba
+  // Pagamento) — comparar com `new Date()` em UTC marcava "atrasado" no dia do vencimento à noite.
+  const today = todayInSaoPaulo();
   const pendingClientIds = new Set<string>();
   const lateClientIds = new Set<string>();
 
@@ -4681,10 +4981,12 @@ export async function getPaymentStatusForClients(
     const clientId = clientBySubscription.get(payment.subscription_id);
     if (!clientId) continue;
 
-    const isLate = payment.status === "overdue" || new Date(`${payment.due_date}T23:59:59Z`) < today;
+    const isLate = payment.status === "overdue" || payment.due_date < today;
     if (isLate) {
-      lateClientIds.add(clientId);
-    } else {
+      lateClientIds.add(clientId); // dívida: continua valendo mesmo com a assinatura cancelada
+    } else if (!cancelledSubscriptions.has(payment.subscription_id)) {
+      // Cobrança a vencer de assinatura cancelada não é mais esperada (igual ao Financeiro e ao
+      // "Meu plano" do aluno, que não mostram próxima cobrança nesse caso).
       pendingClientIds.add(clientId);
     }
   }
@@ -4777,6 +5079,21 @@ export async function createNotification(
   input: CreateNotificationInput
 ): Promise<void> {
   const supabase = await createSupabaseServerClient();
+
+  // Preferência do aluno (migration 0018, /portal/conta): ele pode silenciar orientação, treino e
+  // nutrição. Quem cria essas notificações é o coach, que lê a linha pela policy
+  // `client_notification_preferences_coach_read`. Falha aberta: sem linha, sem tabela (migration
+  // ainda não aplicada) ou erro de leitura = notifica, como antes.
+  if (input.recipient === "client") {
+    const { data: prefsRow, error: prefsError } = await supabase
+      .from("client_notification_preferences")
+      .select("orientation_ready, workout_updated, nutrition_updated")
+      .eq("client_id", clientId)
+      .maybeSingle();
+    if (!prefsError && !clientWantsNotification(resolveClientNotificationPrefs(prefsRow), input.event_type)) {
+      return;
+    }
+  }
 
   // SEM `.select()` de propósito: pedir a linha de volta (`INSERT ... RETURNING`) faz o Postgres
   // aplicar também as policies de SELECT à linha recém-criada — e desde a migration 0002 cada
@@ -4880,4 +5197,28 @@ export async function markAllNotificationsAsRead(recipient: NotificationRecipien
   if (error) {
     throw new Error(`Não foi possível marcar as notificações como lidas: ${error.message}`);
   }
+}
+
+/**
+ * Quantidade de sessões de treino CONCLUÍDAS na semana (`workout_sessions.status = 'completed'`).
+ * Sugestão para o campo "Treinos realizados" do check-in (V2 tarefa 30): o aluno pode editar,
+ * o contrato gravado (`checkin_answers.workouts_count`) não muda.
+ */
+export async function getCompletedWorkoutSessionCountForWeek(
+  clientId: string,
+  weekNumber: number
+): Promise<number> {
+  const supabase = await createSupabaseServerClient();
+
+  const { count, error } = await supabase
+    .from("workout_sessions")
+    .select("id", { count: "exact", head: true })
+    .eq("client_id", clientId)
+    .eq("week_number", weekNumber)
+    .eq("status", "completed");
+
+  if (error) {
+    throw new Error(`Não foi possível contar os treinos concluídos da semana: ${error.message}`);
+  }
+  return count ?? 0;
 }

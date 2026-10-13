@@ -7,7 +7,7 @@ export function LegalHeader({ title, intro }: { title: string; intro: string }) 
   return (
     <header className="mb-6 flex flex-col gap-2">
       <h1 className="font-display text-hero text-ink">{title}</h1>
-      <p className="font-mono text-label uppercase tracking-widest text-ink-faint">
+      <p className="t-label text-ink-faint">
         Versão {LEGAL_VERSION} · vigente desde {d}/{m}/{y}
       </p>
       <p className="text-sm text-ink-muted">{intro}</p>

@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { acceptInvite, type AcceptInviteState } from "./actions";
+import { buttonClass } from "@/components/ui/button";
 
 const initialState: AcceptInviteState = null;
 
@@ -85,7 +86,7 @@ export default function AcceptInviteForm({
       <button
         type="submit"
         disabled={pending}
-        className="mt-2 w-full rounded-md bg-brand py-2.5 font-medium text-on-accent transition-opacity disabled:opacity-60"
+        className={buttonClass({ width: "full", className: "mt-2" })}
       >
         {pending ? "Enviando…" : "Aceitar convite"}
       </button>

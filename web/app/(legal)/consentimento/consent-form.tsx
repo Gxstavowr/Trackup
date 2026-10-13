@@ -5,6 +5,7 @@ import Link from "next/link";
 import { logout } from "@/lib/actions/logout";
 import type { ConsentPurpose } from "@/lib/legal/documents";
 import { acceptConsents, type ConsentState } from "./actions";
+import { buttonClass } from "@/components/ui/button";
 
 const initialState: ConsentState = null;
 
@@ -97,7 +98,7 @@ export default function ConsentForm({
         <button
           type="submit"
           disabled={pending}
-          className="mt-2 w-full rounded-md bg-brand py-2.5 font-medium text-on-accent transition-opacity disabled:opacity-60"
+          className={buttonClass({ width: "full", className: "mt-2" })}
         >
           {pending ? "Registrando…" : "Concordo e quero continuar"}
         </button>

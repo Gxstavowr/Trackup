@@ -13,6 +13,7 @@
  */
 
 import type { WorkoutBlockType } from "@/lib/workout-builder";
+import { resolveSetTarget, type UniformPrescriptionLike } from "@/lib/workout-prescription";
 
 // ============================================================================
 // Séries por exercício prescrito
@@ -174,6 +175,21 @@ export function formatDuration(totalSeconds: number): string {
   return `${m}min`;
 }
 
+/**
+ * Cronômetro da sessão em andamento: "m:ss" abaixo de 1h e "h:mm:ss" a partir
+ * de 1h (ex.: 18h07m04s -> "18:07:04"), para não exibir "1087:04" numa sessão
+ * esquecida aberta. Nunca negativo.
+ */
+export function formatElapsedClock(totalSeconds: number): string {
+  const safe = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(safe / 3600);
+  const m = Math.floor((safe % 3600) / 60);
+  const s = safe % 60;
+  const ss = String(s).padStart(2, "0");
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${ss}`;
+  return `${m}:${ss}`;
+}
+
 // ============================================================================
 // Resumo ao finalizar
 // ============================================================================
@@ -225,4 +241,119 @@ export function buildSessionSummary(
     totalVolume,
     durationSec,
   };
+}
+
+// ============================================================================
+// Fluxo de foco (V2 tarefa 20) — qual exercício vem depois de concluir uma série
+// ============================================================================
+
+export type FlowExerciseLike = PrescribedExerciseLike & {
+  group_kind: string | null;
+  group_key: string | null;
+};
+
+function hasRemaining(ex: PrescribedExerciseLike, done: ReadonlySet<SetKey>): boolean {
+  return !isExerciseDone(ex, done);
+}
+
+/** Primeiro exercício (na ordem do dia) com alguma série pendente; `null` se tudo concluído. */
+export function firstIncompleteIndex(flat: PrescribedExerciseLike[], done: ReadonlySet<SetKey>): number | null {
+  const i = flat.findIndex((ex) => hasRemaining(ex, done));
+  return i === -1 ? null : i;
+}
+
+/**
+ * Depois de concluir uma série do exercício `idx` (já contada em `done`), devolve o próximo
+ * exercício em foco e se vale iniciar o descanso. Exercício solto: continua nele até acabar as
+ * séries, depois segue para o próximo pendente (descanso em toda série). Superset/circuito:
+ * alterna entre os membros do grupo, sem descanso entre membros — o descanso só começa quando a
+ * rodada fecha (voltou ao primeiro membro). Sem nada pendente: `next = null`, sem descanso.
+ */
+export function nextAfterSet(
+  flat: FlowExerciseLike[],
+  idx: number,
+  done: ReadonlySet<SetKey>
+): { next: number | null; rest: boolean } {
+  const cur = flat[idx];
+  if (!cur) return { next: null, rest: false };
+
+  if (cur.group_key && cur.group_kind) {
+    let start = idx;
+    let end = idx;
+    while (start > 0 && flat[start - 1].group_key === cur.group_key && flat[start - 1].group_kind === cur.group_kind) start--;
+    while (end < flat.length - 1 && flat[end + 1].group_key === cur.group_key && flat[end + 1].group_kind === cur.group_kind) end++;
+    const order: number[] = [];
+    for (let i = idx + 1; i <= end; i++) order.push(i);
+    for (let i = start; i <= idx; i++) order.push(i);
+    const found = order.find((i) => hasRemaining(flat[i], done));
+    if (found != null) return { next: found, rest: found <= idx };
+    // Grupo inteiro concluído: segue para o próximo pendente fora dele.
+    const outside = flat.findIndex((ex, i) => (i < start || i > end) && hasRemaining(ex, done));
+    return outside === -1 ? { next: null, rest: false } : { next: outside, rest: true };
+  }
+
+  if (hasRemaining(cur, done)) return { next: idx, rest: true };
+  for (let i = idx + 1; i < flat.length; i++) if (hasRemaining(flat[i], done)) return { next: i, rest: true };
+  for (let i = 0; i < idx; i++) if (hasRemaining(flat[i], done)) return { next: i, rest: true };
+  return { next: null, rest: false };
+}
+
+// ============================================================================
+// Destaques do resumo — só o que dá para calcular com os dados (vs. a última sessão)
+// ============================================================================
+
+export type HighlightInput = {
+  name: string;
+  current: { load: number | null; reps: number | null }[];
+  previous: { load: number | null; reps: number | null }[];
+};
+
+export type Highlight = { name: string; text: string };
+
+function maxLoad(sets: { load: number | null }[]): number | null {
+  const loads = sets.map((s) => s.load).filter((l): l is number => l != null && l > 0);
+  return loads.length ? Math.max(...loads) : null;
+}
+
+function volume(sets: { load: number | null; reps: number | null }[]): number {
+  return sets.reduce((acc, s) => acc + (s.load != null && s.reps != null ? s.load * s.reps : 0), 0);
+}
+
+const fmtNum = (n: number) => String(Math.round(n * 100) / 100).replace(".", ",");
+
+/** "Mais pesado" ou "mais volume" que a última vez — nada é inventado sem histórico anterior. */
+export function buildHighlights(items: HighlightInput[]): Highlight[] {
+  const out: Highlight[] = [];
+  for (const it of items) {
+    if (it.previous.length === 0 || it.current.length === 0) continue;
+    const curMax = maxLoad(it.current);
+    const prevMax = maxLoad(it.previous);
+    if (curMax != null && prevMax != null && curMax > prevMax) {
+      out.push({ name: it.name, text: `Carga máxima ${fmtNum(curMax)} kg (+${fmtNum(curMax - prevMax)} kg vs. última vez)` });
+      continue;
+    }
+    const curVol = volume(it.current);
+    const prevVol = volume(it.previous);
+    if (curVol > 0 && prevVol > 0 && curVol > prevVol) {
+      out.push({ name: it.name, text: `Volume ${Math.round(curVol)} kg (+${Math.round(curVol - prevVol)} kg vs. última vez)` });
+    }
+  }
+  return out;
+}
+
+// ============================================================================
+// Descanso por série (0020) — o timer usa o descanso da série que acabou de ser feita
+// ============================================================================
+
+/**
+ * Segundos de descanso depois da série `setNumber`. `members` = o exercício solto (1 item) ou
+ * todos os membros do superset/circuito (o descanso só vem ao fechar a rodada, e vale o MAIOR
+ * descanso configurado entre eles). Cada membro resolve o descanso daquela série: override por
+ * série se houver, senão o `rest_sec` uniforme. `null` = nada configurado (sem timer).
+ */
+export function restSecondsForRound(members: UniformPrescriptionLike[], setNumber: number): number | null {
+  const values = members
+    .map((m) => resolveSetTarget(m, setNumber).restSec)
+    .filter((v): v is number => v != null);
+  return values.length > 0 ? Math.max(...values) : null;
 }

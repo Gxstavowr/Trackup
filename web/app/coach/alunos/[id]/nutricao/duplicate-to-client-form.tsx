@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef } from "react";
 import type { Client } from "@/lib/repository";
 import { duplicateToClientAction, type NutricaoActionState } from "./actions";
+import { buttonClass } from "@/components/ui/button";
 
 const initialState: NutricaoActionState = null;
 
@@ -38,13 +39,13 @@ export default function DuplicateToClientForm({
       >
         <input type="hidden" name="clientId" value={clientId} />
         <input type="hidden" name="planId" value={planId} />
-        <label className="flex flex-1 flex-col gap-1.5 text-sm">
+        <label className="flex min-w-0 flex-1 basis-44 flex-col gap-1.5 text-sm">
           <span className="text-ink-muted">Duplicar para</span>
           <select
             name="targetClientId"
             required
             defaultValue=""
-            className="min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
+            className="min-h-11 w-full min-w-0 rounded-md border border-line-control bg-surface-sunken px-3 py-2 text-ink outline-none focus:border-brand"
           >
             <option value="" disabled>
               Selecione o aluno…
@@ -60,7 +61,7 @@ export default function DuplicateToClientForm({
         <button
           type="submit"
           disabled={pending}
-          className="min-h-11 rounded-md border border-line px-4 py-2 text-sm text-ink hover:border-brand disabled:opacity-60"
+          className={buttonClass({ variant: "secondary" })}
         >
           {pending ? "Duplicando…" : "Duplicar"}
         </button>

@@ -6,65 +6,73 @@
    único, vermelho queimado reservado a erro/atraso. Ver ARCHITECTURE.md. */
 
 :root {
-  /* superfícies */
-  --paper: #0a0a09;
-  --surface: #17170f;
-  --surface-sunken: #121210;
-  --surface-raised-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03),
-    0 8px 20px -16px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
 
-  /* tinta */
-  --ink: #f3eee4;
-  --ink-muted: #a79c8a;
-  --ink-faint: #8f8575; /* >= 4,5:1 sobre --paper (5,45) e --surface (4,96) */
-  --line: #26241e;
-  --line-strong: #37332b;
+  /* superfícies — 3 níveis + borda: paper (fundo) < surface-sunken (sidebar, campos) < surface
+     (cards) < surface-raised (hover, menus, modais). Separação clara por luminosidade + linha. */
+  --paper: #060606;
+  --surface-sunken: #0c0c0d;
+  --surface: #131315;
+  --surface-raised: #1c1c20;
+  --surface-raised-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  --shadow-overlay: 0 24px 60px -12px rgba(0, 0, 0, 0.8);
 
-  /* marca — amarelo/champagne, cor de destaque única do produto */
-  --brand: #c9a463;
-  --brand-deep: #dcb979;
-  --brand-dark: #2b2112;
-  --brand-tint: rgba(201, 164, 99, 0.14);
-  --brand-tint-strong: rgba(201, 164, 99, 0.26);
-  --on-accent: #17130a;
+  /* tinta — branco levemente quente; cinzas medidos (WCAG) sobre --paper / --surface:
+     --ink-muted #b4b1a9 -> 9,9:1 / 8,7:1 · --ink-faint #8d8b86 -> 5,9:1 / 5,2:1 */
+  --ink: #f6f2ea;
+  --ink-muted: #b4b1a9;
+  --ink-faint: #8d8b86;
+  --line: #26262b;
+  --line-strong: #3b3b42;
+  /* borda de CONTROLES (campos, botão secundário): WCAG 1.4.11, >= 3,1:1 sobre paper/sunken/surface/raised */
+  --line-control: #6a6970;
 
-  /* atenção / metas */
-  --gold: #dd9a46;
-  --gold-tint: rgba(221, 154, 70, 0.14);
+  /* marca — amarelo vivo, só em ação primária, números de destaque e foco */
+  --brand: #f5c518;
+  --brand-deep: #ffd84a;
+  --brand-dark: #2a2205;
+  --brand-tint: rgba(245, 197, 24, 0.12);
+  --brand-tint-strong: rgba(245, 197, 24, 0.24);
+  --on-accent: #0b0903; /* 12:1 sobre --brand */
 
-  /* alerta — vermelho queimado, reservado a erro/atraso */
-  --coral: #c1502e;
-  --coral-tint: rgba(193, 80, 46, 0.14);
-  /* Variante clara do coral, só para uso como TEXTO sobre --paper/--surface ou sobre
-     --coral-tint (item 36 do TODO — pendências de contraste). O --coral "escuro" acima não
-     chega a 4,5:1 nesses fundos (medido: ~4,20:1 sobre --paper, ~3,82:1 sobre --surface,
-     ~3,36:1 sobre --coral-tint em --surface) — mesma tonalidade/saturação, só mais claro.
-     --coral continua o certo pra fundo/borda (--coral-tint, border-coral, bg-coral etc.). */
-  --coral-text: #d77356; /* medido: 6,11:1 sobre --paper · 5,56:1 sobre --surface */
-  /* Texto sobre fundo SÓLIDO --coral (ex.: contador do sino) — --on-accent (calibrado pro
-     --brand, claro) não chega a 4,5:1 aqui (medido 3,93:1); precisa de um texto quase branco. */
-  --on-coral: #fffdfb; /* medido: 4,65:1 sobre --coral */
+  /* cores semânticas — cada estado tem a própria cor, independente do accent */
+  --success: #4fe3a1; /* mint: pago, concluído, publicado */
+  --success-tint: rgba(79, 227, 161, 0.13);
+  --warning: #ff9f43; /* laranja: atenção, rascunho, pendência */
+  --warning-tint: rgba(255, 159, 67, 0.14);
+  --danger: #e5533f; /* coral: erro, atraso — fundo/borda */
+  --danger-tint: rgba(229, 83, 63, 0.15);
+  --danger-text: #ff7d6e; /* coral como TEXTO: 6,9:1 sobre --paper · 6,1:1 sobre --surface */
+  --on-danger: #14080a;
+  --info: #6cb8ff;
+  --info-tint: rgba(108, 184, 255, 0.13);
 
-  /* status semânticos */
-  --ok: var(--brand);
-  --ok-tint: var(--brand-tint);
-  --warn: var(--gold);
-  --warn-tint: var(--gold-tint);
-  --late: var(--coral);
-  --late-tint: var(--coral-tint);
-  --late-text: var(--coral-text);
+  /* aliases legados (mesmos nomes de antes, agora apontando para os tokens semânticos) */
+  --ok: var(--success);
+  --ok-tint: var(--success-tint);
+  --warn: var(--warning);
+  --warn-tint: var(--warning-tint);
+  --gold: var(--warning);
+  --gold-tint: var(--warning-tint);
+  --late: var(--danger);
+  --late-tint: var(--danger-tint);
+  --late-text: var(--danger-text);
+  --coral: var(--danger);
+  --coral-tint: var(--danger-tint);
+  --coral-text: var(--danger-text);
+  --on-coral: var(--on-danger);
 
-  /* tipografia — --font-display/--font-body/--font-mono são injetadas por next/font
-     (app/layout.tsx, via Fraunces/Inter/IBM_Plex_Mono de next/font/google), não
-     redeclaradas aqui, para não competir com o fallback real do next/font. */
+  /* tipografia — --font-display (Sora) e --font-body (Inter) vêm do next/font (app/layout.tsx).
+     Não há mais fonte mono: números usam tabular-nums. */
 
-  /* escala */
+  /* raios */
   --radius-sm: 8px;
   --radius-md: 12px;
-  --radius-lg: 20px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
   --sidebar-w: clamp(13.75rem, 4vw + 12rem, 15.5rem);
 
-  /* escala de espaçamento */
+  /* espaçamento */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -73,16 +81,21 @@
   --space-6: 32px;
   --space-7: 48px;
 
-  /* tipografia fluida */
-  --text-hero: clamp(1.65rem, 1.35rem + 1.3vw, 2.125rem);
-  --text-counter: clamp(2.4rem, 1.7rem + 3vw, 3.5rem);
-  --text-label: clamp(0.66rem, 0.62rem + 0.15vw, 0.72rem);
+  /* bordas e foco */
+  --border-width: 1px;
+  --focus-ring: 0 0 0 3px rgba(245, 197, 24, 0.35);
 
-  /* clientes — cor de identidade em gráficos/avatares (ciclo) */
-  --c1: #c9a463;
-  --c2: #dd9a46;
-  --c3: #a99be0;
-  --c4: #6fb3de;
+  /* escala tipográfica fluida (classes t-* abaixo) */
+  --text-display: clamp(2.25rem, 1.6rem + 3vw, 3.25rem);
+  --text-hero: clamp(1.75rem, 1.4rem + 1.4vw, 2.375rem);
+  --text-counter: clamp(2.25rem, 1.6rem + 2.8vw, 3.5rem);
+  --text-label: clamp(0.75rem, 0.72rem + 0.1vw, 0.8125rem);
+
+  /* clientes — cor de identidade em gráficos/avatares */
+  --c1: #f5c518;
+  --c2: #ff9f43;
+  --c3: #a99bff;
+  --c4: #5fb8ff;
 }
 
 /* Expõe os tokens acima como utilitários/tema do Tailwind v4 (config via CSS,
@@ -92,12 +105,14 @@
   --color-paper: var(--paper);
   --color-surface: var(--surface);
   --color-surface-sunken: var(--surface-sunken);
+  --color-surface-raised: var(--surface-raised);
 
   --color-ink: var(--ink);
   --color-ink-muted: var(--ink-muted);
   --color-ink-faint: var(--ink-faint);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
+  --color-line-control: var(--line-control);
 
   --color-brand: var(--brand);
   --color-brand-deep: var(--brand-deep);
@@ -112,6 +127,17 @@
   --color-coral-tint: var(--coral-tint);
   --color-coral-text: var(--coral-text);
   --color-on-coral: var(--on-coral);
+
+  --color-success: var(--success);
+  --color-success-tint: var(--success-tint);
+  --color-warning: var(--warning);
+  --color-warning-tint: var(--warning-tint);
+  --color-danger: var(--danger);
+  --color-danger-tint: var(--danger-tint);
+  --color-danger-text: var(--danger-text);
+  --color-on-danger: var(--on-danger);
+  --color-info: var(--info);
+  --color-info-tint: var(--info-tint);
 
   --color-ok: var(--ok);
   --color-ok-tint: var(--ok-tint);
@@ -128,10 +154,10 @@
 
   --font-display: var(--font-display);
   --font-body: var(--font-body);
-  --font-mono: var(--font-mono);
 
   /* --text-* cai no namespace de font-size do Tailwind v4 (gera as utilities
      text-hero/text-counter/text-label). */
+  --text-display: var(--text-display);
   --text-hero: var(--text-hero);
   --text-counter: var(--text-counter);
   --text-label: var(--text-label);
@@ -139,10 +165,170 @@
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
+  --radius-pill: var(--radius-pill);
 }
 
 body {
   background: var(--paper);
   color: var(--ink);
-  font-family: var(--font-body);
+  font-family: var(--font-body), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--brand);
+  color: var(--on-accent);
+}
+
+input,
+select,
+textarea {
+  accent-color: var(--brand);
+}
+
+/* Escala tipográfica e superfícies reutilizáveis. Ficam em @layer components: qualquer
+   utilitário Tailwind (text-*, font-*) ainda sobrescreve. */
+@layer components {
+  /* Sora pesada para títulos e números; toda `font-display` herda o peso e o ajuste. */
+  .font-display {
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .text-hero {
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  .text-counter {
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .t-display {
+    font-family: var(--font-display), system-ui, sans-serif;
+    font-size: var(--text-display);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.02;
+  }
+  .t-title {
+    font-family: var(--font-display), system-ui, sans-serif;
+    font-size: var(--text-hero);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  .t-subtitle {
+    font-family: var(--font-display), system-ui, sans-serif;
+    font-size: 1.125rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    line-height: 1.25;
+  }
+  .t-value {
+    font-family: var(--font-display), system-ui, sans-serif;
+    font-size: var(--text-counter);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .t-label {
+    font-size: var(--text-label);
+    font-weight: 600;
+    letter-spacing: 0.005em;
+    line-height: 1.3;
+  }
+  .t-helper {
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: var(--ink-muted);
+  }
+  /* acento raro: único lugar onde caixa alta + espaçamento largo ainda é permitido */
+  .t-kicker {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  /* palavra só com contorno amarelo (acento de marca, usar com moderação) */
+  .t-outline {
+    color: transparent;
+    -webkit-text-stroke: 1.5px var(--brand);
+  }
+
+  .card {
+    border-radius: var(--radius-lg);
+    border: var(--border-width) solid var(--line);
+    background: var(--surface);
+    box-shadow: var(--surface-raised-shadow);
+  }
+}
+
+/* ---- Movimento (curto, só transform/opacity) -------------------------------------------- */
+
+/* Feedback discreto: check "pop" ao concluir série / refeição / meta. */
+@keyframes tk-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.tk-pop { animation: tk-pop 320ms ease-out both; }
+
+/* Entrada suave de blocos (estados vazios, toasts, confirmações). */
+@keyframes tk-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.tk-fade { animation: tk-fade 200ms ease-out both; }
+
+/* Esqueleto: pulso de opacidade (sem layout). */
+.tk-skeleton { animation: tk-skeleton 1.4s ease-in-out infinite; }
+@keyframes tk-skeleton { 50% { opacity: 0.55; } }
+
+/* Modal (centro) e Drawer (lateral / base): <dialog> nativo; só a entrada é animada. */
+@keyframes tk-dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tk-drawer-in-x {
+  from { opacity: 0.6; transform: translateX(24px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tk-drawer-in-y {
+  from { opacity: 0.6; transform: translateY(24px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tk-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+
+dialog.tk-modal[open] { animation: tk-dialog-in 180ms ease-out both; }
+dialog.tk-drawer[open] { animation: tk-drawer-in-y 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@media (min-width: 40rem) {
+  dialog.tk-drawer[open] { animation-name: tk-drawer-in-x; }
+}
+dialog.tk-modal[open]::backdrop,
+dialog.tk-drawer[open]::backdrop { animation: tk-backdrop-in 180ms ease-out both; }
+
+/* Giro do indicador de carregamento (botão pendente). */
+.tk-spin { animation: tk-spin 800ms linear infinite; }
+@keyframes tk-spin { to { transform: rotate(360deg); } }
+
+/* Quem pede menos movimento não recebe animação nenhuma (spinner vira estático). */
+@media (prefers-reduced-motion: reduce) {
+  .tk-pop,
+  .tk-fade,
+  .tk-skeleton,
+  .tk-spin,
+  .animate-pulse,
+  dialog.tk-modal[open],
+  dialog.tk-drawer[open],
+  dialog[open]::backdrop { animation: none !important; }
+  * { scroll-behavior: auto !important; }
 }

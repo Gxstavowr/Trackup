@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { setSubscriptionStatusAction, type PagamentoActionState } from "./actions";
+import { buttonClass } from "@/components/ui/button";
 
 const initialState: PagamentoActionState = null;
 
@@ -28,7 +29,7 @@ export default function SubscriptionStatusControl({
         <button
           type="submit"
           disabled={pending}
-          className="min-h-11 rounded-md border border-line px-4 py-2 text-sm text-ink hover:border-brand disabled:opacity-60"
+          className={buttonClass({ variant: "secondary" })}
         >
           {pending ? "Reativando…" : "Reativar assinatura"}
         </button>
@@ -42,7 +43,7 @@ export default function SubscriptionStatusControl({
       <button
         type="button"
         onClick={() => setConfirming(true)}
-        className="min-h-11 rounded-md px-3 py-2 text-sm text-ink-muted hover:text-late-text"
+        className={buttonClass({ variant: "tertiary" })}
       >
         Cancelar assinatura
       </button>
@@ -61,14 +62,14 @@ export default function SubscriptionStatusControl({
         <button
           type="submit"
           disabled={pending}
-          className="min-h-11 rounded-md bg-late px-4 py-2 text-sm font-medium text-on-accent disabled:opacity-60"
+          className={buttonClass({ variant: "danger" })}
         >
           {pending ? "Cancelando…" : "Confirmar cancelamento"}
         </button>
         <button
           type="button"
           onClick={() => setConfirming(false)}
-          className="min-h-11 rounded-md border border-line px-4 py-2 text-sm text-ink"
+          className={buttonClass({ variant: "secondary" })}
         >
           Voltar
         </button>

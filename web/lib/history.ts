@@ -1,6 +1,8 @@
 import "server-only";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { getClient, type Client, type CheckinInstance, type CheckinInstanceStatus } from "@/lib/repository";
+import { computeWeekInfo, periodOfWeek } from "@/lib/checkin-week";
+import { timelineCheckinState, timelineWeekNumbers, type TimelineCheckinState } from "@/lib/history-weeks";
 
 /**
  * HISTÓRICO LONGITUDINAL DO ALUNO (item 16 do master TODO) — visão do COACH da evolução da
@@ -17,9 +19,12 @@ import { getClient, type Client, type CheckinInstance, type CheckinInstanceStatu
  * NUTRIÇÃO (`meal_logs`/`water_logs`, item 21): entram na timeline como um resumo por semana
  * (quantas refeições o aluno registrou e em quantos dias registrou água) — contagem simples de
  * atividade, não uma taxa de aderência (isso exigiria decidir o que "conta" como aderido, uma
- * regra de negócio nova; a contagem não julga, só mostra que o aluno usou a tela). Só aparece em
- * semanas que já existem na timeline por outro motivo (check-in, orientação, meta ou evento) —
- * registros de refeição/água fora de qualquer período de check-in não criam uma semana nova.
+ * regra de negócio nova; a contagem não julga, só mostra que o aluno usou a tela). Cada registro
+ * cai na semana cujo período o contém (o da instância de check-in ou, sem ela, o do calendário);
+ * registros fora das semanas da timeline não criam uma semana nova.
+ *
+ * SEMANAS: a timeline lista TODAS as semanas de 1 até a corrente (`timelineWeekNumbers`) — semana
+ * sem nenhum registro aparece como ausência ("Não enviado"), nunca some.
  *
  * LIMITAÇÃO CONHECIDA (metas): `goals` não tem uma tabela de histórico de alteração — cada linha
  * é a(s) meta(s) de UMA semana (client_id, week_number, metric_key), sem "editado em"/"valor
@@ -72,6 +77,14 @@ export type TimelineWeek = {
   periodStart: string;
   periodEnd: string;
   checkin: { status: CheckinInstanceStatus; submittedAt: string | null } | null;
+  /** Situação do check-in já resolvida para a tela (`timelineCheckinState`): semana passada sem
+   *  envio é "not_sent" — inclusive semana sem instância nenhuma. */
+  checkinState: TimelineCheckinState;
+  /** A semana corrente do aluno (a única em que "pendente" faz sentido). */
+  isCurrent: boolean;
+  /** Fotos e métricas registradas na semana (contagem; o detalhe fica na visão da semana). */
+  photosCount: number;
+  metricsCount: number;
   evaluation: { reviewedAt: string; reviewOpenedAt: string | null } | null;
   orientation: { text: string; focus: string | null; sentAt: string } | null;
   goals: TimelineGoal[];
@@ -89,7 +102,12 @@ export type StudentTimeline = {
   /** Real (`clients.start_date`), não um evento de `history_events` — marca o início do
    *  acompanhamento no fim da timeline. `null` se o aluno ainda não tem `start_date`. */
   joinedAt: string | null;
+  /** Semana corrente do aluno (`computeWeekInfo(start_date)`); `null` sem data de início. */
+  currentWeek: number | null;
 };
+
+/** Período de uma semana da timeline — o da instância de check-in ou, sem ela, o do calendário. */
+type WeekPeriod = Pick<CheckinInstance, "week_number" | "period_start" | "period_end" | "reviewed_at">;
 
 // ============================================================================
 // Internos
@@ -170,20 +188,20 @@ function dateOnlyUtc(iso: string): string {
  * 3) senão, `null` (evento fica em `unmatchedEvents`).
  */
 /** Amarra uma data (`log_date`, coluna `date`, já `AAAA-MM-DD` local do aluno — ver
- *  `upsertMealLog`/`upsertWaterLog`) ao período `[period_start, period_end]` da instância de
- *  check-in em que ela cai. Sem o fallback por proximidade de `matchEventWeek`: um registro de
+ *  `upsertMealLog`/`upsertWaterLog`) ao período `[period_start, period_end]` da semana em
+ *  que ela cai. Sem o fallback por proximidade de `matchEventWeek`: um registro de
  *  refeição/água fora de qualquer período conhecido simplesmente não conta em nenhuma semana. */
-function matchLogWeek(logDate: string, instances: CheckinInstance[]): number | null {
+function matchLogWeek(logDate: string, instances: WeekPeriod[]): number | null {
   const instance = instances.find((i) => i.period_start <= logDate && logDate <= i.period_end);
   return instance?.week_number ?? null;
 }
 
-/** Conta refeições e dias com água registrada por semana (só nas semanas que a instância de
- *  check-in já cobre — ver nota de escopo no cabeçalho do arquivo). */
+/** Conta refeições e dias com água registrada por semana (só nas semanas da timeline — ver
+ *  nota de escopo no cabeçalho do arquivo). */
 function countNutritionByWeek(
   mealLogDates: string[],
   waterLogDates: string[],
-  instances: CheckinInstance[]
+  instances: WeekPeriod[]
 ): Map<number, TimelineNutrition> {
   const byWeek = new Map<number, TimelineNutrition>();
   const get = (week: number) => {
@@ -205,7 +223,7 @@ function countNutritionByWeek(
   return byWeek;
 }
 
-function matchEventWeek(event: HistoryEventRow, instances: CheckinInstance[]): number | null {
+function matchEventWeek(event: HistoryEventRow, instances: WeekPeriod[]): number | null {
   const eventDay = dateOnlyUtc(event.event_date);
   const byPeriod = instances.find((i) => i.period_start <= eventDay && eventDay <= i.period_end);
   if (byPeriod) return byPeriod.week_number;
@@ -238,7 +256,8 @@ export async function getStudentTimeline(clientId: string): Promise<StudentTimel
 
   const supabase = await createSupabaseServerClient();
 
-  const [checkinsRes, orientationsRes, goalsRes, eventsRes, mealLogsRes, waterLogsRes] = await Promise.all([
+  const [checkinsRes, orientationsRes, goalsRes, eventsRes, mealLogsRes, waterLogsRes, photosRes, metricsRes] =
+    await Promise.all([
     supabase
       .from("checkin_instances")
       .select("*")
@@ -264,8 +283,10 @@ export async function getStudentTimeline(clientId: string): Promise<StudentTimel
       .order("event_date", { ascending: true }),
     supabase.from("meal_logs").select("log_date").eq("client_id", clientId),
     supabase.from("water_logs").select("log_date").eq("client_id", clientId),
+    supabase.from("photos").select("week_number").eq("client_id", clientId),
+    supabase.from("metrics").select("week_number").eq("client_id", clientId),
   ]);
-  for (const res of [checkinsRes, orientationsRes, goalsRes, eventsRes, mealLogsRes, waterLogsRes]) {
+  for (const res of [checkinsRes, orientationsRes, goalsRes, eventsRes, mealLogsRes, waterLogsRes, photosRes, metricsRes]) {
     if (res.error) {
       throw new Error(`Não foi possível carregar o histórico do aluno: ${res.error.message}`);
     }
@@ -275,10 +296,46 @@ export async function getStudentTimeline(clientId: string): Promise<StudentTimel
   const orientations = (orientationsRes.data ?? []) as OrientationRow[];
   const goals = (goalsRes.data ?? []) as GoalRow[];
   const events = ((eventsRes.data ?? []) as HistoryEventRow[]).filter((e) => !isMealMarkerNoise(e));
+  const countByWeek = (rows: { week_number: number }[]) => {
+    const counts = new Map<number, number>();
+    for (const r of rows) counts.set(r.week_number, (counts.get(r.week_number) ?? 0) + 1);
+    return counts;
+  };
+  const photosByWeek = countByWeek((photosRes.data ?? []) as { week_number: number }[]);
+  const metricsByWeek = countByWeek((metricsRes.data ?? []) as { week_number: number }[]);
+
+  const startDate = (client as Client).start_date;
+  const currentWeek = startDate ? computeWeekInfo(startDate).weekNumber : null;
+  const instanceByWeek = new Map(checkins.map((c) => [c.week_number, c]));
+
+  // Semanas da timeline: TODAS de 1 até a corrente (semana sem registro aparece como ausência —
+  // mesma régua do "Contexto histórico" da avaliação) + qualquer semana com dado fora disso.
+  const timelineWeeks = timelineWeekNumbers(
+    [
+      ...checkins.map((c) => c.week_number),
+      ...orientations.map((o) => o.week_number),
+      ...goals.map((g) => g.week_number),
+      ...photosByWeek.keys(),
+      ...metricsByWeek.keys(),
+    ],
+    currentWeek
+  );
+  // Período de cada semana: o da instância de check-in; sem ela, o do calendário (segunda a
+  // domingo a partir do início) — assim eventos e registros de nutrição de uma semana sem
+  // check-in também caem na semana certa.
+  const periods: WeekPeriod[] = timelineWeeks.flatMap((w): WeekPeriod[] => {
+    const instance = instanceByWeek.get(w);
+    if (instance) return [instance];
+    if (!startDate) return [];
+    const { periodStart, periodEnd } = periodOfWeek(startDate, w);
+    return [{ week_number: w, period_start: periodStart, period_end: periodEnd, reviewed_at: null }];
+  });
+  const periodByWeek = new Map(periods.map((p) => [p.week_number, p]));
+
   const nutritionByWeek = countNutritionByWeek(
     ((mealLogsRes.data ?? []) as { log_date: string }[]).map((r) => r.log_date),
     ((waterLogsRes.data ?? []) as { log_date: string }[]).map((r) => r.log_date),
-    checkins
+    periods
   );
 
   // Metas agrupadas por semana (ascendente, pra derivar mudança) e mapa de mudança por id.
@@ -297,7 +354,7 @@ export async function getStudentTimeline(clientId: string): Promise<StudentTimel
       description: e.description,
       date: e.event_date,
     };
-    const week = matchEventWeek(e, checkins);
+    const week = matchEventWeek(e, periods);
     if (week == null) {
       unmatchedEvents.push(asTimelineEvent);
     } else {
@@ -307,26 +364,23 @@ export async function getStudentTimeline(clientId: string): Promise<StudentTimel
 
   const orientationByWeek = new Map(orientations.map((o) => [o.week_number, o]));
 
-  // União de todas as semanas com QUALQUER sinal (check-in, orientação, meta ou evento).
-  const weekNumbers = new Set<number>([
-    ...checkins.map((c) => c.week_number),
-    ...orientations.map((o) => o.week_number),
-    ...goalsByWeekAsc.keys(),
-    ...eventsByWeek.keys(),
-  ]);
-
-  const weeks: TimelineWeek[] = [...weekNumbers]
-    .sort((a, b) => b - a) // mais recente primeiro
+  // Eventos só caem em semanas de `periods`, que estão todas em `timelineWeeks`.
+  const weeks: TimelineWeek[] = timelineWeeks // mais recente primeiro
     .map((weekNumber) => {
-      const instance = checkins.find((c) => c.week_number === weekNumber) ?? null;
+      const instance = instanceByWeek.get(weekNumber) ?? null;
+      const period = periodByWeek.get(weekNumber) ?? null;
       const orientation = orientationByWeek.get(weekNumber) ?? null;
       const weekGoals = goalsByWeekAsc.get(weekNumber) ?? [];
 
       return {
         weekNumber,
-        periodStart: instance?.period_start ?? "",
-        periodEnd: instance?.period_end ?? "",
+        periodStart: period?.period_start ?? "",
+        periodEnd: period?.period_end ?? "",
         checkin: instance ? { status: instance.status, submittedAt: instance.submitted_at } : null,
+        checkinState: timelineCheckinState(instance?.status ?? null, weekNumber, currentWeek),
+        isCurrent: weekNumber === currentWeek,
+        photosCount: photosByWeek.get(weekNumber) ?? 0,
+        metricsCount: metricsByWeek.get(weekNumber) ?? 0,
         evaluation:
           instance?.status === "reviewed" && instance.reviewed_at
             ? { reviewedAt: instance.reviewed_at, reviewOpenedAt: instance.review_opened_at }
@@ -357,6 +411,7 @@ export async function getStudentTimeline(clientId: string): Promise<StudentTimel
     clientName: (client as Client).name,
     weeks,
     unmatchedEvents,
-    joinedAt: (client as Client).start_date,
+    joinedAt: startDate,
+    currentWeek,
   };
 }

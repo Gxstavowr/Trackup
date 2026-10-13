@@ -8,6 +8,8 @@ import { evaluationHref, formatDateOnlyShort, formatDateTime } from "../../avali
 import { TrackingIcon, WalletIcon } from "../icons";
 import { PaymentStatusBadge, TrackingStatusBadge } from "../status-badges";
 import MetricSettingsPanel from "./metric-settings-panel";
+import GenderSelect from "./gender-select";
+import { normalizeGender } from "@/lib/checkin-catalog";
 import ObservedPatterns from "./observed-patterns";
 import { getStudentContext } from "./student-context";
 
@@ -42,10 +44,10 @@ function describeWeightHistory(p: { first: number; latest: number; weeks: number
   return `Último peso registrado · começou em ${formatKg(p.first)} (${change} em ${p.weeks} registros)`;
 }
 
-const PANEL = "flex min-w-0 flex-col gap-3 rounded-lg border border-line bg-surface p-4";
+const PANEL = "flex min-w-0 flex-col gap-3 card p-4";
 const PANEL_TITLE =
-  "flex items-center gap-1.5 font-mono text-label uppercase tracking-widest text-ink-faint";
-const FIELD_LABEL = "font-mono text-label uppercase tracking-wide text-ink-faint";
+  "flex items-center gap-1.5 t-label text-ink-faint";
+const FIELD_LABEL = "t-label text-ink-faint";
 
 /**
  * Resumo do aluno (`/coach/alunos/[id]`) — primeira aba do contexto do aluno. Só dado que já
@@ -155,6 +157,21 @@ export default async function StudentSummaryPage({
                   {formatKg(weightProgress.latest)}
                 </span>
                 <span className="text-sm text-ink-muted">{describeWeightHistory(weightProgress)}</span>
+                <div className="mt-auto flex flex-wrap gap-x-4">
+                  {[
+                    ["evolucao", "Ver evolução"],
+                    ["fotos", "Fotos"],
+                    ["historico", "Histórico"],
+                  ].map(([seg, label]) => (
+                    <Link
+                      key={seg}
+                      href={`/coach/alunos/${id}/${seg}`}
+                      className="inline-flex min-h-11 min-w-11 items-center justify-center text-sm text-brand hover:underline"
+                    >
+                      {label}
+                    </Link>
+                  ))}
+                </div>
               </>
             ) : (
               <EmptyText>
@@ -205,6 +222,12 @@ export default async function StudentSummaryPage({
             value={client.start_date ? formatDateOnly(client.start_date) : "ainda não iniciou"}
           />
         </dl>
+        <div className="card p-4">
+          <GenderSelect
+            clientId={id}
+            initial={{ female: "feminino", male: "masculino", unknown: "" }[normalizeGender(client.gender)]}
+          />
+        </div>
       </section>
     </div>
   );

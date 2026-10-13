@@ -1,13 +1,12 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { saveEvaluationAction, type EvaluationActionState } from "./actions";
 import CycleDoneBanner from "./cycle-done-banner";
+import { textareaClass } from "@/components/ui/field";
+import { buttonClass } from "@/components/ui/button";
 
 const initialState: EvaluationActionState = null;
-
-const FIELD =
-  "min-h-11 w-full rounded-md border border-line bg-surface-sunken px-3 py-2 text-ink outline-none placeholder:text-ink-faint focus:border-brand";
 
 type FormProps = {
   clientId: string;
@@ -40,7 +39,7 @@ export default function EvaluationForm(props: FormProps) {
     state?.success === "sent" && state.week !== undefined && state.week !== weekNumber ? state.week : null;
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
       {sentWeek !== null && (
         <CycleDoneBanner key={sentWeek}>
           Orientação da semana {sentWeek} enviada a {clientName}: o ciclo da semana {sentWeek} está
@@ -61,7 +60,7 @@ export default function EvaluationForm(props: FormProps) {
 /**
  * Formulário em si.
  *  - "Salvar rascunho": grava `orientations` com `is_draft = true` (uma linha por aluno+semana).
- *  - "Concluir e enviar orientação": pede CONFIRMAÇÃO explícita (painel inline, acessível e
+ *  - "Finalizar avaliação": pede CONFIRMAÇÃO explícita (painel inline, acessível e
  *    testável — sem `window.confirm`) antes de enviar; enviar conclui o ciclo e notifica o aluno.
  * Campos controlados (`useState`): o React 19 reseta formulários não controlados ao fim de uma
  * action, o que apagaria o texto do coach depois de "Salvar rascunho".
@@ -85,6 +84,11 @@ function EvaluationFields({
   const [note, setNote] = useState(initialNote);
   const [confirming, setConfirming] = useState(false);
   const [intent, setIntent] = useState<"draft" | "send" | null>(null);
+  const confirmRef = useRef<HTMLDivElement>(null);
+  // O painel de confirmação cresce dentro de um card com rolagem própria: traz-o inteiro para a vista.
+  useEffect(() => {
+    if (confirming) confirmRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [confirming]);
 
   // Só o resultado desta semana vale aqui (erro/rascunho de outra semana não é repetido).
   const state = actionState?.week === weekNumber ? actionState : null;
@@ -92,38 +96,36 @@ function EvaluationFields({
   const firstName = clientName.trim().split(/\s+/)[0] ?? clientName;
 
   return (
-    <form action={action} className="flex flex-col gap-5">
+    <form action={action} className="flex flex-col gap-4">
       <input type="hidden" name="clientId" value={clientId} />
       {/* A semana que o coach está vendo: o servidor recusa gravar se a fila já estiver em outra. */}
       <input type="hidden" name="weekNumber" value={weekNumber} />
 
       <label className="flex flex-col gap-1.5 text-sm">
-        <span className="text-ink">Nota do coach</span>
-        <span className="text-xs text-ink-faint">
-          Privada: só você vê. Use para lembrar o que observou nesta avaliação.
+        <span className="font-semibold text-ink">Orientação para {firstName}</span>
+        <span className="text-xs text-ink-muted">
+          O aluno vê este texto no portal quando você finalizar a avaliação.
         </span>
+        <textarea
+          name="text"
+          rows={7}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          className={textareaClass}
+          placeholder="O que manter, o que ajustar e o foco para a próxima semana."
+        />
+      </label>
+
+      <label className="flex flex-col gap-1.5 text-sm">
+        <span className="font-semibold text-ink">Nota do coach</span>
+        <span className="text-xs text-ink-muted">Privada: só você vê. Registre o que observou nesta avaliação.</span>
         <textarea
           name="coachNote"
           rows={3}
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          className={FIELD}
-          placeholder="Ex.: peso estável, sono ainda abaixo do ideal…"
-        />
-      </label>
-
-      <label className="flex flex-col gap-1.5 text-sm">
-        <span className="text-ink">Orientação para {firstName}</span>
-        <span className="text-xs text-ink-faint">
-          O aluno vê este texto no portal quando você concluir e enviar.
-        </span>
-        <textarea
-          name="text"
-          rows={8}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          className={FIELD}
-          placeholder="O que manter, o que ajustar e o foco para a próxima semana."
+          className={textareaClass}
+          placeholder="Ex.: pontos para conferir na próxima conversa…"
         />
       </label>
 
@@ -138,7 +140,7 @@ function EvaluationFields({
       {state?.success === "draft" && !pending && (
         <p
           role="status"
-          className="rounded-md border border-brand/30 bg-brand-tint px-3 py-2 text-sm text-brand"
+          className="tk-fade rounded-md border border-brand/30 bg-brand-tint px-3 py-2 text-sm text-brand"
         >
           Rascunho salvo{state.savedAt ? ` às ${state.savedAt}` : ""}. Você pode sair e continuar
           depois — o aluno ainda não vê nada.
@@ -146,14 +148,14 @@ function EvaluationFields({
       )}
 
       {!confirming ? (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-2">
           <button
             type="button"
             disabled={pending || empty}
             onClick={() => setConfirming(true)}
-            className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            className={buttonClass({ variant: "primary", size: "lg", width: "full" })}
           >
-            Concluir e enviar orientação
+            Finalizar avaliação
           </button>
           <button
             type="submit"
@@ -161,7 +163,7 @@ function EvaluationFields({
             value="draft"
             disabled={pending}
             onClick={() => setIntent("draft")}
-            className="inline-flex min-h-11 w-full items-center justify-center rounded-md border border-line px-5 py-2.5 text-sm font-medium text-ink transition-colors hover:border-line-strong disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+            className={buttonClass({ variant: "secondary", width: "full" })}
           >
             {pending && intent === "draft"
               ? "Salvando…"
@@ -169,29 +171,35 @@ function EvaluationFields({
                 ? "Atualizar rascunho"
                 : "Salvar rascunho"}
           </button>
+          {empty && (
+            <p className="text-xs text-ink-faint">
+              Escreva a orientação para poder finalizar. O rascunho pode ser salvo a qualquer momento.
+            </p>
+          )}
         </div>
       ) : (
         <div
+          ref={confirmRef}
           role="group"
           aria-label="Confirmar envio da orientação"
           className="flex flex-col gap-3 rounded-lg border border-brand/40 bg-brand-tint p-4"
         >
-          <p className="font-medium text-ink">
-            Enviar a orientação da semana {weekNumber} para {firstName}?
+          <p className="font-semibold text-ink">
+            Finalizar a avaliação da semana {weekNumber} e enviar a orientação para {firstName}?
           </p>
           <p className="text-sm text-ink-muted">
             {firstName} vai receber uma notificação e ver a orientação no portal. A avaliação da semana{" "}
             {weekNumber} será concluída e a orientação não poderá mais ser editada. A nota do coach
             continua privada.
           </p>
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-2">
             <button
               type="submit"
               name="intent"
               value="send"
               disabled={pending}
               onClick={() => setIntent("send")}
-              className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+              className={buttonClass({ variant: "primary", size: "lg", width: "full" })}
             >
               {pending && intent === "send" ? "Enviando…" : "Confirmar e enviar"}
             </button>
@@ -199,19 +207,12 @@ function EvaluationFields({
               type="button"
               disabled={pending}
               onClick={() => setConfirming(false)}
-              className="inline-flex min-h-11 w-full items-center justify-center rounded-md border border-line px-5 py-2.5 text-sm font-medium text-ink transition-colors hover:border-line-strong disabled:opacity-60 sm:w-auto"
+              className={buttonClass({ variant: "secondary", width: "full" })}
             >
               Voltar e revisar
             </button>
           </div>
         </div>
-      )}
-
-      {empty && !confirming && (
-        <p className="text-xs text-ink-faint">
-          Escreva a orientação para poder concluir e enviar. O rascunho pode ser salvo a qualquer
-          momento.
-        </p>
       )}
     </form>
   );

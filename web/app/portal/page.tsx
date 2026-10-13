@@ -5,53 +5,69 @@ import {
   getActiveNutritionPlanForClient,
   getActiveWorkoutForClient,
   getCurrentCheckin,
+  getCompletedWorkoutDaysForWeek,
+  getMealLogsForDate,
+  getOpenWorkoutSession,
   getWeightProgress,
   getWorkoutLogsForWeek,
 } from "@/lib/repository";
 import { getMyLatestSentOrientation, type SentOrientation } from "@/lib/evaluations";
 import { getEffectiveClientMetrics, isWeightTracked } from "@/lib/metrics-settings";
+import { mealKcal, formatKcalSum } from "@/lib/meal-kcal";
+import type { ClockLogStatus } from "@/lib/meal-clock";
 import {
   checkinWindow,
   formatLongDate,
   getSaoPauloClock,
   greetingFor,
   isTodaySP,
-  pickNextMeal,
   pickNextWorkoutDay,
+  pickWorkoutCardMode,
+  resolveCompletedDayIds,
+  todayDateSP,
 } from "@/lib/portal-today";
-import { BUTTON_PRIMARY, CARD, ICONS } from "./portal-ui";
+import Icon from "@/components/ui/icon";
+import { buttonClass } from "@/components/ui/button";
+import { CARD, ICONS } from "./portal-ui";
 import { requireClient } from "./require-client";
+import ExpandableText from "./expandable-text";
+import { MealClockProvider, NextMealCard, type NextMealDetail } from "./meal-clock";
 
 /**
- * Home do aluno (item 24) — responde UMA pergunta: "o que eu preciso fazer hoje?". Ordem da tela:
- * saudação + data + foco -> UMA ação principal (hero) -> mensagem do coach -> o resto do dia
- * (linhas compactas) -> progresso da semana. Sem KPIs soltos, sem gráficos.
+ * Home do aluno (V3 tarefa 8) — responde "o que eu preciso fazer hoje?" em três prioridades:
  *
- * Prioridade da ação principal: check-in (se a janela está aberta e ele ainda não foi enviado)
- * > treino de hoje > próxima refeição (só se ainda há refeição hoje). Nenhuma das três
- * pendente -> "Tudo em dia" (sem botão) SE o coach já configurou algo; se NENHUM item está
- * configurado (sem plano, sem treino, sem perguntas de check-in), "Seu coach está preparando
- * seu plano" — nunca "tudo em dia" para quem simplesmente ainda não tem nada.
+ *  1. AÇÃO IMPORTANTE AGORA: o card amarelo do check-in quando a janela está aberta e ele não
+ *     foi enviado (ou a faixa "Enviado — seu coach está avaliando").
+ *  2. AGENDA DE HOJE: treino de hoje (próximo dia da sequência sem sessão concluída na semana) e
+ *     próxima refeição com horário/contagem AO VIVO (`NextMealCard`, relógio compartilhado com a
+ *     Nutrição — `app/portal/meal-clock.tsx` + `lib/meal-clock.ts`). Um botão por bloco.
+ *  3. MENSAGEM DO COACH + progresso compacto (link para /portal/progresso).
  *
- * O check-in em si mora em `/portal/checkin` (aba própria); esta tela só mostra o estado e leva
- * até lá respeitando a janela (`checkinWindow`: sex/sáb/dom aberto, quinta lembrete, seg–qua
- * fechado).
+ * Nada publicado pelo coach -> "Seu coach está preparando seu plano" no lugar da agenda.
+ * O check-in mora em `/portal/checkin` (sem aba própria), respeitando a janela
+ * (`checkinWindow`: sex/sáb/dom aberto, quinta lembrete, seg–qua fechado).
  */
 
 type Tone = "action" | "ok" | "warn" | "muted";
+type Accent = "brand" | "mint" | "orange";
 
 type TodayItem = {
-  key: "checkin" | "treino" | "nutricao";
+  key: "checkin" | "treino";
   eyebrow: string;
   title: string;
   detail: string;
+  /** Rótulos curtos (ex.: "6 exercícios"). */
+  chips: string[];
   href: string;
   cta: string;
   tone: Tone;
-  /** Pode virar a ação principal do dia. */
+  accent: Accent;
+  /** Pede uma ação do aluno agora. */
   actionable: boolean;
   /** O coach já publicou/configurou o que esse item precisa (plano, perguntas...). */
   configured: boolean;
+  /** Aparece como linha compacta quando não é a ação principal. */
+  listed: boolean;
   icon: ReactNode;
 };
 
@@ -62,84 +78,110 @@ export default async function PortalHomePage() {
   const clock = getSaoPauloClock(now);
   const week = client.start_date ? computeWeekInfo(client.start_date, now) : null;
 
-  const [checkin, orientation, workout, nutrition, logs, weight, metrics] = await Promise.all([
+  const [checkin, orientation, workout, nutrition, logs, doneDays, weight, metrics, mealLogsToday, openSession] = await Promise.all([
     getCurrentCheckin(client.id),
     getMyLatestSentOrientation(),
     getActiveWorkoutForClient(client.id),
     getActiveNutritionPlanForClient(client.id),
     week ? getWorkoutLogsForWeek(client.id, week.weekNumber) : Promise.resolve([]),
+    week ? getCompletedWorkoutDaysForWeek(client.id, week.weekNumber) : Promise.resolve([]),
     getWeightProgress(client.id),
     getEffectiveClientMetrics(client.id),
+    getMealLogsForDate(client.id, todayDateSP(now)),
+    // Mesma fonte de `/portal/treino`: com sessão aberta, a Home oferece "Continuar treino".
+    getOpenWorkoutSession(client.id),
   ]);
   // Item 17: se o coach parou de acompanhar peso pra ESTE aluno, a Home não mostra nem o campo
   // vazio (sem linha em client_metric_settings = continua mostrando, igual sempre mostrou).
   const weightForHome = isWeightTracked(metrics) ? weight : null;
+  // Sessões de uma versão anterior do plano (republicado no meio da semana) continuam contando.
+  const doneDayIds = resolveCompletedDayIds(workout?.days ?? [], doneDays);
 
-  const items: TodayItem[] = [
-    buildCheckinItem(checkin, checkinWindow(now)),
-    buildWorkoutItem(workout, logs, now),
-    buildMealItem(nutrition, clock.minutes),
-  ];
-  const primary = items.find((item) => item.actionable) ?? null;
-  const rest = items.filter((item) => item !== primary);
-  // Nada publicado/iniciado pelo coach em NENHUM item: não dá pra dizer "tudo em dia".
-  const nothingConfigured = items.every((item) => !item.configured);
+  const checkinItem = buildCheckinItem(checkin, checkinWindow(now));
+  const workoutItem = buildWorkoutItem(workout, logs, doneDayIds, openSession, now);
+  const hasMeals = !!nutrition && nutrition.meals.length > 0;
+  const checkinHero = checkinItem.actionable;
+  const checkinSent = checkin?.instance.status === "submitted";
+  // Nada publicado/iniciado pelo coach em NENHUM item: não dá pra mostrar agenda vazia.
+  const nothingConfigured = !checkinItem.configured && !workoutItem.configured && !hasMeals;
+
+  // Relógio de refeições: só dados serializáveis vão para o cliente.
+  const clockMeals = hasMeals
+    ? nutrition.meals.map((m) => ({ id: m.id, name: m.name, time: m.time, day_of_week: m.day_of_week }))
+    : [];
+  const mealStatuses: Record<string, ClockLogStatus> = {};
+  for (const log of mealLogsToday) if (log.meal_id) mealStatuses[log.meal_id] = log.status;
+  const mealDetails: Record<string, NextMealDetail> = {};
+  if (hasMeals) {
+    for (const m of nutrition.meals) {
+      const kcal = mealKcal(m);
+      mealDetails[m.id] = { foods: m.items.length, kcal: m.items.length > 0 && kcal.kcal != null ? formatKcalSum(kcal) : null };
+    }
+  }
 
   const firstName = client.name.trim().split(/\s+/)[0] || client.name;
   const focus = orientation?.focus?.trim() || client.objective?.trim() || null;
 
-  const workoutProgress = workout
-    ? pickNextWorkoutDay(workout.days, new Set(logs.map((l) => l.exercise_id)))
-    : null;
+  const workoutProgress = workout ? pickNextWorkoutDay(workout.days, doneDayIds) : null;
 
   return (
     <>
-      <header className="flex flex-col gap-1.5">
-        <span className="font-mono text-label uppercase tracking-widest text-ink-faint">
-          {formatLongDate(now)}
-        </span>
+      <header className="flex flex-col gap-2">
+        <span className="t-label text-ink-faint first-letter:uppercase">{formatLongDate(now)}</span>
         <h1 className="break-words font-display text-hero text-ink">
-          {greetingFor(clock.hour)}, {firstName}
+          {greetingFor(clock.hour)}, <span className="text-brand">{firstName}</span>
         </h1>
         {focus && (
-          <p className="min-w-0 break-words text-sm text-ink-muted">
-            <span className="font-mono text-label uppercase tracking-widest text-ink-faint">
-              Foco atual
+          <p className="inline-flex min-w-0 max-w-full items-start gap-2 self-start rounded-md border border-line bg-surface px-3 py-2 text-sm">
+            <span className="mt-0.5 shrink-0 text-brand" aria-hidden>
+              <Icon name="tracking" size={16} />
             </span>
-            <span className="mt-0.5 block break-words text-brand">{focus}</span>
+            <span className="min-w-0 break-words text-ink-muted">
+              <span className="font-semibold text-ink">Foco: </span>
+              {focus}
+            </span>
           </p>
         )}
       </header>
 
-      {primary ? (
-        <PrimaryCard item={primary} />
-      ) : nothingConfigured ? (
+      {/* 1. Ação importante agora */}
+      {checkinSent && checkin && <SentStrip weekNumber={checkin.instance.week_number} />}
+      {checkinHero && <CheckinHero item={checkinItem} />}
+
+      {/* 2. Agenda de hoje */}
+      {nothingConfigured ? (
         <PreparingCard />
       ) : (
-        <AllDoneCard />
-      )}
-
-      {orientation && <CoachMessage orientation={orientation} />}
-
-      {rest.length > 0 && (
-        <section aria-label="O resto do seu dia" className="flex flex-col gap-2.5">
-          <h2 className="font-mono text-label uppercase tracking-widest text-ink-faint">
-            {primary ? "Também hoje" : "Seu dia"}
-          </h2>
-          <ul className={`${CARD} divide-y divide-line overflow-hidden`}>
-            {rest.map((item) => (
-              <li key={item.key}>
-                <TodayRow item={item} />
-              </li>
-            ))}
-          </ul>
+        <section aria-label="Sua agenda de hoje" className="flex flex-col gap-3">
+          <h2 className="t-label text-ink-faint">Hoje</h2>
+          <WorkoutCard item={workoutItem} primary={!checkinHero} />
+          {hasMeals ? (
+            <MealClockProvider meals={clockMeals} statuses={mealStatuses} initialNowMs={now.getTime()}>
+              <NextMealCard details={mealDetails} />
+            </MealClockProvider>
+          ) : (
+            <MutedAgendaCard
+              href="/portal/nutricao"
+              icon={ICONS.nutrition}
+              eyebrow="Nutrição"
+              title="Ainda sem plano alimentar"
+              detail={
+                nutrition
+                  ? "O plano publicado ainda não tem refeições."
+                  : "Seu coach ainda não publicou um plano de nutrição."
+              }
+            />
+          )}
+          {!checkinHero && checkinItem.listed && <TodayRow item={checkinItem} />}
         </section>
       )}
 
+      {/* 3. Coach + progresso */}
+      {orientation && <CoachMessage orientation={orientation} />}
+
       {week && (
-        <WeekProgress
+        <ProgressSummary
           weekNumber={week.weekNumber}
-          startDate={client.start_date}
           workoutProgress={workoutProgress}
           weight={weightForHome}
         />
@@ -161,6 +203,8 @@ function buildCheckinItem(
     eyebrow: "Check-in",
     href: "/portal/checkin",
     icon: ICONS.checkin,
+    chips: [] as string[],
+    accent: "brand" as Accent,
   };
 
   if (!checkin) {
@@ -172,6 +216,7 @@ function buildCheckinItem(
       tone: "muted",
       actionable: false,
       configured: false,
+      listed: false,
     };
   }
 
@@ -180,23 +225,28 @@ function buildCheckinItem(
   if (instance.status === "reviewed") {
     return {
       ...base,
+      accent: "mint",
       title: `Semana ${instance.week_number} concluída`,
       detail: "Seu coach avaliou e enviou a orientação.",
       cta: "Ver check-in",
       tone: "ok",
       actionable: false,
       configured: true,
+      listed: true,
     };
   }
   if (instance.status === "submitted") {
+    // A faixa "Enviado — seu coach está avaliando" (SentStrip) já cobre esse estado.
     return {
       ...base,
+      accent: "mint",
       title: "Enviado",
-      detail: "Aguardando a avaliação do seu coach.",
+      detail: "Seu coach está avaliando.",
       cta: "Ver check-in",
       tone: "ok",
       actionable: false,
       configured: true,
+      listed: false,
     };
   }
   if (checkin.questions.length === 0) {
@@ -208,6 +258,7 @@ function buildCheckinItem(
       tone: "muted",
       actionable: false,
       configured: false,
+      listed: false,
     };
   }
 
@@ -217,21 +268,25 @@ function buildCheckinItem(
       eyebrow: "Check-in aberto",
       title: `Check-in da semana ${instance.week_number}`,
       detail: `Responda até ${win.closesLabel}. É por ele que seu coach ajusta o seu plano.`,
+      chips: ["Peso e fotos", "Alimentação", "Treino", "Bem-estar"],
       cta: "Fazer check-in",
       tone: "action",
       actionable: true,
       configured: true,
+      listed: true,
     };
   }
   if (win.state === "reminder") {
     return {
       ...base,
+      accent: "orange",
       title: "Abre amanhã",
       detail: `Reserve um momento amanhã para o check-in da semana ${instance.week_number}.`,
       cta: "Ver check-in",
       tone: "warn",
       actionable: false,
       configured: true,
+      listed: true,
     };
   }
   return {
@@ -242,18 +297,24 @@ function buildCheckinItem(
     tone: "muted",
     actionable: false,
     configured: true,
+    // Fechado até sexta: sem indicador na Home (menos ruído), o hero cuida do que fazer hoje.
+    listed: false,
   };
 }
 
 function buildWorkoutItem(
   plan: Awaited<ReturnType<typeof getActiveWorkoutForClient>>,
   logs: { exercise_id: string; completed_at: string }[],
+  doneDayIds: Set<string>,
+  openSession: Awaited<ReturnType<typeof getOpenWorkoutSession>>,
   now: Date
 ): TodayItem {
   const base = {
     key: "treino" as const,
     href: "/portal/treino",
     icon: ICONS.workout,
+    chips: [] as string[],
+    accent: "brand" as Accent,
   };
 
   if (!plan || plan.days.every((d) => d.exercises.length === 0)) {
@@ -268,18 +329,35 @@ function buildWorkoutItem(
       tone: "muted",
       actionable: false,
       configured: false,
+      listed: true,
     };
   }
 
-  const { next, doneCount, totalCount } = pickNextWorkoutDay(
-    plan.days,
-    new Set(logs.map((l) => l.exercise_id))
-  );
+  const { next, doneCount, totalCount } = pickNextWorkoutDay(plan.days, doneDayIds);
   const trainedToday = logs.some((l) => isTodaySP(l.completed_at, now));
+  const mode = pickWorkoutCardMode({ hasOpenSession: !!openSession, trainedToday, hasNext: !!next });
 
-  if (trainedToday) {
+  if (mode === "continue" && openSession) {
+    // O dia da sessão pode ser de uma versão anterior do plano (republicado no meio): sem nome
+    // no plano ativo, cai num título genérico — `/portal/treino` resolve o dia pelo `day_id`.
+    const day = plan.days.find((d) => d.id === openSession.day_id);
+    const paused = openSession.status === "paused";
     return {
       ...base,
+      eyebrow: paused ? "Treino pausado" : "Treino em andamento",
+      title: day?.name ?? "Treino em andamento",
+      detail: paused ? "Você pausou este treino. Continue de onde parou." : "Continue de onde parou.",
+      cta: "Continuar treino",
+      tone: "action",
+      actionable: true,
+      configured: true,
+      listed: true,
+    };
+  }
+  if (mode === "done_today") {
+    return {
+      ...base,
+      accent: "mint",
       eyebrow: "Treino de hoje",
       title: "Treino de hoje concluído",
       detail: next ? `Próximo da sequência: ${next.name}.` : "Você completou os treinos da semana.",
@@ -287,11 +365,13 @@ function buildWorkoutItem(
       tone: "ok",
       actionable: false,
       configured: true,
+      listed: true,
     };
   }
-  if (!next) {
+  if (mode === "week_done" || !next) {
     return {
       ...base,
+      accent: "mint",
       eyebrow: "Treino",
       title: "Treinos da semana concluídos",
       detail: `${doneCount} de ${totalCount} ${totalCount === 1 ? "treino" : "treinos"}. Bom trabalho.`,
@@ -299,95 +379,26 @@ function buildWorkoutItem(
       tone: "ok",
       actionable: false,
       configured: true,
+      listed: true,
     };
   }
 
   const exercises = next.exercises.length;
+  const chips = [
+    `${exercises} ${exercises === 1 ? "exercício" : "exercícios"}`,
+    next.duration_min ? `~${next.duration_min} min` : null,
+  ].filter(Boolean) as string[];
   return {
     ...base,
     eyebrow: "Treino de hoje",
     title: next.name,
-    detail: [
-      `${exercises} ${exercises === 1 ? "exercício" : "exercícios"}`,
-      next.duration_min ? `cerca de ${next.duration_min} min` : null,
-    ]
-      .filter(Boolean)
-      .join(" · "),
-    cta: "Ver treino",
+    detail: chips.join(" · "),
+    chips,
+    cta: "Começar treino",
     tone: "action",
     actionable: true,
     configured: true,
-  };
-}
-
-function buildMealItem(
-  plan: Awaited<ReturnType<typeof getActiveNutritionPlanForClient>>,
-  nowMinutes: number
-): TodayItem {
-  const base = {
-    key: "nutricao" as const,
-    href: "/portal/nutricao",
-    icon: ICONS.nutrition,
-  };
-
-  if (!plan || plan.meals.length === 0) {
-    return {
-      ...base,
-      eyebrow: "Nutrição",
-      title: "Ainda sem plano alimentar",
-      detail: plan
-        ? "O plano publicado ainda não tem refeições."
-        : "Seu coach ainda não publicou um plano de nutrição.",
-      cta: "Ver nutrição",
-      tone: "muted",
-      actionable: false,
-      configured: false,
-    };
-  }
-
-  const next = pickNextMeal(plan.meals, nowMinutes);
-  if (!next) {
-    return {
-      ...base,
-      eyebrow: "Nutrição",
-      title: "Sem refeições",
-      detail: "O plano ainda não tem refeições.",
-      cta: "Ver nutrição",
-      tone: "muted",
-      actionable: false,
-      configured: false,
-    };
-  }
-
-  const time = next.meal.time ? next.meal.time.slice(0, 5) : null;
-  const foods = next.meal.items.length;
-  const foodsLabel = foods > 0 ? `${foods} ${foods === 1 ? "alimento" : "alimentos"}` : null;
-
-  if (next.when === "today") {
-    return {
-      ...base,
-      eyebrow: "Próxima refeição",
-      title: next.meal.name,
-      detail: [time, foodsLabel].filter(Boolean).join(" · "),
-      cta: "Ver refeição",
-      tone: "action",
-      actionable: true,
-      configured: true,
-    };
-  }
-
-  return {
-    ...base,
-    eyebrow: "Próxima refeição",
-    title: next.meal.name,
-    detail:
-      next.when === "tomorrow"
-        ? `Amanhã às ${time}. Sem mais refeições hoje.`
-        : [foodsLabel, "Sem horário definido"].filter(Boolean).join(" · "),
-    cta: "Ver refeição",
-    tone: "muted",
-    actionable: false,
-    configured: true,
+    listed: true,
   };
 }
 
@@ -395,27 +406,137 @@ function buildMealItem(
 // Componentes
 // ----------------------------------------------------------------------------
 
-/** A ação principal do dia — o único botão de destaque da tela. */
-function PrimaryCard({ item }: { item: TodayItem }) {
+/** Faixa de status quando o check-in da semana já foi enviado: a próxima ação é do coach. */
+function SentStrip({ weekNumber }: { weekNumber: number }) {
+  return (
+    <Link
+      href="/portal/checkin"
+      className="flex min-h-16 items-center gap-3.5 rounded-lg border border-success/30 bg-success-tint px-4 py-3 transition-colors hover:border-success/60"
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success text-on-accent">
+        <Icon name="check" size={20} />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="break-words font-display text-base text-ink">
+          Enviado — seu coach está avaliando
+        </span>
+        <span className="text-xs text-ink-muted">Check-in da semana {weekNumber}. Você será avisado.</span>
+      </span>
+      <span className="shrink-0 text-ink-faint">{ICONS.chevron}</span>
+    </Link>
+  );
+}
+
+/** Check-in aberto: o card mais forte da tela (amarelo cheio) — é o que destrava o coach. */
+function CheckinHero({ item }: { item: TodayItem }) {
   return (
     <section
-      aria-label="Sua ação de hoje"
-      className="flex flex-col gap-4 rounded-lg border border-brand-tint-strong bg-brand-tint p-5"
+      aria-label="Sua ação de agora"
+      className="relative flex flex-col gap-4 overflow-hidden rounded-lg bg-brand p-5 text-on-accent"
     >
-      <div className="flex items-center gap-2 text-brand">
-        {item.icon}
-        <span className="font-mono text-label uppercase tracking-widest">{item.eyebrow}</span>
+      <div className="flex items-center justify-between gap-3">
+        <span className="inline-flex items-center gap-2 text-sm font-bold">
+          {item.icon}
+          {item.eyebrow}
+        </span>
+        <span className="rounded-full bg-on-accent px-2.5 py-1 text-xs font-bold text-brand">
+          Fecha no domingo
+        </span>
       </div>
       <div className="flex flex-col gap-1.5">
-        <h2 className="break-words font-display text-2xl leading-tight text-ink">
+        <h2 className="break-words font-display text-2xl font-extrabold leading-tight">
           {item.title}
         </h2>
-        {item.detail && <p className="break-words text-sm text-ink-muted">{item.detail}</p>}
+        <p className="break-words text-sm font-medium opacity-80">{item.detail}</p>
       </div>
-      <Link href={item.href} className={BUTTON_PRIMARY}>
+      <ul className="flex flex-wrap gap-1.5" aria-label="Etapas do check-in">
+        {item.chips.map((chip, i) => (
+          <li
+            key={chip}
+            className="inline-flex items-center gap-1.5 rounded-full border border-on-accent/25 px-2.5 py-1 text-xs font-semibold"
+          >
+            <span className="tabular-nums opacity-60">{i + 1}</span>
+            {chip}
+          </li>
+        ))}
+      </ul>
+      <Link
+        href={item.href}
+        className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-md bg-on-accent px-6 text-base font-semibold text-brand transition-opacity hover:opacity-90 active:translate-y-px"
+      >
         {item.cta}
+        <Icon name="arrow-right" size={18} />
       </Link>
     </section>
+  );
+}
+
+/**
+ * Treino de hoje na agenda: nome do treino em destaque, exercícios/duração e UM botão. O botão
+ * só é amarelo cheio quando não há check-in aberto disputando a atenção.
+ */
+function WorkoutCard({ item, primary }: { item: TodayItem; primary: boolean }) {
+  if (item.tone === "muted") {
+    return <MutedAgendaCard href={item.href} icon={item.icon} eyebrow={item.eyebrow} title={item.title} detail={item.detail} />;
+  }
+  const done = item.tone === "ok";
+  return (
+    <section
+      aria-label="Treino de hoje"
+      className={`flex flex-col gap-3 rounded-lg border p-5 ${done ? "border-success/30 bg-success-tint" : "card"}`}
+    >
+      <span className={`inline-flex items-center gap-2 ${done ? "text-success" : "text-ink-muted"}`}>
+        {done ? <Icon name="check" size={20} strokeWidth={2.5} /> : item.icon}
+        <span className="t-label">{item.eyebrow}</span>
+      </span>
+      <div className="flex flex-col gap-1">
+        <h3 className="break-words font-display text-2xl font-extrabold leading-tight text-ink">{item.title}</h3>
+        {item.detail && <p className="break-words text-base text-ink-muted">{item.detail}</p>}
+      </div>
+      {done ? (
+        <Link href={item.href} className={buttonClass({ variant: "tertiary", size: "md", width: "full" })}>
+          {item.cta}
+          <Icon name="chevron" size={16} />
+        </Link>
+      ) : (
+        <Link href={item.href} className={buttonClass({ variant: primary ? "primary" : "secondary", size: "lg", width: "full" })}>
+          {item.cta}
+          <Icon name="arrow-right" size={18} />
+        </Link>
+      )}
+    </section>
+  );
+}
+
+/** Bloco da agenda sem nada configurado ainda: neutro, o card inteiro é o link. */
+function MutedAgendaCard({
+  href,
+  icon,
+  eyebrow,
+  title,
+  detail,
+}: {
+  href: string;
+  icon: ReactNode;
+  eyebrow: string;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`${CARD} flex min-h-16 items-center gap-3.5 px-4 py-4 transition-colors hover:border-line-strong`}
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-surface-sunken text-ink-faint">
+        {icon}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="t-label text-ink-faint">{eyebrow}</span>
+        <span className="break-words text-base font-semibold text-ink">{title}</span>
+        <span className="break-words text-sm text-ink-muted">{detail}</span>
+      </span>
+      <span className="shrink-0 text-ink-faint">{ICONS.chevron}</span>
+    </Link>
   );
 }
 
@@ -423,9 +544,7 @@ function PrimaryCard({ item }: { item: TodayItem }) {
 function PreparingCard() {
   return (
     <section aria-label="Sua ação de hoje" className={`${CARD} flex flex-col gap-1.5 p-5`}>
-      <span className="font-mono text-label uppercase tracking-widest text-ink-muted">
-        Em preparação
-      </span>
+      <span className="t-label text-warning">Em preparação</span>
       <h2 className="font-display text-2xl leading-tight text-ink">
         Seu coach está preparando seu plano
       </h2>
@@ -437,47 +556,26 @@ function PreparingCard() {
   );
 }
 
-function AllDoneCard() {
-  return (
-    <section
-      aria-label="Sua ação de hoje"
-      className={`${CARD} flex flex-col gap-1.5 p-5`}
-    >
-      <span className="font-mono text-label uppercase tracking-widest text-ok">Tudo em dia</span>
-      <h2 className="font-display text-2xl leading-tight text-ink">Nada pendente por agora</h2>
-      <p className="text-sm text-ink-muted">
-        Nenhuma ação sua é necessária agora. Veja abaixo o que vem a seguir.
-      </p>
-    </section>
-  );
-}
-
-const TONE_ICON: Record<Tone, string> = {
-  action: "bg-brand-tint text-brand",
-  ok: "bg-ok-tint text-ok",
-  warn: "bg-warn-tint text-warn",
-  muted: "bg-surface-sunken text-ink-faint",
+const ACCENT_TILE: Record<Accent, string> = {
+  brand: "bg-brand-tint text-brand",
+  mint: "bg-success-tint text-success",
+  orange: "bg-warning-tint text-warning",
 };
 
 function TodayRow({ item }: { item: TodayItem }) {
+  const tile = item.tone === "muted" ? "bg-surface-sunken text-ink-faint" : ACCENT_TILE[item.accent];
   return (
     <Link
       href={item.href}
-      className="flex min-h-16 items-center gap-3.5 px-4 py-3.5 transition-colors hover:bg-surface-sunken"
+      className={`${CARD} flex min-h-16 items-center gap-3.5 px-4 py-3.5 transition-colors hover:border-line-strong`}
     >
-      <span
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md ${TONE_ICON[item.tone]}`}
-      >
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md ${tile}`}>
         {item.icon}
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="font-mono text-label uppercase tracking-widest text-ink-faint">
-          {item.eyebrow}
-        </span>
-        <span className="break-words text-sm font-medium text-ink">{item.title}</span>
-        {item.detail && (
-          <span className="break-words text-xs text-ink-muted">{item.detail}</span>
-        )}
+        <span className="t-label text-ink-faint">{item.eyebrow}</span>
+        <span className="break-words text-sm font-semibold text-ink">{item.title}</span>
+        {item.detail && <span className="break-words text-sm text-ink-muted">{item.detail}</span>}
       </span>
       <span className="shrink-0 text-ink-faint">{ICONS.chevron}</span>
     </Link>
@@ -487,30 +585,28 @@ function TodayRow({ item }: { item: TodayItem }) {
 /** Orientação mais recente enviada pelo coach (somente leitura; nunca rascunho nem nota privada). */
 function CoachMessage({ orientation }: { orientation: SentOrientation }) {
   return (
-    <section aria-label="Mensagem do coach" className={`${CARD} flex flex-col gap-3 p-5`}>
+    <section
+      aria-label="Mensagem do coach"
+      className={`${CARD} flex flex-col gap-2 border-l-2 border-l-brand p-5`}
+    >
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h2 className="font-mono text-label uppercase tracking-widest text-ink-faint">
-          Mensagem do seu coach
-        </h2>
-        <span className="font-mono text-xs text-ink-faint">
+        <h2 className="t-label text-brand">Mensagem do seu coach</h2>
+        <span className="tabular-nums text-xs text-ink-faint">
           Semana {orientation.weekNumber} · {formatShortDate(orientation.sentAt)}
         </span>
       </div>
-      <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-ink">
-        {orientation.text}
-      </p>
+      <ExpandableText text={orientation.text} />
     </section>
   );
 }
 
-function WeekProgress({
+/** Resumo pequeno do progresso — o card inteiro leva para /portal/progresso. */
+function ProgressSummary({
   weekNumber,
-  startDate,
   workoutProgress,
   weight,
 }: {
   weekNumber: number;
-  startDate: string | null;
   workoutProgress: { doneCount: number; totalCount: number } | null;
   weight: { first: number; latest: number; weeks: number } | null;
 }) {
@@ -521,59 +617,60 @@ function WeekProgress({
   const delta = weight ? weight.latest - weight.first : 0;
 
   return (
-    <section aria-label="Seu progresso" className={`${CARD} flex flex-col gap-4 p-5`}>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h2 className="font-mono text-label uppercase tracking-widest text-ink-faint">
-          Seu progresso
-        </h2>
-        <span className="font-mono text-xs text-ink-faint">
-          Semana {weekNumber}
-          {startDate ? ` · desde ${formatDateOnlyShort(startDate)}` : ""}
+    <Link
+      href="/portal/progresso"
+      aria-label="Ver meu progresso"
+      className={`${CARD} flex flex-col gap-4 p-5 transition-colors hover:border-line-strong`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="t-label text-ink-faint">Seu progresso · Semana {weekNumber}</h2>
+        <span className="inline-flex items-center gap-1 text-sm font-medium text-brand">
+          Ver tudo
+          <Icon name="chevron" size={16} />
         </span>
       </div>
 
-      {hasWorkouts && (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-baseline justify-between gap-3 text-sm">
-            <span className="text-ink">Treinos da semana</span>
-            <span className="font-mono text-ink-muted">
-              {workoutProgress.doneCount} de {workoutProgress.totalCount}
-            </span>
-          </div>
-          <div
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={workoutProgress.totalCount}
-            aria-valuenow={workoutProgress.doneCount}
-            aria-label="Treinos concluídos na semana"
-            className="h-1.5 overflow-hidden rounded-full bg-surface-sunken"
-          >
-            <div className="h-full rounded-full bg-brand" style={{ width: `${pct}%` }} />
-          </div>
-        </div>
-      )}
-
-      {weight && (
-        <div className="flex flex-col gap-0.5">
-          <div className="flex items-baseline justify-between gap-3 text-sm">
-            <span className="text-ink">Peso atual</span>
-            <span className="font-mono text-ink-muted">{formatKg(weight.latest)} kg</span>
-          </div>
-          {weight.weeks > 1 && (
-            <p className="text-right text-xs text-ink-faint">
-              {delta > 0 ? "+" : delta < 0 ? "−" : ""}
-              {formatKg(Math.abs(delta))} kg desde o início
-            </p>
+      {hasWorkouts || weight ? (
+        <div className="grid grid-cols-2 gap-4">
+          {hasWorkouts && (
+            <div className="flex min-w-0 flex-col gap-2">
+              <span className="font-display text-3xl font-extrabold leading-none tabular-nums text-ink">
+                {workoutProgress.doneCount}
+                <span className="text-lg text-ink-faint">/{workoutProgress.totalCount}</span>
+              </span>
+              <span className="text-xs text-ink-muted">treinos na semana</span>
+              <div
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={workoutProgress.totalCount}
+                aria-valuenow={workoutProgress.doneCount}
+                aria-label="Treinos concluídos na semana"
+                className="h-1.5 overflow-hidden rounded-full bg-surface-sunken"
+              >
+                <div className="h-full rounded-full bg-success" style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          )}
+          {weight && (
+            <div className="flex min-w-0 flex-col gap-2">
+              <span className="font-display text-3xl font-extrabold leading-none tabular-nums text-ink">
+                {formatKg(weight.latest)}
+                <span className="text-lg text-ink-faint"> kg</span>
+              </span>
+              <span className="text-xs text-ink-muted">
+                {weight.weeks > 1
+                  ? `${delta > 0 ? "+" : delta < 0 ? "−" : ""}${formatKg(Math.abs(delta))} kg desde o início`
+                  : "peso atual"}
+              </span>
+            </div>
           )}
         </div>
-      )}
-
-      {!hasWorkouts && !weight && (
+      ) : (
         <p className="text-sm text-ink-muted">
-          Seus treinos concluídos e o seu peso aparecem aqui conforme você avança na semana.
+          Seus treinos concluídos e o seu peso aparecem aqui conforme você avança.
         </p>
       )}
-    </section>
+    </Link>
   );
 }
 
@@ -588,15 +685,6 @@ function formatKg(value: number): string {
 function formatShortDate(iso: string): string {
   return new Date(iso).toLocaleDateString("pt-BR", {
     timeZone: "America/Sao_Paulo",
-    day: "2-digit",
-    month: "2-digit",
-  });
-}
-
-/** Coluna `date` (sem hora/fuso) -> dd/mm, em UTC pra não deslocar um dia. */
-function formatDateOnlyShort(dateStr: string): string {
-  return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString("pt-BR", {
-    timeZone: "UTC",
     day: "2-digit",
     month: "2-digit",
   });

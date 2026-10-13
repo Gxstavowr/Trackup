@@ -2,11 +2,10 @@
 
 import { useActionState, useState } from "react";
 import { createPrivacyRequestAction, type PrivacyRequestState } from "./actions";
+import { selectClass, textareaClass } from "@/components/ui/field";
+import { buttonClass } from "@/components/ui/button";
 
 const initialState: PrivacyRequestState = null;
-
-const FIELD =
-  "min-h-11 rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink outline-none focus:border-brand";
 
 export default function PrivacyRequestForm() {
   const [state, action, pending] = useActionState(createPrivacyRequestAction, initialState);
@@ -14,7 +13,7 @@ export default function PrivacyRequestForm() {
 
   return (
     <form action={action} className="flex flex-col gap-3">
-      <select name="type" value={type} onChange={(e) => setType(e.target.value)} className={FIELD}>
+      <select name="type" value={type} onChange={(e) => setType(e.target.value)} className={selectClass}>
         <option value="correction">Corrigir um dado</option>
         <option value="deletion">Excluir todos os meus dados</option>
         <option value="access">Saber com quem meus dados são compartilhados</option>
@@ -26,7 +25,7 @@ export default function PrivacyRequestForm() {
         maxLength={2000}
         required={type === "correction"}
         placeholder={type === "correction" ? "O que está errado e qual o valor certo?" : "Detalhes (opcional)"}
-        className={`${FIELD} resize-y`}
+        className={textareaClass}
       />
       {type === "deletion" && (
         <label className="flex items-start gap-2.5 text-sm text-ink-muted">
@@ -55,7 +54,7 @@ export default function PrivacyRequestForm() {
       <button
         type="submit"
         disabled={pending}
-        className="inline-flex min-h-11 w-fit items-center rounded-md bg-brand px-5 py-2 text-sm font-medium text-on-accent disabled:opacity-60"
+        className={buttonClass({ className: "w-fit" })}
       >
         {pending ? "Enviando…" : "Enviar pedido"}
       </button>
