@@ -146,13 +146,13 @@ function computeWeekInfo(startDateStr, today = TODAY) {
 }
 
 /** `start_date` tal que, hoje, o aluno esteja na semana `pastWeeks + 1` pela regra de semanas de
- * calendário: o início cai `offsetDays` dias depois da segunda-feira da semana 1, sem sair dessa
- * semana. Antes era `hoje - (pastWeeks*7 + offset)` (regra antiga de 7 dias corridos): com o app
- * em semanas de calendário, isso desalinhava semana corrente e períodos (ex.: resumo falando em
- * "semana 10" enquanto Home/Jornada diziam "semana 3"). */
-function startDateFor(pastWeeks, offsetDays, today = TODAY) {
-  const week1Monday = addDaysUTC(mondayOf(todaySP(today)), -pastWeeks * 7);
-  const startDate = addDaysUTC(week1Monday, Math.min(Math.max(0, offsetDays), 6));
+ * calendário. O início é a PRÓPRIA segunda-feira da semana 1 — mesma âncora de `periodOfWeek` —,
+ * pra "Início do acompanhamento" (Jornada/Histórico) nunca cair depois do início da Semana 1.
+ * (Antes o início caía `offset` dias depois dessa segunda, ex.: início 29/07 com Semana 1 em 27/07.)
+ * Antes ainda era `hoje - (pastWeeks*7 + offset)` (regra antiga de 7 dias corridos), que
+ * desalinhava semana corrente e períodos. */
+function startDateFor(pastWeeks, today = TODAY) {
+  const startDate = addDaysUTC(mondayOf(todaySP(today)), -pastWeeks * 7);
   if (computeWeekInfo(startDate, today).weekNumber !== pastWeeks + 1) {
     throw new Error(`seed: start_date ${startDate} não cai na semana ${pastWeeks + 1}.`);
   }
@@ -373,7 +373,6 @@ const STUDENTS = [
     height_cm: 165,
     objective: "emagrecimento",
     pastWeeks: 9,
-    offset: 1,
     state: "pending",
     payment: "em_dia",
     login: false,
@@ -391,7 +390,6 @@ const STUDENTS = [
     height_cm: 178,
     objective: "hipertrofia",
     pastWeeks: 7,
-    offset: 2,
     state: "in_progress",
     payment: "pendente",
     login: true,
@@ -409,7 +407,6 @@ const STUDENTS = [
     height_cm: 160,
     objective: "recomposição",
     pastWeeks: 5,
-    offset: 3,
     state: "draft",
     payment: "atrasado",
     login: false,
@@ -426,7 +423,6 @@ const STUDENTS = [
     height_cm: 182,
     objective: "hipertrofia",
     pastWeeks: 11,
-    offset: 2,
     state: "awaiting_checkin",
     payment: "em_dia",
     login: true,
@@ -443,7 +439,6 @@ const STUDENTS = [
     height_cm: 168,
     objective: "emagrecimento",
     pastWeeks: 8,
-    offset: 2,
     state: "done",
     payment: "atrasado",
     login: false,
@@ -460,7 +455,6 @@ const STUDENTS = [
     height_cm: 175,
     objective: "emagrecimento",
     pastWeeks: 4,
-    offset: 6,
     state: "awaiting_checkin_late",
     payment: "pendente",
     login: false,
@@ -490,7 +484,6 @@ const STUDENTS = [
     height_cm: 170,
     objective: "hipertrofia",
     pastWeeks: 6,
-    offset: 3,
     state: "paused",
     payment: "cancelled",
     login: false,
@@ -691,7 +684,7 @@ async function buildClientRows(coach, authUserByKey) {
       continue;
     }
 
-    const startDate = startDateFor(student.pastWeeks, student.offset);
+    const startDate = startDateFor(student.pastWeeks);
     const authUser = authUserByKey.get(student.key) ?? null;
 
     rows.push({
@@ -724,7 +717,7 @@ function buildCheckinInstanceRows(student, clientId, templateId) {
   const rows = [];
   if (student.state === "invite_pending") return rows;
 
-  const startDate = startDateFor(student.pastWeeks, student.offset);
+  const startDate = startDateFor(student.pastWeeks);
 
   // Semanas passadas: ciclo completo (submitted -> reviewed). Períodos de segunda a domingo,
   // iguais aos que o app calcula (`periodOfWeek`).
@@ -1536,7 +1529,7 @@ async function main() {
           unit: "kg",
           result_value: m.weight,
           result_status: hit ? "success" : "partial",
-          created_at: atTime(addDaysUTC(periodOfWeek(startDateFor(student.pastWeeks, student.offset), w).periodStart, 1), 8, 0),
+          created_at: atTime(addDaysUTC(periodOfWeek(startDateFor(student.pastWeeks), w).periodStart, 1), 8, 0),
         });
       }
     }

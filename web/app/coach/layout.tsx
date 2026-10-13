@@ -7,6 +7,9 @@ import { getPendingEvaluationsCount } from "./pending-evaluations";
 import { requireCoach } from "./require-coach";
 import Brand from "@/components/brand";
 import { Icon } from "@/components/ui";
+import { getCoachBilling, PAYMENT_METHOD_PATH } from "@/lib/billing/coach";
+import { daysUntilSuspension, isBillingBlocked } from "@/lib/billing/state";
+import { OverduePaymentNotice, PaymentConfirmedNotice } from "./billing-notices";
 
 /**
  * Casca de TODO o lado do coach (`/coach/*`): sidebar no desktop (o coach trabalha
@@ -22,7 +25,8 @@ import { Icon } from "@/components/ui";
  */
 export default async function CoachLayout({ children }: LayoutProps<"/coach">) {
   const { coach } = await requireCoach();
-  const pendingEvaluations = await getPendingEvaluationsCount();
+  // Assinatura do coach com o Trackly (SyncPay). Sem linha = null = nada muda.
+  const billing = await getCoachBilling();
 
   const logoutForm = (
     <form action={logout}>
@@ -36,6 +40,27 @@ export default async function CoachLayout({ children }: LayoutProps<"/coach">) {
       </button>
     </form>
   );
+
+  // Plano suspenso/cancelado: `requireCoach` já mandou tudo pra /coach/suspenso, exceto a própria
+  // tela e "Minha assinatura" — que abrem numa casca mínima, sem a navegação do app.
+  if (isBillingBlocked(billing?.status)) {
+    return (
+      <div className="flex flex-1 flex-col">
+        <header className="flex h-14 items-center gap-2 border-b border-line bg-surface-sunken px-4 md:px-8">
+          <Brand variant="compact" />
+          <div className="ml-auto w-fit">{logoutForm}</div>
+        </header>
+        <main className="min-w-0 flex-1 px-4 pb-12 pt-6 md:px-8 md:pt-10">
+          <div className="mx-auto w-full max-w-4xl">
+            {children}
+            <LegalLinks className="mt-12" />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  const pendingEvaluations = await getPendingEvaluationsCount();
 
   return (
     <div className="flex flex-1 flex-col md:flex-row">
@@ -60,10 +85,18 @@ export default async function CoachLayout({ children }: LayoutProps<"/coach">) {
 
       <main className="min-w-0 flex-1 px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-6 md:px-8 md:pb-12 md:pt-10">
         <div className="mx-auto w-full max-w-4xl">
+          {billing?.confirmationPending && billing.status === "active" && <PaymentConfirmedNotice />}
           {children}
           <LegalLinks className="mt-12" />
         </div>
       </main>
+
+      {billing?.status === "overdue" && (
+        <OverduePaymentNotice
+          daysLeft={daysUntilSuspension(billing.paymentFailedAt, new Date())}
+          paymentHref={PAYMENT_METHOD_PATH}
+        />
+      )}
 
       <CoachNav variant="bottom" pendingEvaluations={pendingEvaluations}>
         {logoutForm}

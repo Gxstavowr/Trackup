@@ -5,7 +5,7 @@ import type { EvaluationGoal } from "@/lib/evaluations";
 import type { WeekRecord } from "@/lib/evaluation-week";
 import { formatAnswerForCoach, splitAnswers, type CoachAnswer } from "@/lib/evaluation-answers";
 import { isStoredLateOverdue } from "@/lib/evaluation-late";
-import { formatMetricValue, metricDefs, type ComparisonWeek, type MetricKey } from "@/lib/week-comparison-format";
+import { formatMetricValue, formatNumber, metricDefs, type ComparisonWeek, type MetricKey } from "@/lib/week-comparison-format";
 import { formatDateOnlyShort, formatDateTime } from "../../../avaliacoes/evaluation-ui";
 import PhotoTriptych from "../photo-triptych";
 import type { WeekPhotosState } from "./week-comparison";
@@ -125,11 +125,18 @@ export default function ReceivedSection({
                     <span className="text-xs text-ink-muted">{d.label}</span>
                     {value != null ? (
                       <span
-                        className={`font-display leading-none tabular-nums ${
-                          primary ? "text-2xl sm:text-[1.75rem]" : "text-xl"
+                        className={`whitespace-nowrap font-display leading-none tabular-nums ${
+                          primary ? "text-2xl sm:text-[1.75rem] lg:text-2xl" : "text-xl"
                         } ${primary && current ? "text-brand" : "text-ink"}`}
                       >
-                        {formatMetricValue(d, value)}
+                        {/* Valor + unidade numa linha só; a unidade menor cabe na célula estreita do desktop. */}
+                        {formatNumber(value)}
+                        {d.suffix && (
+                          <>
+                            {" "}
+                            <span className="text-sm">{d.suffix}</span>
+                          </>
+                        )}
                       </span>
                     ) : (
                       <span className="text-sm text-ink-faint">Não informado</span>

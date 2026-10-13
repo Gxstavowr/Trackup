@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { saveEvaluationAction, type EvaluationActionState } from "./actions";
 import CycleDoneBanner from "./cycle-done-banner";
 import { textareaClass } from "@/components/ui/field";
@@ -85,6 +85,8 @@ function EvaluationFields({
   const [confirming, setConfirming] = useState(false);
   const [intent, setIntent] = useState<"draft" | "send" | null>(null);
   const confirmRef = useRef<HTMLDivElement>(null);
+  const textId = useId();
+  const hintId = useId();
   // O painel de confirmação cresce dentro de um card com rolagem própria: traz-o inteiro para a vista.
   useEffect(() => {
     if (confirming) confirmRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -101,12 +103,22 @@ function EvaluationFields({
       {/* A semana que o coach está vendo: o servidor recusa gravar se a fila já estiver em outra. */}
       <input type="hidden" name="weekNumber" value={weekNumber} />
 
-      <label className="flex flex-col gap-1.5 text-sm">
-        <span className="font-semibold text-ink">Orientação para {firstName}</span>
-        <span className="text-xs text-ink-muted">
+      {/* Desktop: o painel rola por dentro (ex.: confirmação aberta). O rótulo é filho direto do form
+          (não do bloco do textarea) para ficar preso logo abaixo do cabeçalho sticky do painel
+          (~3.6rem: pt-5 + kicker + gap-1 + t-subtitle + pb-3 + borda) enquanto o form rola. */}
+      <label
+        htmlFor={textId}
+        className="-mb-2.5 text-sm font-semibold text-ink lg:sticky lg:top-[3.6rem] lg:z-[5] lg:-mx-5 lg:-mt-1.5 lg:-mb-4 lg:bg-surface lg:px-5 lg:py-1.5"
+      >
+        Orientação para {firstName}
+      </label>
+      <div className="flex flex-col gap-1.5 text-sm">
+        <span id={hintId} className="text-xs text-ink-muted">
           O aluno vê este texto no portal quando você finalizar a avaliação.
         </span>
         <textarea
+          id={textId}
+          aria-describedby={hintId}
           name="text"
           rows={7}
           value={text}
@@ -114,7 +126,7 @@ function EvaluationFields({
           className={textareaClass}
           placeholder="O que manter, o que ajustar e o foco para a próxima semana."
         />
-      </label>
+      </div>
 
       <label className="flex flex-col gap-1.5 text-sm">
         <span className="font-semibold text-ink">Nota do coach</span>

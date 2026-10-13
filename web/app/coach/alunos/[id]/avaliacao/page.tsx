@@ -234,7 +234,7 @@ export default async function StudentEvaluationPage({
           className="card flex min-w-0 scroll-mt-4 flex-col gap-4 border-brand/35 p-4 sm:p-5 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto"
         >
           {/* Desktop: o painel rola por dentro (ex.: confirmação aberta) — o título fica preso no topo. */}
-          <div className="flex flex-col gap-1 lg:sticky lg:top-0 lg:z-10 lg:-mx-5 lg:-mt-5 lg:rounded-t-[inherit] lg:border-b lg:border-line lg:bg-surface lg:px-5 lg:pt-5 lg:pb-3">
+          <div className="flex flex-col gap-1 lg:sticky lg:-top-5 lg:z-10 lg:-mx-5 lg:-mt-5 lg:rounded-t-[inherit] lg:border-b lg:border-line lg:bg-surface lg:px-5 lg:pt-5 lg:pb-3">
             <span className="t-kicker text-brand">Decisão do coach</span>
             <h2 className="t-subtitle text-ink">
               {done ? "Orientação enviada" : `Avaliação da semana ${row.weekNumber}`}

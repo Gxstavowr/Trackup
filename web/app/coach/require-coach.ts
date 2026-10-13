@@ -3,6 +3,8 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMissingConsents } from "@/lib/legal/consent";
+import { getCoachBilling, isBillingExemptPath, SUSPENDED_PATH } from "@/lib/billing/coach";
+import { isBillingBlocked } from "@/lib/billing/state";
 
 /**
  * Guard de role do lado do servidor pra tudo em `/coach/*`: sessão + linha em `coach_users`.
@@ -45,6 +47,12 @@ export const requireCoach = cache(async () => {
   // (`lib/legal/documents.ts` / `docs/lgpd.md`).
   if ((await getMissingConsents(supabase, user.id, "coach")).length > 0) {
     redirect("/consentimento");
+  }
+
+  // Assinatura do Trackly suspensa/cancelada: só a tela "Plano suspenso" e "Minha assinatura"
+  // abrem (`lib/billing/coach.ts`). Sem linha de assinatura = nunca bloqueia.
+  if (isBillingBlocked((await getCoachBilling())?.status) && !(await isBillingExemptPath())) {
+    redirect(SUSPENDED_PATH);
   }
 
   return { user, coach: coach as { name: string } };

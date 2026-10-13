@@ -10,12 +10,16 @@ import QuestionsManager, { type ManagedQuestion } from "./questions-manager";
 import { buildCheckinSteps } from "@/lib/checkin-steps";
 import { PasswordForm, ProfileForm } from "./settings-forms";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { buttonClass, type BadgeTone } from "@/components/ui";
+import { getCoachBilling, PAYMENT_METHOD_PATH } from "@/lib/billing/coach";
+import { BILLING_STATUS_LABEL, daysUntilSuspension, type BillingStatus } from "@/lib/billing/state";
 
 const SECTIONS = [
   { id: "perfil", label: "Perfil profissional", icon: "user" },
   { id: "notificacoes", label: "Notificações", icon: "bell" },
   { id: "acompanhamento", label: "Acompanhamento semanal", icon: "checkin" },
   { id: "conta", label: "Conta", icon: "settings" },
+  { id: "assinatura", label: "Minha assinatura", icon: "wallet" },
   { id: "privacidade", label: "Privacidade e LGPD", icon: "privacy" },
 ] as const satisfies readonly { id: string; label: string; icon: IconName }[];
 
@@ -100,6 +104,7 @@ export default async function CoachSettingsPage(props: PageProps<"/coach/configu
           {active === "notificacoes" && <NotificationsSection />}
           {active === "acompanhamento" && <TrackingSection />}
           {active === "conta" && <AccountSection email={user.email ?? ""} />}
+          {active === "assinatura" && <SubscriptionSection />}
           {active === "privacidade" && (
             <PrivacySection
               userId={user.id}
@@ -276,5 +281,81 @@ async function AccountSection({ email }: { email: string }) {
         </form>
       </SectionCard>
     </>
+  );
+}
+
+const BILLING_TONE: Record<BillingStatus, BadgeTone> = {
+  none: "neutral",
+  pending_first_payment: "info",
+  active: "success",
+  overdue: "danger",
+  suspended: "danger",
+  cancelled: "neutral",
+};
+
+function formatBillingDate(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+}
+
+/** Assinatura do coach com o Trackly (cobrada pela SyncPay; pagamento só no checkout deles). */
+async function SubscriptionSection() {
+  const billing = await getCoachBilling();
+
+  // Linha com status `none` (só o CPF guardado) = mesma coisa que não ter assinatura.
+  if (!billing || billing.status === "none") {
+    return (
+      <SectionCard title="Minha assinatura" text="Mensalidade do Trackly, cobrada pela SyncPay.">
+        <p className="text-sm text-ink-muted">Sem assinatura registrada.</p>
+        <Link
+          href={PAYMENT_METHOD_PATH}
+          className={buttonClass({ variant: "primary", width: "mobile", className: "w-fit" })}
+        >
+          Assinar o Trackly <Icon name="arrow-right" size={16} />
+        </Link>
+      </SectionCard>
+    );
+  }
+
+  const delinquent = billing.status === "overdue" || billing.status === "suspended";
+  const daysLeft = billing.status === "overdue" ? daysUntilSuspension(billing.paymentFailedAt, new Date()) : null;
+
+  return (
+    <SectionCard
+      title="Minha assinatura"
+      text="Mensalidade do Trackly, cobrada pela SyncPay (Pix Automático ou cartão recorrente). Dados de cartão e de banco ficam só na SyncPay — o Trackly não vê nem guarda."
+    >
+      <dl className="rounded-md border border-line px-4">
+        <Row
+          label="Situação"
+          value={
+            <Badge tone={BILLING_TONE[billing.status]} dot>
+              {BILLING_STATUS_LABEL[billing.status]}
+            </Badge>
+          }
+        />
+        <Row label="Próxima cobrança" value={formatBillingDate(billing.nextChargeAt)} />
+        {delinquent && billing.paymentFailedAt && (
+          <Row label="Pagamento não aprovado em" value={formatBillingDate(billing.paymentFailedAt)} />
+        )}
+        {daysLeft !== null && (
+          <Row
+            label="Suspensão do plano"
+            value={daysLeft <= 0 ? "A qualquer momento" : daysLeft === 1 ? "Em 1 dia" : `Em ${daysLeft} dias`}
+          />
+        )}
+      </dl>
+      <Link
+        href={PAYMENT_METHOD_PATH}
+        className={buttonClass({
+          variant: delinquent || billing.status === "pending_first_payment" ? "primary" : "secondary",
+          width: "mobile",
+          className: "w-fit",
+        })}
+      >
+        {billing.status === "pending_first_payment" ? "Concluir assinatura" : "Pagar / forma de pagamento"}{" "}
+        <Icon name="arrow-right" size={16} />
+      </Link>
+    </SectionCard>
   );
 }

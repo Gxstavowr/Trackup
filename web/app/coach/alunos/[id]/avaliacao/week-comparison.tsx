@@ -693,9 +693,9 @@ function DeltaStrip({
                     <th scope="row" className="px-2 py-2 align-top font-normal text-ink-muted sm:px-3">
                       {def.label}
                     </th>
-                    <td className="px-2 py-2 align-top text-ink sm:px-3">{a != null ? formatMetricValue(def, a) : "—"}</td>
-                    <td className="px-2 py-2 align-top text-ink sm:px-3">{b != null ? formatMetricValue(def, b) : "—"}</td>
-                    <td className="px-2 py-2 text-right align-top text-ink sm:px-3">
+                    <td className="whitespace-nowrap px-2 py-2 align-top tabular-nums text-ink sm:px-3">{a != null ? formatMetricValue(def, a) : "—"}</td>
+                    <td className="whitespace-nowrap px-2 py-2 align-top tabular-nums text-ink sm:px-3">{b != null ? formatMetricValue(def, b) : "—"}</td>
+                    <td className="whitespace-nowrap px-2 py-2 text-right align-top tabular-nums text-ink sm:px-3">
                       {a != null && b != null ? formatMetricDelta(def, metricDelta(a, b)) : "—"}
                     </td>
                   </tr>
