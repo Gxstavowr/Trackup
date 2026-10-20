@@ -44,3 +44,30 @@ test("resumo: período maior que o histórico usa tudo e exige 2 semanas", () =>
   const s = buildProgressSummary({ evolution: one, checkins: [], goals: [], currentWeek: 1, period: 12 });
   assert.equal(s.status, "insufficient");
 });
+
+test("resumo por regras declara a origem 'rules'", () => {
+  assert.equal(text().source, "rules");
+});
+
+test("payload para IA futura: só números do período, sem identificação nem chave sensível", async () => {
+  const { buildSummaryPayload } = await import("./progress-summary");
+  const withSensitive: EvolutionData = {
+    ...evolution,
+    metrics: [
+      ...evolution.metrics,
+      { key: "menstrual_cycle", label: "Ciclo", unit: null, source: "catalog", goalDirection: null, targetValue: null },
+    ],
+    weeks: evolution.weeks.map((w) => ({ ...w, values: { ...w.values, menstrual_cycle: 1 } })),
+  };
+  const goals = [{ weekNumber: 9, resultStatus: "success" as const }, { weekNumber: 10, resultStatus: "pending" as const }];
+  const p = buildSummaryPayload({ evolution: withSensitive, checkins, goals, currentWeek: 10 });
+  assert.ok(p);
+  assert.equal(p.version, 1);
+  assert.deepEqual([p.firstWeek, p.lastWeek], [7, 10]);
+  assert.deepEqual(p.metrics.map((m) => m.key), ["weight_kg"]);
+  assert.equal(p.metrics[0].delta, -1.5);
+  assert.deepEqual(p.checkins, { sent: 4, total: 4 });
+  assert.deepEqual(p.goals, { success: 1, partial: 0, fail: 0 });
+  assert.ok(!JSON.stringify(p).includes("Ana"));
+  assert.equal(buildSummaryPayload({ evolution: null, checkins: [], goals: [], currentWeek: 1 }), null);
+});

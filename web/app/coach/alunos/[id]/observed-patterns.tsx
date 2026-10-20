@@ -39,7 +39,7 @@ export function ObservedPatternsCard({
 }) {
   return (
     <section aria-label="Padrões observados" className="flex flex-col gap-3">
-      <h2 className="text-lg font-medium text-ink">Padrões observados</h2>
+      <h2 className="t-subtitle text-ink">Padrões observados</h2>
       {failed || !report ? (
         <p className="rounded-lg border border-dashed border-line px-4 py-5 text-sm text-ink-muted">
           Não foi possível calcular os padrões agora. Os registros do aluno continuam disponíveis em

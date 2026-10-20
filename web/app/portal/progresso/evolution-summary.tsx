@@ -15,6 +15,10 @@ export type SynthesisTile = {
   weeks: string;
 };
 
+function aiNote(): string {
+  return "Texto gerado por inteligência artificial a partir de números do seu período (sem nome, fotos ou respostas do check-in). Pode errar e não substitui a avaliação do seu coach; os números acima são os seus registros.";
+}
+
 function rulesNote(period: EvolutionPeriod): string {
   const window = period === "all" ? "de todo o histórico" : `das últimas ${period} semanas com medidas`;
   return `Montado por regras fixas sobre os valores que você registrou: compara o primeiro e o último registro ${window} (o mesmo período escolhido acima) e conta check-ins e metas dessa janela. Não é avaliação do seu coach, não usa inteligência artificial e não é recomendação — só um retrato dos números.`;
@@ -23,7 +27,10 @@ function rulesNote(period: EvolutionPeriod): string {
 /**
  * Síntese visual + resumo automático (V3 tarefa 13). Fica DEPOIS do gráfico, dentro de "Medidas e
  * gráficos", e acompanha o mesmo período do seletor. É 100% baseado em regras
- * (`lib/progress-summary.ts` + `computeMetricTrend`): o rótulo diz isso e nada aqui fala em IA.
+ * (`lib/progress-summary.ts` + `computeMetricTrend`): o rótulo diz isso. O componente já está
+ * preparado para uma IA futura: ele só lê `summary.source` ("rules" | "ai") e rotula conforme;
+ * quem gera o texto é um `SummaryProvider` (contrato em `progress-summary.ts`) e nada é enviado
+ * a ninguém hoje.
  * Só números observados (primeiro → último registro do período), sem tendência projetada, causa
  * ou diagnóstico. Sem dados suficientes vira uma linha discreta — nunca um card vazio grande.
  */
@@ -47,6 +54,8 @@ export default function EvolutionSummary({
     );
   }
 
+  const isAi = summary.status === "ok" && summary.source === "ai";
+
   // As frases de métrica viram os blocos numéricos; aqui ficam só as demais (estáveis, check-ins, metas).
   const items = summary.status === "ok" ? summary.items.filter((i) => !i.id.startsWith("metric-")) : [];
 
@@ -62,7 +71,7 @@ export default function EvolutionSummary({
           Resumo automático dos seus registros
         </h3>
         <span className="rounded-full bg-surface-raised px-2.5 py-1 text-xs font-semibold text-ink-muted">
-          Baseado em regras
+          {isAi ? "Gerado por IA" : "Baseado em regras"}
         </span>
       </div>
 
@@ -73,7 +82,7 @@ export default function EvolutionSummary({
       )}
 
       {tiles.length > 0 && (
-        <ul aria-label="Mudanças observadas no período" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <ul aria-label="Mudanças observadas no período" className="grid grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] gap-3">
           {tiles.map((t) => (
             <li key={t.key} className="flex min-w-0 flex-col gap-1 rounded-lg bg-surface-sunken px-3 py-3">
               <span className="t-label truncate text-ink-faint">{t.label}</span>
@@ -109,7 +118,7 @@ export default function EvolutionSummary({
           </span>
           Como este resumo é feito
         </summary>
-        <p className="pb-1 pt-1">{rulesNote(period)}</p>
+        <p className="pb-1 pt-1">{isAi ? aiNote() : rulesNote(period)}</p>
       </details>
     </section>
   );

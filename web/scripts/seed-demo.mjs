@@ -6,6 +6,11 @@
 // exercícios/alimentos desta conta e os 2 logins de aluno de demo (pelo e-mail fixo) — nunca
 // toca em outra conta, no coach, nos templates de check-in ou em qualquer outro auth user.
 //
+// V5 (0022/0023): também marca esta conta como demo (`filled`), cria contratos de pacote, o aluno
+// "Começar do zero" (aluno.zero@trackly.test), a conta coach "Começar do zero" (coach.vazio@trackly.test,
+// `empty`, limpa a cada execução) e o registro `demo_lab_profiles` do laboratório. Pulado se as
+// migrações não estiverem aplicadas.
+//
 // Uso: a partir de web/, `node scripts/seed-demo.mjs`.
 //
 // Faz probing de colunas/tabelas novas (migrations 0003–0008) antes de usá-las: se a migration
@@ -1365,6 +1370,280 @@ async function seedDemoPhotos(accountId, clientByKey, instanceByClientWeek) {
 }
 
 // ============================================================================
+// V5 (itens 26–28) — Laboratório de demonstração (migrações 0022 + 0023)
+// ============================================================================
+//
+// - Marca a conta do coach de teste como demo (`accounts.is_demo = true`, `demo_scenario = 'filled'`).
+// - Contratos de pacote coerentes para os alunos demo (Híbrido para quem tem treino E nutrição).
+// - Aluno "Começar do zero" DENTRO da conta preenchida: login próprio, ativo,
+//   `onboarding_required = true`, contrato Híbrido, sem questionário nem planos (começa pelo
+//   questionário inicial — decisão adotada do §11 do plano).
+// - Conta coach "Começar do zero" (`demo_scenario = 'empty'`): sem alunos, avaliações nem protocolos
+//   (limpa pela RPC `lab_reset_demo_account`, que recusa conta que não seja demo vazia).
+// - `demo_lab_profiles`: lista FECHADA de logins que o laboratório pode assumir.
+//
+// Tudo é pulado (com aviso) se a 0022/0023 ainda não estiverem aplicadas. Só toca contas/logins
+// `@trackly.test` deste script. Senhas: DEMO_COACH_PASSWORD / DEMO_STUDENT_PASSWORD (nunca impressas).
+
+const DEMO_EMAIL_DOMAIN = "@trackly.test";
+const EMPTY_COACH_EMAIL = "coach.vazio@trackly.test";
+const EMPTY_COACH_NAME = "Coach Demo (do zero)";
+const EMPTY_ACCOUNT_NAME = "Demo — Começar do zero";
+const FRESH_STUDENT = {
+  key: "fresh",
+  name: "Lucas Andrade Pires",
+  email: "aluno.zero@trackly.test",
+  phone: "(11) 99999-1009",
+};
+
+// Preços padrão demo do coach (centavos). Valores fictícios, só para a demonstração.
+const DEMO_SERVICE_PRICES = { training: 19900, nutrition: 17900, hybrid: 32900 };
+// Pacote de cada aluno demo. Carlos e Rafael têm treino e nutrição publicados no seed -> Híbrido.
+const DEMO_PACKAGE_BY_KEY = {
+  ana: "nutrition",
+  carlos: "hybrid",
+  marina: "nutrition",
+  rafael: "hybrid",
+  juliana: "training",
+  bruno: "hybrid",
+  patricia: "training",
+  fernanda: "training",
+};
+
+function assertDemoEmail(email) {
+  if (!String(email ?? "").toLowerCase().endsWith(DEMO_EMAIL_DOMAIN)) {
+    throw new Error(`Recusado: ${email} não é um login de demonstração (${DEMO_EMAIL_DOMAIN}).`);
+  }
+}
+
+async function probeV5Schema() {
+  return {
+    isDemo: await columnExists("accounts", "is_demo"),
+    onboardingRequired: await columnExists("clients", "onboarding_required"),
+    contracts: await tableExists("client_service_contracts"),
+    servicePrices: await tableExists("coach_service_prices"),
+    labProfiles: await tableExists("demo_lab_profiles"),
+  };
+}
+
+async function markDemoAccount(accountId, scenario) {
+  const { error } = await admin
+    .from("accounts")
+    .update({ is_demo: true, demo_scenario: scenario })
+    .eq("id", accountId);
+  if (error) throw new Error(`Falha ao marcar a conta ${accountId} como demo: ${error.message}`);
+}
+
+/** Login demo estável (não é apagado entre execuções): acha pelo e-mail ou cria; sincroniza a senha. */
+async function ensureDemoAuthUser(email, password) {
+  assertDemoEmail(email);
+  const existing = await findAuthUserByEmail(email);
+  if (existing) {
+    const { error } = await admin.auth.admin.updateUserById(existing.id, { password, email_confirm: true });
+    if (error) throw new Error(`Falha ao sincronizar a senha de ${email}: ${error.message}`);
+    return existing;
+  }
+  const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+  if (error || !data.user) throw new Error(`createUser(${email}) falhou: ${error?.message ?? "erro desconhecido"}`);
+  return data.user;
+}
+
+/** Conta coach "Começar do zero": cria (uma vez) login, conta, perfil e template de check-in padrão. */
+async function ensureEmptyCoach() {
+  const password = COACH_PASSWORD || STUDENT_PASSWORD;
+  const user = await ensureDemoAuthUser(EMPTY_COACH_EMAIL, password);
+
+  const { data: existingCoach, error: coachErr } = await admin
+    .from("coach_users")
+    .select("id, account_id")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (coachErr) throw new Error(`Falha ao buscar o coach vazio: ${coachErr.message}`);
+
+  let accountId = existingCoach?.account_id ?? null;
+  if (!accountId) {
+    const { data: clientRow } = await admin.from("clients").select("id").eq("auth_user_id", user.id).maybeSingle();
+    if (clientRow) throw new Error(`${EMPTY_COACH_EMAIL} está ligado a um aluno — não vira coach.`);
+
+    const { data: account, error: accErr } = await admin
+      .from("accounts")
+      .insert({ name: EMPTY_ACCOUNT_NAME, is_demo: true, demo_scenario: "empty" })
+      .select("id")
+      .single();
+    if (accErr || !account) throw new Error(`Falha ao criar a conta vazia: ${accErr?.message}`);
+    accountId = account.id;
+
+    const { error: cuErr } = await admin
+      .from("coach_users")
+      .insert({ id: user.id, account_id: accountId, name: EMPTY_COACH_NAME, email: EMPTY_COACH_EMAIL });
+    if (cuErr) throw new Error(`Falha ao criar o coach vazio: ${cuErr.message}`);
+    console.log(`Conta "Começar do zero" criada (${EMPTY_COACH_EMAIL}, senha em DEMO_COACH_PASSWORD).`);
+  } else {
+    console.log(`Conta "Começar do zero" já existe — account_id ${accountId}.`);
+  }
+
+  await markDemoAccount(accountId, "empty");
+
+  // Template de check-in padrão (mesmo catálogo do cadastro), se ainda não houver.
+  const { data: tpl } = await admin.from("checkin_templates").select("id").eq("account_id", accountId).limit(1).maybeSingle();
+  if (!tpl) {
+    const { defaultTemplateRows } = await import(pathToFileURL(path.join(ROOT, "lib", "checkin-catalog.ts")).href);
+    const { data: template, error: tErr } = await admin
+      .from("checkin_templates")
+      .insert({ account_id: accountId, name: "Padrão" })
+      .select("id")
+      .single();
+    if (tErr || !template) throw new Error(`Falha ao criar o template de check-in da conta vazia: ${tErr?.message}`);
+    await insertMany(
+      "checkin_questions",
+      defaultTemplateRows().map((row) => ({ ...row, template_id: template.id }))
+    );
+  }
+
+  // Volta ao estado inicial (sem alunos, protocolos, preços padrão). A RPC recusa conta real.
+  const { data: reset, error: resetErr } = await admin.rpc("lab_reset_demo_account", { p_account_id: accountId });
+  if (resetErr) throw new Error(`lab_reset_demo_account falhou: ${resetErr.message}`);
+  const row = Array.isArray(reset) ? reset[0] : reset;
+  await deleteOrphanDemoLogins(row?.orphan_auth_user_ids ?? []);
+  const removedPhotos = await removeDemoPhotoObjects(accountId);
+  console.log(`Conta vazia limpa: ${row?.deleted_clients ?? 0} aluno(s), ${removedPhotos} foto(s) removidos.`);
+
+  return { userId: user.id, accountId };
+}
+
+/** Apaga logins de aluno órfãos devolvidos pela RPC — só se não forem coach nem aluno de outra conta. */
+async function deleteOrphanDemoLogins(ids) {
+  for (const id of ids ?? []) {
+    const { data: coachRow } = await admin.from("coach_users").select("id").eq("id", id).maybeSingle();
+    const { data: clientRow } = await admin.from("clients").select("id").eq("auth_user_id", id).limit(1).maybeSingle();
+    if (coachRow || clientRow) continue;
+    const { error } = await admin.auth.admin.deleteUser(id);
+    if (error) console.warn(`Aviso: não foi possível apagar um login órfão da conta vazia: ${error.message}`);
+  }
+}
+
+async function seedV5DemoLab(coach, clientByKey, authUserByKey) {
+  logStep("V5 — Laboratório de demonstração");
+  const v5 = await probeV5Schema();
+  console.log("Schema V5 detectado:", v5);
+  if (!v5.isDemo || !v5.onboardingRequired || !v5.contracts || !v5.servicePrices || !v5.labProfiles) {
+    console.log("Migrações 0022/0023 ainda não aplicadas — etapa do laboratório pulada (nada foi alterado).");
+    return;
+  }
+  assertDemoEmail(COACH_EMAIL);
+
+  // 1) Conta preenchida = demo.
+  await markDemoAccount(coach.account_id, "filled");
+  console.log("Conta preenchida marcada como demo (is_demo = true, demo_scenario = 'filled').");
+
+  // 2) Preços padrão demo (upsert por conta+pacote).
+  {
+    const rows = Object.entries(DEMO_SERVICE_PRICES).map(([pkg, price]) => ({
+      account_id: coach.account_id,
+      package: pkg,
+      price_cents: price,
+      billing_period: "monthly",
+      updated_by: coach.id,
+    }));
+    const { error } = await admin.from("coach_service_prices").upsert(rows, { onConflict: "account_id,package" });
+    if (error) throw new Error(`Falha ao gravar preços padrão demo: ${error.message}`);
+  }
+
+  // 3) Contratos dos alunos demo (os alunos foram recriados nesta execução -> sem contrato ainda).
+  {
+    const rows = [];
+    for (const student of STUDENTS) {
+      const client = clientByKey.get(student.key);
+      const pkg = DEMO_PACKAGE_BY_KEY[student.key];
+      if (!client || !pkg) continue;
+      rows.push({
+        account_id: coach.account_id,
+        client_id: client.id,
+        kind: "initial",
+        package: pkg,
+        price_cents: DEMO_SERVICE_PRICES[pkg],
+        billing_period: "monthly",
+        price_source: "coach_default",
+        effective_from: client.start_date ?? todaySP(),
+        created_by: coach.id,
+      });
+    }
+    await insertContracts(rows);
+    console.log(`${rows.length} contrato(s) demo (Híbrido: ${rows.filter((r) => r.package === "hybrid").length}).`);
+  }
+
+  // 4) Aluno "Começar do zero" (conta preenchida).
+  const freshUser = await ensureDemoAuthUser(FRESH_STUDENT.email, STUDENT_PASSWORD);
+  {
+    const { data: coachRow } = await admin.from("coach_users").select("id").eq("id", freshUser.id).maybeSingle();
+    if (coachRow) throw new Error(`${FRESH_STUDENT.email} é um coach — não pode ser o aluno do zero.`);
+  }
+  const today = todaySP();
+  const [freshClient] = await insertMany("clients", [
+    {
+      account_id: coach.account_id,
+      coach_id: coach.id,
+      auth_user_id: freshUser.id,
+      name: FRESH_STUDENT.name,
+      email: FRESH_STUDENT.email,
+      phone: FRESH_STUDENT.phone,
+      status: "active",
+      invite_status: "active",
+      invited_at: new Date().toISOString(),
+      activated_at: new Date().toISOString(),
+      start_date: today,
+      onboarding_required: true,
+    },
+  ]);
+  await insertContracts([
+    {
+      account_id: coach.account_id,
+      client_id: freshClient.id,
+      kind: "initial",
+      package: "hybrid",
+      price_cents: DEMO_SERVICE_PRICES.hybrid,
+      billing_period: "monthly",
+      price_source: "coach_default",
+      effective_from: today,
+      created_by: coach.id,
+    },
+  ]);
+  console.log(`Aluno "Começar do zero": ${FRESH_STUDENT.email} (senha em DEMO_STUDENT_PASSWORD), Híbrido, questionário pendente.`);
+
+  // 5) Coach "Começar do zero".
+  const empty = await ensureEmptyCoach();
+
+  // 6) Registro fechado de perfis do laboratório (o trigger confere conta demo e coerência).
+  const carlosClient = clientByKey.get("carlos");
+  const carlosUser = authUserByKey.get("carlos");
+  if (!carlosClient || !carlosUser) throw new Error("Aluno demo com login (Carlos) não encontrado.");
+  const profiles = [
+    { key: "coach_filled", user_id: coach.id, account_id: coach.account_id, client_id: null, label: "Coach demo — Demo preenchida" },
+    { key: "student_filled", user_id: carlosUser.id, account_id: coach.account_id, client_id: carlosClient.id, label: "Aluno demo — Demo preenchida" },
+    { key: "coach_empty", user_id: empty.userId, account_id: empty.accountId, client_id: null, label: "Coach demo — Começar do zero" },
+    { key: "student_fresh", user_id: freshUser.id, account_id: coach.account_id, client_id: freshClient.id, label: "Aluno demo — Começar do zero" },
+  ];
+  // `user_id` é único: remove antes linhas cujo login mudou de chave (não acontece no fluxo normal).
+  {
+    const { error } = await admin
+      .from("demo_lab_profiles")
+      .delete()
+      .in("user_id", profiles.map((p) => p.user_id))
+      .not("key", "in", `(${profiles.map((p) => p.key).join(",")})`);
+    if (error) throw new Error(`Falha ao limpar demo_lab_profiles: ${error.message}`);
+  }
+  for (const profile of profiles) {
+    const { error } = await admin.from("demo_lab_profiles").upsert(profile, { onConflict: "key" });
+    if (error) throw new Error(`Falha ao registrar o perfil ${profile.key}: ${error.message}`);
+  }
+  console.log(`demo_lab_profiles: ${profiles.map((p) => p.key).join(", ")}.`);
+}
+
+async function insertContracts(rows) {
+  await insertMany("client_service_contracts", rows);
+}
+
+// ============================================================================
 // main
 // ============================================================================
 
@@ -1399,6 +1678,7 @@ async function main() {
   const clientRows = await buildClientRows(coach, authUserByKey);
   const insertedClients = await insertMany(
     "clients",
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- omissão por desestruturação
     clientRows.map(({ key, ...row }) => row)
   );
   // Reconstrói o mapeamento key -> cliente inserido via e-mail (determinístico).
@@ -1434,6 +1714,7 @@ async function main() {
     const instanceRows = buildCheckinInstanceRows(student, client.id, template.id);
     if (instanceRows.length === 0) continue;
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- omissão por desestruturação
     const toInsert = instanceRows.map(({ __week, __kind, ...row }) => row);
     const inserted = await insertMany("checkin_instances", toInsert, "id, week_number");
     for (const row of inserted) {
@@ -1622,6 +1903,7 @@ async function main() {
   }
   const insertedSubs = await insertMany(
     "subscriptions",
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- omissão por desestruturação
     subscriptionRows.map(({ __key, ...row }) => row),
     "id, client_id"
   );
@@ -1732,7 +2014,6 @@ async function main() {
     return row;
   });
   const insertedFoods = await insertMany("foods", foodRowsToInsert, "id, name, unit, macros");
-  const foodIdByName = new Map(insertedFoods.map((f) => [f.id ? f.name : null, f.id]));
   const foodByName = new Map(insertedFoods.map((f) => [f.name, f]));
   console.log(`${insertedFoods.length} alimento(s) na biblioteca.`);
 
@@ -2162,6 +2443,9 @@ async function main() {
 
   await insertMany("notifications", notifications);
   console.log(`${notifications.length} notificação(ões).`);
+
+  // -- V5: laboratório de demonstração (contas demo, contratos, aluno/coach do zero) --
+  await seedV5DemoLab(coach, clientByKey, authUserByKey);
 
   // -- Contagens finais -----------------------------------------------------
   logStep("Contagens finais");

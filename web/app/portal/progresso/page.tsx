@@ -49,7 +49,9 @@ function fmtDate(iso: string): string {
  *  2. Medidas e gráficos — seletor de período, gráfico, cards e, abaixo, a síntese numérica +
  *     resumo automático (por regras) do MESMO período;
  *  3. Histórico semanal — linha do tempo compacta e expansível;
- *  4. Orientações, metas e mudanças relevantes.
+ *  4. Avaliação do coach (cartão que abre a tela única /portal/avaliacao) e, recolhido, metas e marcos.
+ * V5 item 32/33: o texto da avaliação e o "o que mudou no plano" moram só em /portal/avaliacao; aqui
+ * cada semana do histórico aponta para a avaliação correspondente (semana = `week_number`).
  * Todas as semanas vêm limitadas à semana corrente (`computeWeekInfo`), então "Semana N" é o
  * mesmo número em fotos, gráfico, histórico e Home. Nenhuma resposta de check-in (muito menos as
  * sensíveis) aparece aqui — só medidas numéricas e status. Tudo lido com a sessão do aluno (RLS).
@@ -80,6 +82,7 @@ export default async function ProgressPage() {
 
   const checkinByWeek = new Map(data.checkins.map((c) => [c.weekNumber, c]));
   const orientationWeeks = new Set(data.orientations.map((o) => o.weekNumber));
+  const orientationSentAt = new Map(data.orientations.map((o) => [o.weekNumber, o.sentAt]));
 
   const withContent = data.weeks.filter(
     (w) =>
@@ -94,6 +97,7 @@ export default async function ProgressPage() {
       week,
       checkin: checkinByWeek.get(week.weekNumber) ?? null,
       hasOrientation: orientationWeeks.has(week.weekNumber),
+      orientationSentAt: orientationSentAt.get(week.weekNumber) ?? null,
       goals: goalsByWeek.get(week.weekNumber) ?? [],
     }));
 
@@ -111,15 +115,15 @@ export default async function ProgressPage() {
     photoWeeks.length > 0 && { id: "fotos", label: "Fotos" },
     hasMetrics && { id: "metricas", label: "Medidas e gráficos" },
     journey.length > 0 && { id: "historico", label: "Histórico" },
-    hasOrientations && { id: "orientacoes", label: "Orientações" },
-    hasGoals && { id: "metas", label: "Metas" },
-    hasEvents && { id: "mudancas", label: "Mudanças" },
+    hasOrientations && { id: "avaliacao", label: "Avaliação" },
+    (hasGoals || hasEvents) && { id: "metas", label: "Metas e marcos" },
   ].filter((c): c is { id: string; label: string } => Boolean(c));
 
   const [latestOrientation, ...olderOrientations] = data.orientations;
 
   return (
     <ProgressPeriodProvider>
+      <div className="tk-stagger flex flex-col gap-6">
       <PageHeader title="Progresso" eyebrow="Sua jornada" />
 
       {!hasAnything && (
@@ -219,16 +223,23 @@ export default async function ProgressPage() {
           <SectionHead
             id="historico"
             title="Histórico semanal"
-            hint="Check-ins, avaliações, orientações e metas de cada semana. Toque numa semana para ver os detalhes."
+            hint="Check-ins, avaliações e metas de cada semana, da mais recente à primeira. Toque numa semana para ver os detalhes."
           />
           <Journey items={journey} currentWeek={data.currentWeek} startDate={client.start_date} />
         </section>
       )}
 
       {hasOrientations && latestOrientation && (
-        <section id="orientacoes" aria-labelledby="orientacoes-titulo" className="flex scroll-mt-20 flex-col gap-4">
-          <SectionHead id="orientacoes" title="Orientações do seu coach" hint="As avaliações que você já recebeu." />
-          <article className={`${CARD} flex flex-col gap-3 p-5`}>
+        <section id="avaliacao" aria-labelledby="avaliacao-titulo" className="flex scroll-mt-20 flex-col gap-4">
+          <SectionHead
+            id="avaliacao"
+            title="Avaliação do seu coach"
+            hint="O texto, o que mudou no plano e as semanas anteriores ficam numa tela só."
+          />
+          <Link
+            href={`/portal/avaliacao?semana=${latestOrientation.weekNumber}`}
+            className={`${CARD} flex min-h-11 flex-col gap-2 p-5 transition-colors hover:border-line-strong`}
+          >
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="accent">Mais recente</Badge>
               <span className="text-xs text-ink-faint">
@@ -236,75 +247,79 @@ export default async function ProgressPage() {
                 {latestOrientation.sentAt ? ` · enviada em ${fmtDate(latestOrientation.sentAt)}` : ""}
               </span>
             </div>
-            {latestOrientation.focus && (
-              <p className="text-sm font-semibold text-ink">Foco: {latestOrientation.focus}</p>
-            )}
-            <p className="whitespace-pre-line text-[0.95rem] leading-relaxed text-ink-muted">{latestOrientation.text}</p>
-          </article>
-
-          {olderOrientations.length > 0 && (
-            <details className="group">
-              <summary className="flex min-h-11 cursor-pointer list-none items-center text-sm font-medium text-brand [&::-webkit-details-marker]:hidden">
-                <span className="group-open:hidden">Ver orientações anteriores ({olderOrientations.length})</span>
-                <span className="hidden group-open:inline">Ocultar orientações anteriores</span>
-              </summary>
-              <ul className="mt-2 flex flex-col gap-3">
-                {olderOrientations.map((o) => (
-                  <li key={`${o.weekNumber}-${o.sentAt}`} className={`${CARD} flex flex-col gap-2 p-4`}>
-                    <span className="text-xs text-ink-faint">
-                      Semana {o.weekNumber}
-                      {o.sentAt ? ` · enviada em ${fmtDate(o.sentAt)}` : ""}
-                    </span>
-                    {o.focus && <p className="text-sm font-semibold text-ink">Foco: {o.focus}</p>}
-                    <p className="whitespace-pre-line text-sm leading-relaxed text-ink-muted">{o.text}</p>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
+            {latestOrientation.focus && <p className="text-sm font-semibold text-ink">Foco: {latestOrientation.focus}</p>}
+            <p className="line-clamp-3 whitespace-pre-line text-sm leading-relaxed text-ink-muted">{latestOrientation.text}</p>
+            <span className="inline-flex items-center gap-1 text-sm font-medium text-brand">
+              Abrir avaliação
+              {olderOrientations.length > 0
+                ? ` · ${olderOrientations.length} anterior${olderOrientations.length === 1 ? "" : "es"}`
+                : ""}
+              <Icon name="chevron" size={16} />
+            </span>
+          </Link>
         </section>
       )}
 
-      {hasGoals && (
+      {(hasGoals || hasEvents) && (
         <section id="metas" aria-labelledby="metas-titulo" className="flex scroll-mt-20 flex-col gap-4">
-          <SectionHead id="metas" title="Metas" hint="Metas definidas com seu coach e o resultado de cada semana." />
-          <ul className={`${CARD} overflow-hidden`}>
-            {data.goals.map((g) => {
-              const st = GOAL_STATUS[g.resultStatus];
-              return (
-                <li key={g.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line px-4 py-3.5 last:border-b-0">
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    <span className="text-sm font-medium text-ink">{g.label}</span>
-                    <span className="text-xs text-ink-faint">
-                      Semana {g.weekNumber} · meta {fmtNum(g.targetValue)}
-                      {g.unit ? ` ${g.unit}` : ""}
-                      {g.resultValue != null ? ` · resultado ${fmtNum(g.resultValue)}${g.unit ? ` ${g.unit}` : ""}` : ""}
-                    </span>
-                  </div>
-                  <Badge tone={st.tone} dot>
-                    {st.label}
-                  </Badge>
-                </li>
-              );
-            })}
-          </ul>
+          <details className="group">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+              <h2 id="metas-titulo" className="t-subtitle text-ink">
+                Metas e marcos
+              </h2>
+              <span className="flex items-center gap-2 text-sm font-medium text-brand">
+                <span className="group-open:hidden">Mostrar</span>
+                <span className="hidden group-open:inline">Ocultar</span>
+                <span aria-hidden className="transition-transform group-open:rotate-180">
+                  ▾
+                </span>
+              </span>
+            </summary>
+            <div className="mt-2 flex flex-col gap-5">
+              {hasGoals && (
+                <div className="flex flex-col gap-2">
+                  <p className="t-helper">Metas definidas com seu coach e o resultado de cada semana.</p>
+                  <ul className={`${CARD} overflow-hidden`}>
+                    {data.goals.map((g) => {
+                      const st = GOAL_STATUS[g.resultStatus];
+                      return (
+                        <li key={g.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line px-4 py-3.5 last:border-b-0">
+                          <div className="flex min-w-0 flex-col gap-0.5">
+                            <span className="text-sm font-medium text-ink">{g.label}</span>
+                            <span className="text-xs text-ink-faint">
+                              Semana {g.weekNumber} · meta {fmtNum(g.targetValue)}
+                              {g.unit ? ` ${g.unit}` : ""}
+                              {g.resultValue != null ? ` · resultado ${fmtNum(g.resultValue)}${g.unit ? ` ${g.unit}` : ""}` : ""}
+                            </span>
+                          </div>
+                          <Badge tone={st.tone} dot>
+                            {st.label}
+                          </Badge>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+              {hasEvents && (
+                <div className="flex flex-col gap-2">
+                  <p className="t-helper">Mudanças relevantes</p>
+                  <ul className={`${CARD} overflow-hidden`}>
+                    {data.events.map((e) => (
+                      <li key={e.id} className="flex flex-col gap-0.5 border-b border-line px-4 py-3.5 last:border-b-0">
+                        <span className="text-xs text-ink-faint">{fmtDate(e.date)}</span>
+                        <span className="text-sm font-medium text-ink">{e.title}</span>
+                        {e.description && <span className="text-sm text-ink-muted">{e.description}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </details>
         </section>
       )}
-
-      {hasEvents && (
-        <section id="mudancas" aria-labelledby="mudancas-titulo" className="flex scroll-mt-20 flex-col gap-4">
-          <SectionHead id="mudancas" title="Mudanças relevantes" />
-          <ul className={`${CARD} overflow-hidden`}>
-            {data.events.map((e) => (
-              <li key={e.id} className="flex flex-col gap-0.5 border-b border-line px-4 py-3.5 last:border-b-0">
-                <span className="text-xs text-ink-faint">{fmtDate(e.date)}</span>
-                <span className="text-sm font-medium text-ink">{e.title}</span>
-                {e.description && <span className="text-sm text-ink-muted">{e.description}</span>}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      </div>
     </ProgressPeriodProvider>
   );
 }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getNotifications, getUnreadNotificationCount } from "@/lib/repository";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import { CARD, EmptyState, PageHeader } from "../portal-ui";
@@ -13,6 +14,20 @@ const EVENT_LABEL: Record<string, string> = {
   payment_overdue: "Pagamento atrasado",
   workout_updated: "Treino",
   nutrition_updated: "Nutrição",
+  // V5 (0022): tipos novos. `questionnaire_submitted` e `invite_accepted` são avisos do coach;
+  // ficam mapeados por segurança caso apareçam aqui.
+  protocol_ready: "Protocolo pronto",
+  package_changed: "Mudança de pacote",
+  questionnaire_submitted: "Questionário enviado",
+  invite_accepted: "Convite aceito",
+};
+
+/** Para onde cada tipo leva (as notificações não guardam link). Tipos sem entrada = sem link. */
+const EVENT_LINK: Record<string, { href: string; label: string }> = {
+  protocol_ready: { href: "/portal", label: "Ver meu protocolo" },
+  package_changed: { href: "/portal/conta", label: "Ver em Minha conta" },
+  questionnaire_submitted: { href: "/portal/onboarding/respostas", label: "Ver respostas enviadas" },
+  invite_accepted: { href: "/portal", label: "Ir para o início" },
 };
 
 /**
@@ -69,6 +84,14 @@ export default async function PortalNotificationsPage() {
                   </span>
                 </div>
                 <p className="break-words text-sm text-ink">{notification.message}</p>
+                {EVENT_LINK[notification.event_type] && (
+                  <Link
+                    href={EVENT_LINK[notification.event_type].href}
+                    className="inline-flex min-h-11 items-center text-sm font-semibold text-brand"
+                  >
+                    {EVENT_LINK[notification.event_type].label}
+                  </Link>
+                )}
                 <span
                   className={`text-xs ${notification.read ? "text-ink-faint" : "text-ink-muted"}`}
                 >

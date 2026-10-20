@@ -12,14 +12,15 @@ export default function CycleDoneBanner({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
-    ref.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    ref.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
   }, []);
 
   return (
     <p
       ref={ref}
       role="status"
-      className="tk-fade mt-1 rounded-md border border-ok/30 bg-ok-tint px-3 py-2 text-sm text-ok"
+      className="tk-fade tk-success mt-1 rounded-md border border-ok/30 bg-ok-tint px-3 py-2 text-sm text-ok"
     >
       {children}
     </p>

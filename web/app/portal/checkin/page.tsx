@@ -7,6 +7,7 @@ import CheckinSent from "../checkin-sent";
 import { BUTTON_GHOST, CARD, EmptyState, PageHeader } from "../portal-ui";
 import { requireClient } from "../require-client";
 import { Badge } from "@/components/ui/badge";
+import { isCheckinLocked } from "./guard";
 
 /**
  * Aba "Check-in" do aluno (item 25: check-in premium). A página decide QUAL estado mostrar:
@@ -16,6 +17,23 @@ import { Badge } from "@/components/ui/badge";
  */
 export default async function PortalCheckinPage() {
   const { client } = await requireClient();
+  if (await isCheckinLocked()) {
+    return (
+      <>
+        <PageHeader title="Check-in" />
+        <div className={`${CARD} flex flex-col items-start gap-3 p-5`}>
+          <Badge tone="warning">Em preparação</Badge>
+          <p className="font-display text-xl text-ink">O check-in semanal abre depois que seu protocolo for publicado</p>
+          <p className="text-sm text-ink-muted">
+            Seu coach está preparando seu protocolo. Quando ele for publicado, o check-in da semana passa a aparecer aqui.
+          </p>
+          <Link href="/portal" className={BUTTON_GHOST}>
+            Ver minha preparação
+          </Link>
+        </div>
+      </>
+    );
+  }
   const checkin = await getCurrentCheckin(client.id);
   const win = checkinWindow();
 

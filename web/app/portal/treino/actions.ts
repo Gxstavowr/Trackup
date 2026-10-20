@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { moduleWriteBlockMessage } from "../checkin/guard";
 import {
   completeWorkoutSession,
   getOpenWorkoutSession,
@@ -55,6 +56,8 @@ export async function startSessionAction(
   _prevState: SessionActionState,
   formData: FormData
 ): Promise<SessionActionState> {
+  const blocked = await moduleWriteBlockMessage("training");
+  if (blocked) return { error: blocked };
   const clientId = String(formData.get("clientId") || "");
   const planId = String(formData.get("planId") || "");
   const dayId = String(formData.get("dayId") || "");
@@ -81,6 +84,8 @@ export async function pauseSessionAction(
   _prevState: SessionActionState,
   formData: FormData
 ): Promise<SessionActionState> {
+  const blocked = await moduleWriteBlockMessage("training");
+  if (blocked) return { error: blocked };
   const sessionId = String(formData.get("sessionId") || "");
   const clientId = String(formData.get("clientId") || "");
   if (!sessionId || !clientId) return { error: "Sessão inválida." };
@@ -99,6 +104,8 @@ export async function resumeSessionAction(
   _prevState: SessionActionState,
   formData: FormData
 ): Promise<SessionActionState> {
+  const blocked = await moduleWriteBlockMessage("training");
+  if (blocked) return { error: blocked };
   const sessionId = String(formData.get("sessionId") || "");
   const clientId = String(formData.get("clientId") || "");
   if (!sessionId || !clientId) return { error: "Sessão inválida." };
@@ -123,6 +130,8 @@ export async function logSetAction(
   _prevState: SessionActionState,
   formData: FormData
 ): Promise<SessionActionState> {
+  const blocked = await moduleWriteBlockMessage("training");
+  if (blocked) return { error: blocked };
   const sessionId = String(formData.get("sessionId") || "");
   const clientId = String(formData.get("clientId") || "");
   const workoutExerciseId = String(formData.get("workoutExerciseId") || "");
@@ -168,6 +177,8 @@ export async function completeSessionAction(
   _prevState: SessionActionState,
   formData: FormData
 ): Promise<SessionActionState> {
+  const blocked = await moduleWriteBlockMessage("training");
+  if (blocked) return { error: blocked };
   const sessionId = String(formData.get("sessionId") || "");
   const clientId = String(formData.get("clientId") || "");
   const studentNote = String(formData.get("studentNote") || "");

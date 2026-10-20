@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildSessionSummary,
+  computeClockOffsetMs,
   computeElapsedSeconds,
   computeSessionProgress,
   formatDuration,
@@ -234,4 +235,19 @@ test("buildHighlights só destaca com histórico anterior", () => {
   ]);
   assert.equal(h.length, 1);
   assert.match(h[0].text, /62,5/);
+});
+
+test("computeClockOffsetMs: relógio atrasado não trava o cronômetro em 0:00", () => {
+  const session = { started_at: "2026-01-01T10:00:00.000Z", paused_at: null, paused_total_sec: 0, ended_at: null };
+  const serverNow = "2026-01-01T10:10:00.000Z";
+  const clientNow = new Date("2026-01-01T09:50:00.000Z").getTime(); // aparelho 20 min atrasado
+  assert.equal(computeElapsedSeconds(session, new Date(clientNow)), 0);
+  const offset = computeClockOffsetMs(serverNow, clientNow);
+  assert.equal(offset, 20 * 60 * 1000);
+  assert.equal(computeElapsedSeconds(session, new Date(clientNow + offset)), 600);
+});
+
+test("computeClockOffsetMs: entrada inválida vira 0", () => {
+  assert.equal(computeClockOffsetMs(null, 1000), 0);
+  assert.equal(computeClockOffsetMs("lixo", 1000), 0);
 });

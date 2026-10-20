@@ -37,7 +37,7 @@ export default async function StudentHistoryPage({
     <div className="flex flex-col gap-6">
       <EvolutionSubnav clientId={id} active="historico" />
       <section aria-label="Histórico" className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-ink">Histórico</h2>
+        <h2 className="t-subtitle text-ink">Histórico</h2>
         <p className="text-sm text-ink-muted">
           A evolução da relação com {timeline.clientName} ao longo das semanas — check-ins,
           avaliações, orientações e metas. Clique numa semana para ver os detalhes.

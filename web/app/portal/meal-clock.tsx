@@ -217,7 +217,7 @@ export function NextMealStrip() {
         {meal ? (
           <span className="break-words text-base font-semibold text-ink">
             {meal.name}
-            {(h.kind === "now" || h.kind === "upcoming") && <span className="text-ink-muted"> · {h.time}</span>}
+            {(h.kind === "now" || h.kind === "upcoming") && <span className="whitespace-nowrap text-ink-muted"> · {h.time}</span>}
           </span>
         ) : (
           <span className="text-sm text-ink-muted">Seu plano não tem horários definidos.</span>

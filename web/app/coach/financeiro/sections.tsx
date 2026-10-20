@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 import { formatBRL } from "@/lib/finance/format";
 import {
@@ -9,8 +8,9 @@ import {
   type HistoryFilter,
 } from "@/lib/finance/queries";
 import type { MonthKey } from "@/lib/finance/dates";
-import { Icon } from "@/components/ui";
+import { Icon, Segmented } from "@/components/ui";
 import { financeHref } from "./href";
+import HistoryTable from "./history-table";
 import PaymentRow from "./payment-row";
 import { withTimeout } from "./timeout";
 import { CARD } from "./ui";
@@ -30,8 +30,8 @@ function SectionHeader({
 }) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-      <h2 id={id} className={`t-subtitle flex items-center gap-2 text-xl md:text-2xl ${tone === "late" ? "text-danger-text" : "text-ink"}`}>
-        {tone === "late" && <Icon name="alert" size={22} />}
+      <h2 id={id} className={`t-subtitle flex items-center gap-2 text-lg md:text-xl ${tone === "late" ? "text-danger-text" : "text-ink"}`}>
+        {tone === "late" && <Icon name="alert" size={20} className="shrink-0" />}
         {title}
       </h2>
       {summary && (
@@ -122,26 +122,16 @@ export function HistorySection({ filter, month }: { filter: HistoryFilter; month
     <section aria-labelledby="historico" className="flex flex-col gap-3">
       <SectionHeader id="historico" title="Histórico de pagamentos" />
 
-      <nav aria-label="Filtrar histórico por status" className="flex flex-wrap gap-2">
-        {FILTERS.map((value) => {
-          const active = value === filter;
-          return (
-            <Link
-              key={value}
-              href={financeHref({ month, status: value }, "historico")}
-              scroll={false}
-              aria-current={active ? "true" : undefined}
-              className={`inline-flex min-h-11 items-center rounded-full border px-3.5 text-sm transition-colors ${
-                active
-                  ? "border-brand bg-brand-tint text-ink"
-                  : "border-line text-ink-muted hover:border-brand hover:text-ink"
-              }`}
-            >
-              {FILTER_LABEL[value]}
-            </Link>
-          );
-        })}
-      </nav>
+      <Segmented
+        label="Filtrar histórico por status"
+        size="sm"
+        value={filter}
+        items={FILTERS.map((value) => ({
+          id: value,
+          label: FILTER_LABEL[value],
+          href: financeHref({ month, status: value }, "historico"),
+        }))}
+      />
 
       {/* key no filtro: trocar o chip mostra só o esqueleto da lista, sem piscar o resto da tela. */}
       <Suspense key={filter} fallback={<HistorySkeleton />}>
@@ -175,11 +165,7 @@ async function HistoryList({ filter }: { filter: HistoryFilter }) {
 
   return (
     <>
-      <ul className={`overflow-hidden ${CARD}`}>
-        {rows.map((payment) => (
-          <PaymentRow key={payment.id} payment={payment} variant="history" />
-        ))}
-      </ul>
+      <HistoryTable rows={rows} />
       {hasMore && (
         <p className="text-xs text-ink-faint">
           Mostrando os {HISTORY_LIMIT} pagamentos mais recentes por vencimento.

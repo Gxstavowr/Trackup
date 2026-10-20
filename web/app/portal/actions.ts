@@ -8,6 +8,7 @@ import {
   type CheckinPhoto,
 } from "@/lib/storage/checkin-photos";
 import { actionErrorMessage } from "@/lib/action-errors";
+import { checkinBlockMessage } from "./checkin/guard";
 
 export type SubmitCheckinState = {
   error?: string;
@@ -32,6 +33,9 @@ export async function submitCheckinAction(
   if (!checkinId || typeof checkinId !== "string") {
     return { error: "Check-in inválido." };
   }
+  // Aluno novo (V5) sem nenhum módulo publicado: check-in ainda não abriu.
+  const blocked = await checkinBlockMessage();
+  if (blocked) return { error: blocked };
   const clean: Record<string, string> = {};
   if (answers && typeof answers === "object") {
     for (const [key, value] of Object.entries(answers)) {
@@ -69,6 +73,8 @@ export async function saveCheckinDraftAction(
   if (!checkinId || typeof checkinId !== "string") {
     return { ok: false, error: "Check-in inválido." };
   }
+  const blocked = await checkinBlockMessage();
+  if (blocked) return { ok: false, error: blocked };
   const clean: Record<string, string> = {};
   if (answers && typeof answers === "object") {
     for (const [key, value] of Object.entries(answers)) {

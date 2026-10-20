@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BUTTON_GHOST, BUTTON_PRIMARY, CARD } from "./portal-ui";
 import Icon from "@/components/ui/icon";
+import { CompletionMark } from "@/components/ui/completion-mark";
 
 /**
  * Estado "check-in enviado / avaliado" do aluno. Usado pela página `/portal/checkin` (qualquer
@@ -16,31 +17,29 @@ export default function CheckinSent({
 }) {
   if (reviewed) {
     return (
-      <div className={`${CARD} flex flex-col items-start gap-4 p-5`}>
-        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-success text-on-accent">
+      <div className={`${CARD} tk-enter flex flex-col items-start gap-4 p-5`}>
+        <span className="tk-pop flex h-14 w-14 items-center justify-center rounded-full bg-success text-on-accent">
           <Icon name="check" size={28} />
         </span>
         <div className="flex flex-col gap-1.5">
           <span className="t-label text-success">Ciclo concluído</span>
           <p className="font-display text-2xl text-ink">Semana {weekNumber} concluída</p>
           <p className="text-sm text-ink-muted">
-            Seu coach avaliou o seu check-in. A orientação está na Home. O próximo check-in abre na
+            Seu coach avaliou o seu check-in e a orientação já está disponível. O próximo check-in abre na
             próxima semana.
           </p>
         </div>
-        <Link href="/portal" className={BUTTON_PRIMARY}>
-          Ver a orientação do coach
+        <Link href="/portal/avaliacao" className={BUTTON_PRIMARY}>
+          Ver avaliação semanal
         </Link>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4" role="status">
+    <div className="tk-stagger flex flex-col gap-4" role="status">
       <div className="flex flex-col items-start gap-4 rounded-lg border border-success/30 bg-success-tint p-5">
-        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-success text-on-accent">
-          <Icon name="check" size={28} />
-        </span>
+        <CompletionMark size={56} />
         <div className="flex flex-col gap-1.5">
           <span className="t-label text-success">Enviado · semana {weekNumber}</span>
           <p className="font-display text-2xl leading-tight text-ink">

@@ -30,6 +30,7 @@ import {
   normalizeSubstituteIds,
   type SetPrescription,
 } from "@/lib/workout-prescription";
+import { requireActiveCoach } from "../../../require-coach";
 
 export type TreinoActionState = {
   error?: string;
@@ -149,6 +150,7 @@ export async function createExerciseAction(
   _prevState: TreinoActionState,
   formData: FormData
 ): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const name = String(formData.get("name") || "").trim();
   const category = String(formData.get("category") || "").trim();
@@ -179,6 +181,7 @@ export async function updateExerciseAction(
   _prevState: TreinoActionState,
   formData: FormData
 ): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const exerciseId = String(formData.get("exerciseId") || "");
   const name = String(formData.get("name") || "").trim();
@@ -206,6 +209,7 @@ export async function updateExerciseAction(
 }
 
 export async function archiveExerciseAction(formData: FormData): Promise<void> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const exerciseId = String(formData.get("exerciseId") || "");
   if (!exerciseId) return;
@@ -218,6 +222,7 @@ export async function archiveExerciseAction(formData: FormData): Promise<void> {
 }
 
 export async function unarchiveExerciseAction(formData: FormData): Promise<void> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const exerciseId = String(formData.get("exerciseId") || "");
   if (!exerciseId) return;
@@ -239,6 +244,7 @@ export async function createDraftAction(
   _prevState: TreinoActionState,
   formData: FormData
 ): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const name = String(formData.get("name") || "").trim();
   const source = String(formData.get("source") || "").trim();
@@ -263,6 +269,7 @@ export async function discardDraftAction(
   _prevState: TreinoActionState,
   formData: FormData
 ): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const planId = String(formData.get("planId") || "");
   if (!planId) return { error: "Rascunho inválido." };
@@ -281,6 +288,7 @@ export async function publishDraftAction(
   _prevState: TreinoActionState,
   formData: FormData
 ): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const planId = String(formData.get("planId") || "");
   if (!planId) return { error: "Rascunho inválido." };
@@ -299,6 +307,7 @@ export async function saveAsTemplateAction(
   _prevState: TreinoActionState,
   formData: FormData
 ): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const planId = String(formData.get("planId") || "");
   const name = String(formData.get("name") || "").trim();
@@ -318,6 +327,7 @@ export async function applyTemplateAction(
   _prevState: TreinoActionState,
   formData: FormData
 ): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const templateId = String(formData.get("templateId") || "");
   if (!clientId || !templateId) return { error: "Selecione um template." };
@@ -336,6 +346,7 @@ export async function duplicateToClientAction(
   _prevState: TreinoActionState,
   formData: FormData
 ): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const planId = String(formData.get("planId") || "");
   const targetClientId = String(formData.get("targetClientId") || "");
@@ -353,6 +364,7 @@ export async function duplicateToClientAction(
 }
 
 export async function deleteTemplateAction(formData: FormData): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const templateId = String(formData.get("templateId") || "");
   if (!templateId) return { error: "Template inválido." };
@@ -374,6 +386,7 @@ export async function addWorkoutDayAction(
   _prevState: TreinoActionState,
   formData: FormData
 ): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const planId = String(formData.get("planId") || "");
   const name = String(formData.get("name") || "").trim();
@@ -400,6 +413,7 @@ export async function updateWorkoutDayAction(
   _prevState: TreinoActionState,
   formData: FormData
 ): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const dayId = String(formData.get("dayId") || "");
   const name = String(formData.get("name") || "").trim();
@@ -423,6 +437,7 @@ export async function updateWorkoutDayAction(
 }
 
 export async function deleteWorkoutDayAction(formData: FormData): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const dayId = String(formData.get("dayId") || "");
   if (!dayId) return { error: "Dia inválido." };
@@ -437,6 +452,7 @@ export async function deleteWorkoutDayAction(formData: FormData): Promise<Treino
 }
 
 export async function duplicateWorkoutDayAction(formData: FormData): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const dayId = String(formData.get("dayId") || "");
   if (!dayId) return { error: "Dia inválido." };
@@ -453,6 +469,7 @@ export async function duplicateWorkoutDayAction(formData: FormData): Promise<Tre
 /** Move um dia ↑/↓ na lista — `orderJson` é a ordem ATUAL (ids), já renderizada; calcula a
  * nova ordem em memória (`moveItem`) e só chama o banco se algo de fato mudou. */
 export async function moveWorkoutDayAction(formData: FormData): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const planId = String(formData.get("planId") || "");
   const dayId = String(formData.get("dayId") || "");
@@ -482,6 +499,7 @@ export async function addExerciseToDayAction(
   _prevState: TreinoActionState,
   formData: FormData
 ): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const dayId = String(formData.get("dayId") || "");
   const exerciseId = String(formData.get("exerciseId") || "");
@@ -523,6 +541,7 @@ export async function updateWorkoutExerciseAction(
   _prevState: TreinoActionState,
   formData: FormData
 ): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const workoutExerciseId = String(formData.get("workoutExerciseId") || "");
   const exerciseId = String(formData.get("exerciseId") || "");
@@ -564,6 +583,7 @@ export async function updateWorkoutExerciseAction(
 }
 
 export async function deleteWorkoutExerciseAction(formData: FormData): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const workoutExerciseId = String(formData.get("workoutExerciseId") || "");
   if (!workoutExerciseId) return { error: "Exercício inválido." };
@@ -578,6 +598,7 @@ export async function deleteWorkoutExerciseAction(formData: FormData): Promise<T
 }
 
 export async function duplicateWorkoutExerciseAction(formData: FormData): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const workoutExerciseId = String(formData.get("workoutExerciseId") || "");
   if (!workoutExerciseId) return { error: "Exercício inválido." };
@@ -592,6 +613,7 @@ export async function duplicateWorkoutExerciseAction(formData: FormData): Promis
 }
 
 export async function moveWorkoutExerciseAction(formData: FormData): Promise<TreinoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const dayId = String(formData.get("dayId") || "");
   const workoutExerciseId = String(formData.get("workoutExerciseId") || "");

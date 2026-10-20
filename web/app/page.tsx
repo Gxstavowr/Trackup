@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { resolveHomeForCurrentUser } from "@/lib/auth/resolve-home";
+import { postLoginDestination } from "@/lib/auth/post-login";
+import { isAdminUserId } from "@/lib/admin/auth";
 
 /**
  * Raiz do app (`/`). Sem UI própria: só decide pra onde mandar quem chega aqui — igual ao
@@ -10,6 +12,10 @@ import { resolveHomeForCurrentUser } from "@/lib/auth/resolve-home";
  */
 export default async function Home() {
   const supabase = await createClient();
-  const redirectPath = (await resolveHomeForCurrentUser(supabase)) ?? "/login";
+  const home = await resolveHomeForCurrentUser(supabase);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const redirectPath = postLoginDestination({ isAdmin: isAdminUserId(user?.id), home }) ?? "/login";
   redirect(redirectPath);
 }

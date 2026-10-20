@@ -7,6 +7,7 @@ import { deriveLateWeek, isCheckinSent, isStoredLateOverdue, previousWeekMonday 
 import { unitForValue } from "@/lib/week-comparison-format";
 import { formatCheckinAnswer, getCatalogQuestion } from "@/lib/checkin-catalog";
 import { getClientMetricSettings, resolveEffectiveMetrics } from "@/lib/metrics-settings";
+import { getOnboardingStatuses } from "@/lib/onboarding/status";
 import {
   computeWeekInfo,
   createNotification,
@@ -119,12 +120,33 @@ export const getStudentEvaluationRow = cache(async (client: Client): Promise<Eva
   return rows[0] ?? null;
 });
 
+/**
+ * Aluno novo (V5, `onboarding_required`) só entra no ciclo semanal depois do 1º módulo publicado —
+ * mesma regra do portal (`app/portal/checkin/guard.ts`). Antes disso o check-in dele está bloqueado,
+ * então não pode aparecer como "aguardando check-in" (pendência do aluno) nem contar na semana.
+ * Sem a view (migração pendente) ou com erro, mantém todos (comportamento antigo).
+ */
+async function withoutCheckinLockedOnboarding(clients: Client[]): Promise<Client[]> {
+  const { available, rows } = await getOnboardingStatuses({ clientIds: clients.map((c) => c.id) });
+  if (!available) return clients;
+  const locked = new Set(
+    rows
+      .filter(
+        (r) => r.onboardingRequired && r.info.stage !== "protocol_partial" && r.info.stage !== "protocol_completed"
+      )
+      .map((r) => r.clientId)
+  );
+  return locked.size === 0 ? clients : clients.filter((c) => !locked.has(c.id));
+}
+
 async function computeEvaluationRows(clients: Client[]): Promise<EvaluationRow[]> {
   const supabase = await createSupabaseServerClient();
 
-  const active = clients.filter(
+  const eligible = clients.filter(
     (c) => c.status === "active" && c.invite_status === "active" && c.start_date
   );
+  if (eligible.length === 0) return [];
+  const active = await withoutCheckinLockedOnboarding(eligible);
   if (active.length === 0) return [];
 
   const ids = active.map((c) => c.id);

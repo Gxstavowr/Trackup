@@ -11,7 +11,7 @@ import {
 import { DEFAULT_EXERCISE_CATALOG } from "@/lib/exercise-catalog";
 import { createClient } from "@/lib/supabase/server";
 import { toFriendlyActionError } from "@/lib/workout-builder";
-import { requireCoach } from "../require-coach";
+import { requireActiveCoach } from "../require-coach";
 
 export type TreinosActionState = { error?: string; success?: string } | null;
 
@@ -31,7 +31,7 @@ export async function saveExerciseAction(
   _prev: TreinosActionState,
   formData: FormData
 ): Promise<TreinosActionState> {
-  await requireCoach();
+  await requireActiveCoach();
   const exerciseId = String(formData.get("exerciseId") || "");
   const name = String(formData.get("name") || "").trim();
   const category = String(formData.get("category") || "").trim();
@@ -70,7 +70,7 @@ export async function setExerciseArchivedAction(
   _prev: TreinosActionState,
   formData: FormData
 ): Promise<TreinosActionState> {
-  await requireCoach();
+  await requireActiveCoach();
   const exerciseId = String(formData.get("exerciseId") || "");
   const archive = String(formData.get("archive") || "") === "1";
   if (!exerciseId) return { error: "Exercício inválido." };
@@ -87,7 +87,7 @@ export async function setExerciseArchivedAction(
 /** Semeia a biblioteca da conta com o catálogo padrão via RPC `import_exercise_catalog`
  * (security invoker: só insere na conta do coach autenticado e pula nomes existentes). */
 export async function importCatalogAction(): Promise<TreinosActionState> {
-  await requireCoach();
+  await requireActiveCoach();
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("import_exercise_catalog", { p_items: DEFAULT_EXERCISE_CATALOG });
   if (error) return { error: friendly(new Error(error.message), "Não foi possível importar o catálogo.") };
@@ -101,7 +101,7 @@ export async function duplicateTemplateAction(
   _prev: TreinosActionState,
   formData: FormData
 ): Promise<TreinosActionState> {
-  await requireCoach();
+  await requireActiveCoach();
   const templateId = String(formData.get("templateId") || "");
   const name = String(formData.get("name") || "").trim();
   if (!templateId || !name) return { error: "Informe o nome da cópia." };

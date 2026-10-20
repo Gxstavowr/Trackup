@@ -1,10 +1,10 @@
-import Link from "next/link";
 import { getEvaluationQueue } from "@/lib/evaluations";
 import { GROUP_META, groupRows } from "@/lib/evaluation-situation";
 import { todayDateSP } from "@/lib/portal-today";
 import { requireCoach } from "../require-coach";
 import { EvaluationGroup, GroupEmpty, RowsList } from "./evaluation-ui";
 import { ButtonLink } from "@/components/ui/button";
+import { Segmented } from "@/components/ui/segmented";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { IconName } from "@/components/ui/icon";
 
@@ -49,6 +49,7 @@ export default async function CoachEvaluationsPage({
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
+        <span className="t-label text-ink-faint">Trackly · Coach</span>
         <h1 className="t-title text-ink">Avaliações</h1>
         <p className="t-helper">Fila completa do ciclo semanal: abra, continue e conclua a avaliação de cada aluno.</p>
       </header>
@@ -62,29 +63,17 @@ export default async function CoachEvaluationsPage({
         />
       ) : (
         <>
-          <nav aria-label="Filtrar avaliações">
-            <ul className="flex flex-wrap gap-2 border-b border-line pb-3">
-              {filters.map((f) => {
-                const active = f.id === filter;
-                return (
-                  <li key={f.id}>
-                    <Link
-                      href={f.id === "todas" ? "/coach/avaliacoes" : `/coach/avaliacoes?estado=${f.id}`}
-                      aria-current={active ? "page" : undefined}
-                      className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors md:min-h-10 ${
-                        active
-                          ? "border-brand bg-brand-tint text-brand"
-                          : "border-line-strong text-ink-muted hover:border-brand hover:text-ink"
-                      }`}
-                    >
-                      {f.label}
-                      <span className={`tabular-nums ${active ? "text-brand" : "text-ink-faint"}`}>{f.count}</span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
+          <Segmented
+            label="Filtrar avaliações"
+            value={filter}
+            className="self-start"
+            items={filters.map((f) => ({
+              id: f.id,
+              label: f.label,
+              count: f.count,
+              href: f.id === "todas" ? "/coach/avaliacoes" : `/coach/avaliacoes?estado=${f.id}`,
+            }))}
+          />
 
           {filter === "todas" ? (
             <div className="flex flex-col gap-8">

@@ -9,7 +9,7 @@ import {
   sendOrientation,
 } from "@/lib/evaluations";
 import { actionErrorMessage } from "@/lib/action-errors";
-import { requireCoach } from "../../../require-coach";
+import { requireActiveCoach } from "../../../require-coach";
 
 export type EvaluationActionState = {
   error?: string;
@@ -30,14 +30,14 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 /**
  * Server Actions são endpoints POST públicos: TODA autorização acontece aqui/dentro de
- * `lib/evaluations.ts`, nunca confiando no que o formulário mandou. `requireCoach()` valida
+ * `lib/evaluations.ts`, nunca confiando no que o formulário mandou. `requireActiveCoach()` valida
  * sessão + role; o vínculo coach -> aluno é garantido pelo RLS (`resolveEvaluationTarget` só
  * acha o aluno se ele for da conta do coach logado — outro coach recebe "Aluno não encontrado").
  */
 
 /** Chamada uma vez quando o coach abre a avaliação: grava `review_opened_at` (idempotente). */
 export async function markReviewOpenedAction(clientId: string): Promise<void> {
-  await requireCoach();
+  await requireActiveCoach();
   if (!UUID_RE.test(clientId)) return;
   try {
     await markReviewOpened(clientId);
@@ -54,7 +54,7 @@ export async function saveEvaluationAction(
   _prevState: EvaluationActionState,
   formData: FormData
 ): Promise<EvaluationActionState> {
-  await requireCoach();
+  await requireActiveCoach();
 
   const clientId = String(formData.get("clientId") || "");
   const intent = String(formData.get("intent") || "");

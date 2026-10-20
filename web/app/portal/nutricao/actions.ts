@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { moduleWriteBlockMessage } from "../checkin/guard";
 import { upsertMealLog, upsertWaterLog } from "@/lib/repository";
 import { uploadMealPhoto } from "@/lib/storage/meal-photos";
 import { clampWaterMl, type MealLogStatus } from "@/lib/nutrition-session";
@@ -58,6 +59,8 @@ export async function logMealAction(
   _prevState: MealLogActionState,
   formData: FormData
 ): Promise<MealLogActionState> {
+  const blocked = await moduleWriteBlockMessage("nutrition");
+  if (blocked) return { error: blocked };
   const clientId = String(formData.get("clientId") || "");
   const mealId = String(formData.get("mealId") || "");
   const mealName = String(formData.get("mealName") || "");
@@ -106,6 +109,8 @@ export type UploadMealPhotoState = { url: string; storagePath: string } | { erro
  * órfão no bucket (mesmo trade-off aceito pelo check-in: reenviar substitui, não acumula).
  */
 export async function logMealPhotoAction(formData: FormData): Promise<UploadMealPhotoState> {
+  const blocked = await moduleWriteBlockMessage("nutrition");
+  if (blocked) return { error: blocked };
   const file = formData.get("file");
   try {
     const result = await uploadMealPhoto({
@@ -133,6 +138,8 @@ export async function logWaterAction(
   _prevState: WaterLogActionState,
   formData: FormData
 ): Promise<WaterLogActionState> {
+  const blocked = await moduleWriteBlockMessage("nutrition");
+  if (blocked) return { error: blocked };
   const clientId = String(formData.get("clientId") || "");
   const logDate = String(formData.get("logDate") || "");
   const amountMl = parseNumber(formData.get("amountMl"));

@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { deleteClientCompletely } from "@/lib/privacy/client-data";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireCoach } from "../require-coach";
+import { requireActiveCoach } from "../require-coach";
 
 /**
  * Ações LGPD do coach — ele é o CONTROLADOR dos dados dos alunos (Termos, seção 3) e é quem
@@ -20,7 +20,7 @@ function fail(code: string): never {
 
 /** Muda o status de um pedido de aluno (em andamento / concluído / recusado com motivo). */
 export async function resolvePrivacyRequestAction(formData: FormData): Promise<void> {
-  await requireCoach();
+  await requireActiveCoach();
   const id = String(formData.get("requestId") || "");
   const status = String(formData.get("status") || "");
   const response = String(formData.get("response") || "").trim().slice(0, 2000);
@@ -45,7 +45,7 @@ export async function resolvePrivacyRequestAction(formData: FormData): Promise<v
  * marcado como concluído na mesma ação — é ele que fica como prova de que a exclusão ocorreu.
  */
 export async function deleteStudentForRequestAction(formData: FormData): Promise<void> {
-  await requireCoach();
+  await requireActiveCoach();
   const requestId = String(formData.get("requestId") || "");
   const clientId = String(formData.get("clientId") || "");
   if (!requestId || !clientId) fail("pedido");
@@ -73,7 +73,7 @@ export async function deleteStudentForRequestAction(formData: FormData): Promise
 
 /** Pedido de encerramento da conta do próprio coach (atendido pelo Trackly). */
 export async function requestAccountDeletionAction(formData: FormData): Promise<void> {
-  await requireCoach();
+  await requireActiveCoach();
   if (formData.get("confirm") !== "on") fail("confirmar");
 
   const supabase = await createClient();
@@ -97,14 +97,14 @@ function clean(value: FormDataEntryValue | null, max: number): string {
 /**
  * Perfil profissional: nome do coach (`coach_users.name`) e nome/nicho da conta (`accounts`).
  * Essas tabelas só têm SELECT pela RLS, então a escrita usa o admin client — restrita à linha do
- * PRÓPRIO coach (id = usuário da sessão verificada por `requireCoach`) e à conta que essa linha
+ * PRÓPRIO coach (id = usuário da sessão verificada por `requireActiveCoach`) e à conta que essa linha
  * referencia (lida com o client da sessão). Nenhum id vem do formulário.
  */
 export async function updateProfileAction(
   _prev: SettingsFormState,
   formData: FormData
 ): Promise<SettingsFormState> {
-  const { user } = await requireCoach();
+  const { user } = await requireActiveCoach();
   const name = clean(formData.get("name"), 80);
   const accountName = clean(formData.get("accountName"), 80);
   const niche = clean(formData.get("niche"), 60);
@@ -139,7 +139,7 @@ export async function changePasswordAction(
   _prev: SettingsFormState,
   formData: FormData
 ): Promise<SettingsFormState> {
-  await requireCoach();
+  await requireActiveCoach();
   const password = String(formData.get("password") ?? "");
   const confirm = String(formData.get("confirm") ?? "");
   if (password.length < 8) return { error: "A nova senha precisa ter pelo menos 8 caracteres." };

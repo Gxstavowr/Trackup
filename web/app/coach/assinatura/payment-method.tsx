@@ -303,9 +303,15 @@ function OptionCard({
   children?: ReactNode;
 }) {
   return (
-    <article className={`${cardClass} flex flex-col gap-4 p-5 md:p-6 ${soon ? "opacity-60" : ""}`}>
+    <article className={`${cardClass} flex flex-col gap-4 p-5 md:p-6 ${soon ? "border-dashed" : ""}`}>
       <div className="flex items-start gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-tint text-brand">
+        {/* "Em breve": o cartão perde o acento (ícone neutro, borda tracejada), mas o texto continua
+            legível — opacidade no cartão inteiro derrubava o contraste abaixo de 4,5:1. */}
+        <span
+          className={`flex size-10 shrink-0 items-center justify-center rounded-full ${
+            soon ? "bg-surface-raised text-ink-faint" : "bg-brand-tint text-brand"
+          }`}
+        >
           <Icon name={icon} size={20} />
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-1">

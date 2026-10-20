@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { formatMetricValue, metricDefs, type ComparisonWeek, type MetricKey } from "@/lib/week-comparison-format";
 import type { ProgressCheckin, ProgressGoal } from "@/lib/portal-progress";
@@ -30,6 +31,8 @@ export type JourneyWeek = {
   week: ComparisonWeek;
   checkin: ProgressCheckin | null;
   hasOrientation: boolean;
+  /** Quando a avaliação desta semana foi enviada (ISO), se foi. */
+  orientationSentAt?: string | null;
   goals: Pick<ProgressGoal, "id" | "label" | "resultStatus">[];
 };
 
@@ -85,7 +88,7 @@ export default function Journey({
 }
 
 function Node({ item, currentWeek, defaultOpen }: { item: JourneyWeek; currentWeek: number | null; defaultOpen: boolean }) {
-  const { week, checkin, hasOrientation, goals } = item;
+  const { week, checkin, hasOrientation, orientationSentAt, goals } = item;
   const isCurrent = week.weekNumber === currentWeek;
   const sent = checkin?.status === "submitted" || checkin?.status === "reviewed";
   const reviewed = checkin?.status === "reviewed";
@@ -115,7 +118,7 @@ function Node({ item, currentWeek, defaultOpen }: { item: JourneyWeek; currentWe
               <Badge tone="neutral">{isCurrent ? "Check-in em aberto" : "Sem check-in"}</Badge>
             )}
             {reviewed && <Badge tone="success">Avaliado</Badge>}
-            {hasOrientation && <Badge tone="info">Orientação</Badge>}
+            {hasOrientation && <Badge tone="info">Avaliação recebida</Badge>}
             {goals.length > 0 && <Badge tone="neutral">{goals.length === 1 ? "1 meta" : `${goals.length} metas`}</Badge>}
             {photoCount > 0 && <Badge tone="neutral">{photoCount === 1 ? "1 foto" : `${photoCount} fotos`}</Badge>}
             <span aria-hidden className="text-ink-faint transition-transform group-open:rotate-180">
@@ -131,12 +134,13 @@ function Node({ item, currentWeek, defaultOpen }: { item: JourneyWeek; currentWe
                 ? "Em aberto nesta semana"
                 : "Não enviado"}
           </Row>
-          {sent && <Row label="Avaliação do coach">{reviewed ? "Concluída" : "Aguardando avaliação"}</Row>}
-          {hasOrientation && (
-            <Row label="Orientação">
-              <a href="#orientacoes" className="font-medium text-brand hover:underline">
-                Recebida — ver orientações
-              </a>
+          {(hasOrientation || sent) && (
+            <Row label="Avaliação do coach">
+              <Link href={`/portal/avaliacao?semana=${week.weekNumber}`} className="font-medium text-brand hover:underline">
+                {hasOrientation
+                  ? `Recebida${orientationSentAt ? ` em ${dateTimeShort(orientationSentAt)}` : ""} — ver e comparar com o plano`
+                  : "Aguardando — ver andamento"}
+              </Link>
             </Row>
           )}
           {goals.length > 0 && (

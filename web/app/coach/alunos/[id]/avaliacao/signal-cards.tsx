@@ -93,3 +93,53 @@ function SignalCardView({ card }: { card: SignalCard }) {
     </article>
   );
 }
+
+const DOT: Record<SignalCardTone, string> = {
+  attention: "bg-warning",
+  info: "bg-info",
+  neutral: "bg-ink-faint",
+  positive: "bg-success",
+};
+
+/**
+ * Faixa compacta dos sinais da semana, no topo da avaliação: um "chip" por sinal (cor de estado +
+ * o que mede + número + selo), pontos de atenção primeiro. A explicação e o contexto de cada sinal
+ * ficam recolhidos em "Contexto histórico" (`SignalCards`) — aqui só o essencial para bater o olho.
+ * Sinais neutros (estável/igual) ficam fora — a comparação já mostra isso. Sem sinais, não
+ * renderiza nada (o contexto já explica por quê).
+ */
+export function SignalStrip({ detail, contextHref }: { detail: EvaluationDetail; contextHref: string }) {
+  const order: SignalCardTone[] = ["attention", "info", "positive", "neutral"];
+  // Sinais neutros ("Estável", "Igual") repetiriam a área de comparação: ficam só no contexto.
+  const cards = deriveSignalCards(detail)
+    .filter((c) => c.tone !== "neutral")
+    .sort((a, b) => order.indexOf(a.tone) - order.indexOf(b.tone));
+  if (cards.length === 0) return null;
+  return (
+    <section aria-label="Sinais da semana" className="flex flex-col gap-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="t-label text-ink-faint">Sinais da semana</h2>
+        <a href={contextHref} className="text-xs font-semibold text-brand hover:underline">
+          Detalhes no contexto histórico
+        </a>
+      </div>
+      <ul className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
+        {cards.map((card) => (
+          <li
+            key={card.id}
+            data-signal-chip={card.id}
+            className={`flex shrink-0 snap-start items-center gap-2.5 rounded-full border bg-surface px-3 py-1.5 ${TONE[card.tone].border}`}
+          >
+            <span aria-hidden className={`size-2 shrink-0 rounded-full ${DOT[card.tone]}`} />
+            <span className="text-xs text-ink-muted">{card.title}</span>
+            <span className="font-display text-sm font-bold tabular-nums text-ink">{card.value}</span>
+            <Badge tone={TONE[card.tone].badge}>
+              {card.tone === "attention" && card.badge !== "Atenção" && <span className="sr-only">Atenção: </span>}
+              {card.badge}
+            </Badge>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}

@@ -106,7 +106,7 @@ export default async function ClientPaymentPage({
   return (
     <div className="flex flex-col gap-8">
       <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-medium text-ink">Assinatura</h2>
+        <h2 className="t-subtitle text-ink">Assinatura</h2>
 
         {!subscription ? (
           <CreateSubscriptionForm clientId={id} />
@@ -170,16 +170,17 @@ export default async function ClientPaymentPage({
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         <Badge tone={PAYMENT_STATUS_TONE[payment.status]} dot>{PAYMENT_STATUS_LABEL[payment.status]}</Badge>
 
                         {(payment.status === "pending" || payment.status === "overdue") && (
-                          <form action={markPaymentAsPaidAction} className="flex items-center gap-2">
+                          <form action={markPaymentAsPaidAction} className="flex min-w-0 flex-1 items-center gap-2 sm:flex-none">
                             <input type="hidden" name="clientId" value={id} />
                             <input type="hidden" name="paymentId" value={payment.id} />
                             <select
                               name="method"
                               defaultValue=""
+                              aria-label="Forma de pagamento"
                               className="min-h-11 rounded-md border border-line-control bg-surface-sunken px-2 py-1.5 text-xs text-ink outline-none focus:border-brand"
                             >
                               <option value="">Manual</option>
@@ -190,7 +191,7 @@ export default async function ClientPaymentPage({
                             </select>
                             <button
                               type="submit"
-                              className={buttonClass({ variant: "secondary" })}
+                              className={buttonClass({ variant: "secondary", className: "flex-1 sm:flex-none" })}
                             >
                               Marcar como pago
                             </button>

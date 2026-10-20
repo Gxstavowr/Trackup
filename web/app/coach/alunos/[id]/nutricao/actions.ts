@@ -38,6 +38,7 @@ import {
   validateNutritionGoalsInput,
   validateSubstitutionInput,
 } from "@/lib/nutrition-builder";
+import { requireActiveCoach } from "../../../require-coach";
 
 export type NutricaoActionState = {
   error?: string;
@@ -101,6 +102,7 @@ export async function createFoodAction(
   _prevState: NutricaoActionState,
   formData: FormData
 ): Promise<NutricaoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const name = String(formData.get("name") || "").trim();
 
@@ -127,6 +129,7 @@ export async function updateFoodAction(
   _prevState: NutricaoActionState,
   formData: FormData
 ): Promise<NutricaoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const foodId = String(formData.get("foodId") || "");
   const name = String(formData.get("name") || "").trim();
@@ -151,6 +154,7 @@ export async function updateFoodAction(
 }
 
 export async function archiveFoodAction(formData: FormData): Promise<void> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const foodId = String(formData.get("foodId") || "");
   if (!foodId) return;
@@ -163,6 +167,7 @@ export async function archiveFoodAction(formData: FormData): Promise<void> {
 }
 
 export async function unarchiveFoodAction(formData: FormData): Promise<void> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const foodId = String(formData.get("foodId") || "");
   if (!foodId) return;
@@ -182,6 +187,7 @@ export async function createFoodEquivalenceAction(
   _prevState: NutricaoActionState,
   formData: FormData
 ): Promise<NutricaoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const foodId = String(formData.get("foodId") || "");
   const equivalentFoodId = String(formData.get("equivalentFoodId") || "");
@@ -206,6 +212,7 @@ export async function createFoodEquivalenceAction(
 }
 
 export async function deleteFoodEquivalenceAction(formData: FormData): Promise<void> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const equivalenceId = String(formData.get("equivalenceId") || "");
   if (!equivalenceId) return;
@@ -225,6 +232,7 @@ export async function createDraftAction(
   _prevState: NutricaoActionState,
   formData: FormData
 ): Promise<NutricaoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const name = String(formData.get("name") || "").trim();
   const source = String(formData.get("source") || "").trim();
@@ -249,6 +257,7 @@ export async function discardDraftAction(
   _prevState: NutricaoActionState,
   formData: FormData
 ): Promise<NutricaoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const planId = String(formData.get("planId") || "");
   if (!planId) return { error: "Rascunho inválido." };
@@ -267,6 +276,7 @@ export async function publishDraftAction(
   _prevState: NutricaoActionState,
   formData: FormData
 ): Promise<NutricaoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const planId = String(formData.get("planId") || "");
   if (!planId) return { error: "Rascunho inválido." };
@@ -285,6 +295,7 @@ export async function saveAsTemplateAction(
   _prevState: NutricaoActionState,
   formData: FormData
 ): Promise<NutricaoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const planId = String(formData.get("planId") || "");
   const name = String(formData.get("name") || "").trim();
@@ -304,6 +315,7 @@ export async function applyTemplateAction(
   _prevState: NutricaoActionState,
   formData: FormData
 ): Promise<NutricaoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const templateId = String(formData.get("templateId") || "");
   if (!clientId || !templateId) return { error: "Selecione um template." };
@@ -322,6 +334,7 @@ export async function duplicateToClientAction(
   _prevState: NutricaoActionState,
   formData: FormData
 ): Promise<NutricaoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const planId = String(formData.get("planId") || "");
   const targetClientId = String(formData.get("targetClientId") || "");
@@ -339,6 +352,7 @@ export async function duplicateToClientAction(
 }
 
 export async function deleteTemplateAction(formData: FormData): Promise<void> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const templateId = String(formData.get("templateId") || "");
   if (!templateId) return;
@@ -354,6 +368,7 @@ export async function updateGoalsAction(
   _prevState: NutricaoActionState,
   formData: FormData
 ): Promise<NutricaoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const planId = String(formData.get("planId") || "");
   if (!planId) return { error: "Plano inválido." };
@@ -387,6 +402,7 @@ export async function addMealAction(
   _prevState: NutricaoActionState,
   formData: FormData
 ): Promise<NutricaoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const planId = String(formData.get("planId") || "");
   const name = String(formData.get("name") || "").trim();
@@ -413,6 +429,7 @@ export async function updateMealAction(
   _prevState: NutricaoActionState,
   formData: FormData
 ): Promise<NutricaoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const mealId = String(formData.get("mealId") || "");
   const name = String(formData.get("name") || "").trim();
@@ -436,6 +453,7 @@ export async function updateMealAction(
 }
 
 export async function deleteMealAction(formData: FormData): Promise<void> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const mealId = String(formData.get("mealId") || "");
   if (!mealId) return;
@@ -448,6 +466,7 @@ export async function deleteMealAction(formData: FormData): Promise<void> {
 }
 
 export async function duplicateMealAction(formData: FormData): Promise<void> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const mealId = String(formData.get("mealId") || "");
   if (!mealId) return;
@@ -463,6 +482,7 @@ export async function duplicateMealAction(formData: FormData): Promise<void> {
  * refeições daquele dia exato (calculado no componente, mesmo padrão de `dayOrderIds` do
  * treino), então `dayOfWeek` (também enviado) é só repassado pra `reorderMeals`. */
 export async function moveMealAction(formData: FormData): Promise<void> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const planId = String(formData.get("planId") || "");
   const mealId = String(formData.get("mealId") || "");
@@ -488,6 +508,7 @@ export async function duplicateDayAction(
   _prevState: NutricaoActionState,
   formData: FormData
 ): Promise<NutricaoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const planId = String(formData.get("planId") || "");
   const sourceDay = parseDayOfWeek(formData.get("sourceDay"));
@@ -523,6 +544,7 @@ export async function addMealItemAction(
   _prevState: NutricaoActionState,
   formData: FormData
 ): Promise<NutricaoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const mealId = String(formData.get("mealId") || "");
   const foodId = String(formData.get("foodId") || "");
@@ -552,6 +574,7 @@ export async function updateMealItemAction(
   _prevState: NutricaoActionState,
   formData: FormData
 ): Promise<NutricaoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const itemId = String(formData.get("itemId") || "");
   const hasQuantity = formData.has("quantity");
@@ -584,6 +607,7 @@ export async function copyMealAction(
   _prevState: NutricaoActionState,
   formData: FormData
 ): Promise<NutricaoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const planId = String(formData.get("planId") || "");
   const sourceMealId = String(formData.get("sourceMealId") || "");
@@ -601,6 +625,7 @@ export async function copyMealAction(
 }
 
 export async function deleteMealItemAction(formData: FormData): Promise<void> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const itemId = String(formData.get("itemId") || "");
   if (!itemId) return;
@@ -613,6 +638,7 @@ export async function deleteMealItemAction(formData: FormData): Promise<void> {
 }
 
 export async function moveMealItemAction(formData: FormData): Promise<void> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const mealId = String(formData.get("mealId") || "");
   const itemId = String(formData.get("itemId") || "");
@@ -640,6 +666,7 @@ export async function addMealSubstitutionAction(
   _prevState: NutricaoActionState,
   formData: FormData
 ): Promise<NutricaoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const itemId = String(formData.get("itemId") || "");
   const alternativeFoodId = parseOptionalText(formData.get("alternativeFoodId"));
@@ -666,6 +693,7 @@ export async function addMealSubstitutionAction(
 }
 
 export async function deleteMealSubstitutionAction(formData: FormData): Promise<void> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const substitutionId = String(formData.get("substitutionId") || "");
   if (!substitutionId) return;

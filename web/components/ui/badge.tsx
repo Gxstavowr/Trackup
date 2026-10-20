@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
-export type BadgeTone = "neutral" | "accent" | "success" | "warning" | "danger" | "info";
+/** `new` = tag "NOVO" (amarelo sólido, caixa alta) — para novidade, nunca para estado. */
+export type BadgeTone = "neutral" | "accent" | "success" | "warning" | "danger" | "info" | "new";
 
 const TONES: Record<BadgeTone, string> = {
   neutral: "bg-surface-raised text-ink-muted",
@@ -9,12 +10,14 @@ const TONES: Record<BadgeTone, string> = {
   warning: "bg-warning-tint text-warning",
   danger: "bg-danger-tint text-danger-text",
   info: "bg-info-tint text-info",
+  new: "",
 };
 
 const BASE =
   "inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold leading-none";
 
 export function badgeClass(tone: BadgeTone = "neutral", className = ""): string {
+  if (tone === "new") return `tag-new w-fit ${className}`.trim();
   return `${BASE} ${TONES[tone]} ${className}`.trim();
 }
 

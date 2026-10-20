@@ -12,16 +12,27 @@ export default function DecisionBar({ targetId, label, hint }: { targetId: strin
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    const el = document.getElementById(targetId);
-    if (!el) return;
-    const io = new IntersectionObserver(([entry]) => setVisible(!entry.isIntersecting), { threshold: 0.15 });
-    io.observe(el);
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    // Some quando a área de decisão OU o atalho "Ir para a decisão" do topo estão à vista: com os
+    // dois na tela, a barra cobria o próprio atalho (botão duplicado e sobreposto no celular).
+    const shortcut = document.querySelector<HTMLElement>("[data-decision-shortcut]");
+    const seen = new Map<Element, boolean>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) seen.set(entry.target, entry.isIntersecting);
+        setVisible(![...seen.values()].some(Boolean));
+      },
+      { threshold: 0.15 }
+    );
+    io.observe(target);
+    if (shortcut) io.observe(shortcut);
     return () => io.disconnect();
   }, [targetId]);
 
   if (!visible) return null;
   return (
-    <div className="sticky bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-20 -mx-1 flex items-center gap-3 rounded-lg border border-line-strong bg-surface-raised/95 p-2 pl-4 shadow-[var(--shadow-overlay)] backdrop-blur-sm lg:hidden">
+    <div className="sticky bottom-[calc(4.5rem+1px+env(safe-area-inset-bottom))] z-20 md:bottom-4 -mx-1 flex items-center gap-3 rounded-lg border border-line-strong bg-surface-raised/95 p-2 pl-4 shadow-[var(--shadow-overlay)] backdrop-blur-sm xl:hidden">
       <p className="min-w-0 flex-1 truncate text-sm text-ink-muted">{hint}</p>
       <a href={`#${targetId}`} className={buttonClass({ variant: "primary", size: "md" })}>
         {label}

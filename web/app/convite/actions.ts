@@ -24,6 +24,27 @@ export type AcceptInviteState = {
  * aluno clicar no link do e-mail — ver `app/auth/callback/route.ts`, que é quem grava
  * `invite_status = 'active'`).
  */
+/** Domínios reservados (RFC 2606/6761): nunca recebem e-mail de verdade. */
+function isReservedEmail(email: string): boolean {
+  return /\.(test|example|invalid|localhost)$/i.test(email.trim());
+}
+
+/**
+ * Laboratório (item 28 V5): a conta dona do convite é demo (`accounts.is_demo`, 0023)? Aqui não há
+ * sessão, então a leitura é pela service role a partir do `account_id` do próprio convite. Coluna
+ * inexistente (0023 pendente) ou erro → `false` (comportamento atual).
+ */
+async function isDemoInviteAccount(admin: ReturnType<typeof createAdminClient>, accountId: string): Promise<boolean> {
+  if (!accountId) return false;
+  const { data, error } = await admin.from("accounts").select("is_demo").eq("id", accountId).maybeSingle();
+  if (error) {
+    const missing = error.code === "42703" || error.code === "PGRST204" || /column .* does not exist|schema cache/i.test(error.message ?? "");
+    if (!missing) console.error("Falha ao ler accounts.is_demo no convite:", error.message);
+    return false;
+  }
+  return (data as { is_demo?: boolean } | null)?.is_demo === true;
+}
+
 export async function acceptInvite(
   _prevState: AcceptInviteState,
   formData: FormData
@@ -56,6 +77,12 @@ export async function acceptInvite(
     return { error: "Esse convite já foi utilizado. Faça login." };
   }
 
+  // Conta demo: e-mail real é recusado; domínio reservado segue o fluxo sem envio (simulado).
+  const simulated = await isDemoInviteAccount(admin, client.account_id);
+  if (simulated && !isReservedEmail(client.email)) {
+    return { error: "Convite de demonstração — use um e-mail de teste (ex.: nome@trackly.test)." };
+  }
+
   if (client.invite_status === "pending") {
     await admin
       .from("clients")
@@ -85,22 +112,48 @@ export async function acceptInvite(
     return { error: "Não foi possível registrar seu aceite. Tente novamente." };
   }
 
-  const supabase = await createClient();
-  const origin = await getOrigin();
+  if (!simulated) {
+    const supabase = await createClient();
+    const origin = await getOrigin();
 
-  const { error } = await supabase.auth.signInWithOtp({
-    email: client.email,
-    options: {
-      // `invite` diz ao callback QUAL cadastro ativar — nunca "qualquer um com este e-mail".
-      emailRedirectTo: `${origin}/auth/callback?next=/portal&invite=${client.id}`,
-    },
-  });
+    const { error } = await supabase.auth.signInWithOtp({
+      email: client.email,
+      options: {
+        // `invite` diz ao callback QUAL cadastro ativar — nunca "qualquer um com este e-mail".
+        emailRedirectTo: `${origin}/auth/callback?next=/portal&invite=${client.id}`,
+      },
+    });
 
-  if (error) {
-    if (isEmailRateLimitError(error)) {
-      return { error: EMAIL_RATE_LIMIT_MESSAGE };
+    if (error) {
+      if (isEmailRateLimitError(error)) {
+        return { error: EMAIL_RATE_LIMIT_MESSAGE };
+      }
+      return { error: "Não foi possível enviar o link. Tente novamente." };
     }
-    return { error: "Não foi possível enviar o link. Tente novamente." };
+  }
+
+  // V5 (0022): trilha do onboarding — o aluno aceitou o convite e falta só confirmar o e-mail. Só a
+  // service role grava este evento (o aluno ainda não tem sessão). Best-effort: sem a tabela
+  // (migração pendente) ou com erro, o aceite segue normalmente.
+  const { error: eventError } = await admin.from("client_onboarding_events").insert({
+    account_id: client.account_id,
+    client_id: client.id,
+    event: "invite_accepted",
+    actor: "client",
+    actor_user_id: null,
+    sent_to: client.email,
+    // Laboratório: nenhum link saiu de verdade (plano de dados §8/§10).
+    simulated,
+  });
+  if (eventError && eventError.code !== "42P01" && eventError.code !== "PGRST205") {
+    console.error("Não foi possível registrar o aceite do convite:", eventError.message);
+  }
+
+  if (simulated) {
+    return {
+      success: true,
+      message: `Convite de demonstração aceito. Nenhum e-mail foi enviado para ${client.email} — o link de acesso é simulado.`,
+    };
   }
 
   return {

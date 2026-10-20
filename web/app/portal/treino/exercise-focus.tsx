@@ -91,10 +91,10 @@ export default function ExerciseFocus({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 rounded-lg border border-brand/40 bg-brand-tint/30 p-4 shadow-[inset_3px_0_0_var(--brand)]">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="t-label text-ink-faint">
-            Exercício {index + 1} de {total}
+          <span className="t-label text-brand">
+            Agora · Exercício {index + 1} de {total}
           </span>
           {group && (
             <Badge tone="accent">
@@ -239,7 +239,7 @@ export default function ExerciseFocus({
           }}
         />
       ) : (
-        <p className="flex items-center gap-2 rounded-md bg-success-tint px-3 py-3 text-sm font-medium text-success">
+        <p className="tk-enter flex items-center gap-2 rounded-md bg-success-tint px-3 py-3 text-sm font-medium text-success">
           <Icon name="check" size={18} />
           {cardioOnly ? "Cardio concluído" : "Todas as séries deste exercício concluídas"}
         </p>
@@ -306,7 +306,7 @@ function Stepper({
     onChange(String(next));
   }
   const btn =
-    "flex size-14 shrink-0 items-center justify-center rounded-md border border-line-strong text-2xl text-ink transition-colors hover:border-brand active:bg-brand-tint";
+    "flex size-14 shrink-0 items-center justify-center rounded-md border border-line-strong text-2xl text-ink transition-colors tk-press hover:border-brand active:bg-brand-tint";
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <span className="t-label text-ink-faint">
@@ -395,7 +395,7 @@ function SetEntry({
   const label = cardioOnly ? "Concluir cardio" : editingExisting ? "Salvar série" : "Concluir série";
 
   return (
-    <section aria-label={`${setNumber}ª série`} className="flex flex-col gap-3 rounded-lg border border-brand/40 bg-surface p-4">
+    <section aria-label={`${setNumber}ª série`} className="tk-enter flex flex-col gap-3 rounded-lg border border-brand/40 bg-surface p-4">
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="font-display text-lg font-bold text-ink">
           {cardioOnly ? "Cardio" : `Série ${setNumber} de ${totalSets}`}

@@ -11,6 +11,7 @@ import {
   type SubscriptionPeriod,
 } from "@/lib/repository";
 import { actionErrorMessage } from "@/lib/action-errors";
+import { requireActiveCoach } from "../../../require-coach";
 
 export type PagamentoActionState = {
   error?: string;
@@ -48,6 +49,7 @@ export async function createSubscriptionAction(
   _prevState: PagamentoActionState,
   formData: FormData
 ): Promise<PagamentoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const planName = String(formData.get("plan_name") || "").trim();
   const priceRaw = String(formData.get("price_reais") || "");
@@ -91,6 +93,7 @@ export async function createSubscriptionAction(
  * dedicado na UI pra essa ação.
  */
 export async function registerNextPaymentAction(formData: FormData): Promise<void> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   if (!clientId) return;
 
@@ -109,6 +112,7 @@ export async function registerNextPaymentAction(formData: FormData): Promise<voi
  * opcional na UI (select) — vazio vira `'manual'`, o default de `markPaymentAsPaid`.
  */
 export async function markPaymentAsPaidAction(formData: FormData): Promise<void> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const paymentId = String(formData.get("paymentId") || "");
   const method = String(formData.get("method") || "").trim();
@@ -126,6 +130,7 @@ export async function setSubscriptionStatusAction(
   _prevState: PagamentoActionState,
   formData: FormData
 ): Promise<PagamentoActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const intent = String(formData.get("intent") || "");
   if (!clientId || (intent !== "cancel" && intent !== "reactivate")) {

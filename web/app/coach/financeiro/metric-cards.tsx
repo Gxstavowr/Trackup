@@ -1,132 +1,191 @@
-import { Icon } from "@/components/ui";
-import { formatBRL, formatMonthLabel } from "@/lib/finance/format";
+import type { ReactNode } from "react";
+import { AreaChart, KpiRow, StatCard, StatusDonut, UpdatedAtStrip } from "@/components/viz";
+import { formatBRL, formatMonthLabel, formatMonthName } from "@/lib/finance/format";
 import type { FinanceOverview } from "@/lib/finance/queries";
 import { CARD, EYEBROW } from "./ui";
 
-const HERO_NUMBER =
-  "font-display font-extrabold tabular-nums leading-none tracking-tight text-[clamp(2.1rem,1.3rem+3vw,3.25rem)] break-words";
-const MID_NUMBER =
-  "font-display font-bold tabular-nums leading-tight tracking-tight text-[clamp(1.4rem,1.1rem+1vw,1.85rem)] break-words";
-const SMALL_NUMBER =
-  "font-display font-bold tabular-nums leading-tight text-[clamp(1.1rem,1rem+0.5vw,1.3rem)] break-words";
+const METHOD_LABEL: Record<string, string> = {
+  manual: "Manual",
+  pix: "Pix",
+  cartao: "Cartão",
+  dinheiro: "Dinheiro",
+  transferencia: "Transferência",
+};
 
-/** Números principais do mês: receita prevista e recebido, em amarelo da marca. */
-function HeroStat({ label, value, caption }: { label: string; value: string; caption: string }) {
-  return (
-    <div className={`flex min-w-0 flex-col gap-3 p-5 md:p-6 ${CARD}`}>
-      <dt className={EYEBROW}>{label}</dt>
-      <dd className={`${HERO_NUMBER} text-brand`}>{value}</dd>
-      <dd className="text-xs text-ink-muted">{caption}</dd>
-    </div>
-  );
-}
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-function PendingStat({ value, caption }: { value: string; caption: string }) {
-  return (
-    <div className={`flex min-w-0 flex-col gap-2 p-5 ${CARD}`}>
-      <dt className="flex items-center gap-2 t-label text-warning">
-        <span aria-hidden className="size-2 rounded-full bg-warning" />
-        Pendente · a receber
-      </dt>
-      <dd className={`${MID_NUMBER} text-ink`}>{value}</dd>
-      <dd className="text-xs text-ink-muted">{caption}</dd>
-    </div>
-  );
-}
-
-function LateStat({ value, count }: { value: string; count: number }) {
-  const has = count > 0;
-  return (
-    <div
-      className={`flex min-w-0 flex-col gap-2 p-5 ${CARD} ${has ? "border-danger/60 bg-danger-tint" : ""}`}
-    >
-      <dt className={`flex items-center gap-2 t-label ${has ? "font-bold text-danger-text" : "text-ink-faint"}`}>
-        {has && <Icon name="alert" size={16} />}
-        {has ? "Em atraso · ação necessária" : "Em atraso"}
-      </dt>
-      <dd className={`${MID_NUMBER} ${has ? "text-danger-text" : "text-ink"}`}>{value}</dd>
-      <dd className={`text-xs ${has ? "text-ink" : "text-ink-muted"}`}>
-        {has
-          ? `${count} ${count === 1 ? "pagamento vencido e não pago" : "pagamentos vencidos e não pagos"}, de qualquer mês.`
-          : "Nenhum pagamento em atraso hoje."}
-      </dd>
-    </div>
-  );
-}
-
-function SecondaryStat({ label, value, caption }: { label: string; value: string; caption: string }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5 bg-surface p-4">
-      <dt className={EYEBROW}>{label}</dt>
-      <dd className={`${SMALL_NUMBER} text-ink`}>{value}</dd>
-      <dd className="text-xs text-ink-faint">{caption}</dd>
-    </div>
-  );
-}
-
-/**
- * Topo da tela, em três níveis: (1) Recebido e Receita prevista do mês, os dois números que
- * importam, grandes e amarelos; (2) Pendente e Em atraso, o que exige ação (atraso em tom de
- * perigo, com ícone e texto); (3) a "base" de assinaturas (posição de hoje), pequena. Cada
- * número tem a definição em texto ao lado.
- */
-export function MetricCards({ overview }: { overview: FinanceOverview }) {
+/** Linha de indicadores (referência: 4 cartões de número grande). Só valores derivados de dados reais. */
+export function FinanceKpis({ overview }: { overview: FinanceOverview }) {
   const { monthTotals, subscriptions, month, late, lateTotalCents } = overview;
-  const monthLabel = formatMonthLabel(month);
+  return (
+    <KpiRow>
+      <StatCard
+        icon="wallet"
+        label="Recebido"
+        value={formatBRL(monthTotals.receivedCents)}
+        hint={`Previsto: ${formatBRL(monthTotals.forecastCents)} em ${formatMonthName(month)}`}
+      />
+      <StatCard
+        icon="clock"
+        label="A receber"
+        value={formatBRL(monthTotals.toReceiveCents)}
+        hint={`Pendentes no prazo com vencimento em ${formatMonthName(month)}`}
+      />
+      <StatCard
+        icon="alert"
+        label="Em atraso"
+        value={formatBRL(lateTotalCents)}
+        tone={late.length > 0 ? "danger" : undefined}
+        hint={
+          late.length > 0
+            ? `${plural(late.length, "pagamento vencido", "pagamentos vencidos")}, de qualquer mês`
+            : "Nenhum pagamento em atraso hoje"
+        }
+      />
+      <StatCard
+        icon="users"
+        label="Ticket médio"
+        value={subscriptions.averageTicketCents == null ? null : formatBRL(subscriptions.averageTicketCents)}
+        emptyHint="Sem assinaturas ativas"
+        hint={`${plural(subscriptions.activeCount, "aluno pagante", "alunos pagantes")} · MRR ${formatBRL(subscriptions.mrrCents)}`}
+      />
+    </KpiRow>
+  );
+}
+
+/** Faixa "Detalhes · última atualização" + gráfico de recebimentos por dia + donut por situação. */
+export function FinanceCharts({ overview }: { overview: FinanceOverview }) {
+  const { month, receiptsByMonth, statusBreakdown, monthTotals } = overview;
+  const series = receiptsByMonth.map((m) => ({
+    label: formatMonthName(m.month).slice(0, 3),
+    value: m.cents,
+    detail: formatMonthLabel(m.month),
+  }));
+  // "Dados reais suficientes": uma curva só diz algo com pelo menos 2 meses com recebimento.
+  // Com 0 ou 1 mês, o gráfico dá lugar a uma mensagem honesta (nunca a pontos inventados).
+  const monthsWithReceipts = receiptsByMonth.filter((m) => m.cents > 0).length;
+  const hasReceipts = monthsWithReceipts >= 2;
+
+  const { paid, pending, overdue } = statusBreakdown;
+  const totalCharges = paid.count + pending.count + overdue.count;
 
   return (
-    <div className="flex flex-col gap-4">
-      <dl className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <HeroStat
-          label="Recebido"
-          value={formatBRL(monthTotals.receivedCents)}
-          caption={`Pagamentos com recebimento em ${monthLabel}.`}
-        />
-        <HeroStat
-          label="Receita prevista"
-          value={formatBRL(monthTotals.forecastCents)}
-          caption={`Cobranças registradas com vencimento em ${monthLabel}.`}
-        />
-      </dl>
+    <>
+      <UpdatedAtStrip at={overview.readAt} title="Detalhes" />
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
+        <section aria-labelledby="chart-receipts" className={`${CARD} tk-enter min-w-0 p-4 md:p-5`}>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 id="chart-receipts" className="text-sm font-semibold text-ink">Recebimentos por mês</h2>
+              <p className="t-stat mt-2 text-3xl text-ink">{formatBRL(monthTotals.receivedCents)}</p>
+              <p className="mt-1 text-xs text-ink-faint">recebido em {formatMonthName(month)}</p>
+            </div>
+            <span className="rounded-full border border-line-strong px-3 py-1 text-xs font-semibold text-ink-muted first-letter:uppercase">
+              Últimos {receiptsByMonth.length} meses
+            </span>
+          </div>
+          <AreaChart
+            className="mt-14"
+            data={hasReceipts ? series : []}
+            label={`Recebimentos mensais até ${formatMonthLabel(month)}`}
+            valueFormat="brl-cents"
+            height={220}
+            defaultIndex={hasReceipts ? series.length - 1 : undefined}
+            emptyLabel={
+              monthsWithReceipts === 0
+                ? `Nenhum recebimento registrado nos últimos ${receiptsByMonth.length} meses.`
+                : "Só um mês com recebimentos no período — o gráfico aparece quando houver pelo menos dois."
+            }
+          />
+        </section>
 
-      <dl className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <PendingStat
-          value={formatBRL(monthTotals.toReceiveCents)}
-          caption={`Pendentes ainda no prazo, com vencimento em ${monthLabel}.`}
-        />
-        <LateStat value={formatBRL(lateTotalCents)} count={late.length} />
-      </dl>
-
-      <div className="mt-2 flex flex-col gap-2">
-        <h2 className={EYEBROW}>Base de assinaturas · situação de hoje</h2>
-        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3 xl:grid-cols-5 [&>div:last-child]:col-span-2 xl:[&>div:last-child]:col-span-1">
-          <SecondaryStat label="MRR" value={formatBRL(subscriptions.mrrCents)} caption="Assinaturas ativas, por mês." />
-          <SecondaryStat
-            label="Ticket médio"
-            value={subscriptions.averageTicketCents == null ? "—" : formatBRL(subscriptions.averageTicketCents)}
-            caption="MRR ÷ assinaturas ativas."
+        <section aria-labelledby="chart-status" className={`${CARD} tk-enter min-w-0 p-4 md:p-5`}>
+          <h2 id="chart-status" className="text-sm font-semibold text-ink">Cobranças por situação</h2>
+          <p className="mt-1 text-xs text-ink-faint">Vencimento em {formatMonthLabel(month)}</p>
+          <StatusDonut
+            className="mt-4"
+            label="Cobranças por situação"
+            emptyLabel="Sem cobranças com vencimento neste mês"
+            segments={[
+              { label: "Em dia", value: paid.count, tone: "success" },
+              { label: "Pendente", value: pending.count, tone: "warning" },
+              { label: "Atrasado", value: overdue.count, tone: "danger" },
+            ]}
           />
-          <SecondaryStat
-            label="Clientes ativos"
-            value={String(subscriptions.activeCount)}
-            caption="Com assinatura ativa."
-          />
-          <SecondaryStat
-            label="Novos clientes"
-            value={String(subscriptions.newInMonth)}
-            caption={`Assinaturas criadas em ${monthLabel}.`}
-          />
-          <SecondaryStat
-            label="Cancelamentos"
-            value={String(subscriptions.cancelledInMonth)}
-            caption={`Em ${monthLabel} · ${subscriptions.cancelledTotal} no total.`}
-          />
-        </dl>
-        <p className="text-xs text-ink-faint">
-          MRR, ticket médio e clientes ativos refletem hoje, não o mês escolhido. Novos clientes e
-          cancelamentos seguem o mês escolhido acima.
-        </p>
+          {totalCharges > 0 && (
+            <p className="mt-4 text-xs text-ink-faint">
+              {formatBRL(paid.cents)} em dia · {formatBRL(pending.cents)} pendente · {formatBRL(overdue.cents)} atrasado
+            </p>
+          )}
+        </section>
       </div>
+    </>
+  );
+}
+
+function ListCard({ title, empty, children }: { title: string; empty: string; children: ReactNode[] }) {
+  return (
+    <section className={`${CARD} tk-enter min-w-0 p-4 md:p-5`}>
+      <h2 className="text-sm font-semibold text-ink">{title}</h2>
+      {children.length === 0 ? (
+        <p className="mt-4 text-sm text-ink-faint">{empty}</p>
+      ) : (
+        <ul className="mt-3 flex flex-col divide-y divide-line">{children}</ul>
+      )}
+    </section>
+  );
+}
+
+function Line({ label, sub, value }: { label: string; sub: string; value: string }) {
+  return (
+    <li className="flex items-center justify-between gap-3 py-2.5">
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold text-ink">{label}</span>
+        <span className="block text-xs text-ink-faint">{sub}</span>
+      </span>
+      <span className="shrink-0 font-display text-sm font-bold tabular-nums text-ink">{value}</span>
+    </li>
+  );
+}
+
+/** Fileira de cartões menores (referência: meios de pagamento / dispositivos / mais vendidos). */
+export function FinanceBreakdowns({ overview }: { overview: FinanceOverview }) {
+  const { byPlan, byMethod, subscriptions, month } = overview;
+  const base: [string, string, string][] = [
+    ["MRR", formatBRL(subscriptions.mrrCents), "situação de hoje"],
+    ["Clientes ativos", String(subscriptions.activeCount), "situação de hoje"],
+    ["Novos clientes", String(subscriptions.newInMonth), `em ${formatMonthName(month)}`],
+    ["Cancelamentos", String(subscriptions.cancelledInMonth), `${subscriptions.cancelledTotal} no total`],
+  ];
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <ListCard title="Por plano · cobranças do mês" empty="Sem cobranças com vencimento neste mês.">
+        {byPlan.map((g) => (
+          <Line key={g.key} label={g.key} sub={plural(g.count, "cobrança", "cobranças")} value={formatBRL(g.cents)} />
+        ))}
+      </ListCard>
+      <ListCard title="Meios de pagamento · recebido" empty={`Nenhum recebimento em ${formatMonthName(month)}.`}>
+        {byMethod.map((g) => (
+          <Line
+            key={g.key}
+            label={METHOD_LABEL[g.key] ?? g.key}
+            sub={plural(g.count, "pagamento", "pagamentos")}
+            value={formatBRL(g.cents)}
+          />
+        ))}
+      </ListCard>
+      <section className={`${CARD} tk-enter min-w-0 p-4 md:col-span-2 md:p-5 xl:col-span-1`}>
+        <h2 className="text-sm font-semibold text-ink">Base de assinaturas</h2>
+        <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
+          {base.map(([k, v, s]) => (
+            <div key={k}>
+              <dt className={EYEBROW}>{k}</dt>
+              <dd className="font-display text-lg font-bold tabular-nums text-ink">{v}</dd>
+              <dd className="text-xs text-ink-faint">{s}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
     </div>
   );
 }

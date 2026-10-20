@@ -10,6 +10,7 @@ import {
   getPlanChangeLogs,
 } from "@/lib/repository";
 import { requireCoach } from "../../../require-coach";
+import { ModuleNotice } from "../protocol-panel";
 import { CreateDraftForm, DiscardDraftButton, PublishDraftButton } from "./plan-lifecycle";
 import NutritionGoalsForm from "./nutrition-goals-form";
 import PlanEditor from "./plan-editor";
@@ -112,6 +113,7 @@ export default async function ClientNutritionPage({
 
   return (
     <div className="flex flex-col gap-8">
+      <ModuleNotice clientId={id} module="nutrition" />
       <p className="text-sm text-ink-muted">
         Esta tela é a dieta deste aluno. A biblioteca de alimentos, as substituições gerais e os templates da conta
         ficam em{" "}
@@ -123,7 +125,7 @@ export default async function ClientNutritionPage({
 
       <section className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-medium text-ink">Plano de nutrição</h2>
+          <h2 className="t-subtitle text-ink">Plano de nutrição</h2>
           {archivedCount > 0 && (
             <span className="text-xs text-ink-faint">
               {archivedCount} {archivedCount === 1 ? "versão anterior arquivada" : "versões anteriores arquivadas"}

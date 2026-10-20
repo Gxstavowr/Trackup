@@ -32,6 +32,12 @@ import { CARD, ICONS } from "./portal-ui";
 import { requireClient } from "./require-client";
 import ExpandableText from "./expandable-text";
 import { MealClockProvider, NextMealCard, type NextMealDetail } from "./meal-clock";
+import { accessForModule, getMyOnboardingStatus, hasRecentProtocolReady, type MyOnboardingStatus } from "@/lib/onboarding/status";
+import { MODULE_LABELS, modulesOf, packageLabel, type ModuleId } from "@/lib/onboarding/packages";
+import { studentStageText } from "@/lib/onboarding/stage";
+import { Badge } from "@/components/ui/badge";
+import CheckinCard from "./checkin/checkin-card";
+import { pickCheckinCardState } from "@/lib/checkin-card-state";
 
 /**
  * Home do aluno (V3 tarefa 8) — responde "o que eu preciso fazer hoje?" em três prioridades:
@@ -77,19 +83,64 @@ export default async function PortalHomePage() {
   const now = new Date();
   const clock = getSaoPauloClock(now);
   const week = client.start_date ? computeWeekInfo(client.start_date, now) : null;
+  const firstName = client.name.trim().split(/\s+/)[0] || client.name;
+
+  // V5 (itens 11/15/16/20): pacote, módulos liberados e estágio do onboarding. Aluno legado
+  // (sem pacote) segue exatamente o caminho anterior.
+  const status = await getMyOnboardingStatus(client.id);
+  if (status.error) {
+    return (
+      <div className="flex flex-col gap-6">
+        <header className="flex flex-col gap-2">
+          <h1 className="break-words font-display text-hero text-ink">
+            {greetingFor(clock.hour)}, <span className="text-brand">{firstName}</span>
+          </h1>
+        </header>
+        <p role="status" className="text-sm text-ink-muted">
+          Não foi possível carregar seu plano agora. Tente de novo.
+        </p>
+      </div>
+    );
+  }
+  const publishedCount = Number(status.published.training) + Number(status.published.nutrition);
+
+  // Questionário enviado e nada publicado ainda: experiência de preparação no lugar da agenda.
+  if (status.onboardingRequired && status.questionnaireStatus === "submitted" && publishedCount === 0) {
+    return (
+      <div className="tk-stagger flex flex-col gap-6">
+        <header className="flex flex-col gap-2">
+          <span className="t-label text-ink-faint first-letter:uppercase">{formatLongDate(now)}</span>
+          <h1 className="break-words font-display text-hero text-ink">
+            {greetingFor(clock.hour)}, <span className="text-brand">{firstName}</span>
+          </h1>
+        </header>
+        <ProtocolSummary status={status} />
+      </div>
+    );
+  }
+
+  // Treino/nutrição só são buscados se o módulo estiver liberado para o aluno (legado = como antes).
+  const trainingAccess = accessForModule(status, "training");
+  const nutritionAccess = accessForModule(status, "nutrition");
+  const canTraining = trainingAccess === null || trainingAccess.state === "available";
+  const canNutrition = nutritionAccess === null || nutritionAccess.state === "available";
+  // Check-in semanal: aluno novo (onboarding_required) só o recebe depois de ao menos um módulo
+  // publicado; legado inalterado.
+  const checkinReleased = !status.onboardingRequired || publishedCount > 0;
+  const showProtocolReady = status.onboardingRequired && !status.legacy && (await hasRecentProtocolReady());
 
   const [checkin, orientation, workout, nutrition, logs, doneDays, weight, metrics, mealLogsToday, openSession] = await Promise.all([
-    getCurrentCheckin(client.id),
+    checkinReleased ? getCurrentCheckin(client.id) : Promise.resolve(null),
     getMyLatestSentOrientation(),
-    getActiveWorkoutForClient(client.id),
-    getActiveNutritionPlanForClient(client.id),
-    week ? getWorkoutLogsForWeek(client.id, week.weekNumber) : Promise.resolve([]),
-    week ? getCompletedWorkoutDaysForWeek(client.id, week.weekNumber) : Promise.resolve([]),
+    canTraining ? getActiveWorkoutForClient(client.id) : Promise.resolve(null),
+    canNutrition ? getActiveNutritionPlanForClient(client.id) : Promise.resolve(null),
+    week && canTraining ? getWorkoutLogsForWeek(client.id, week.weekNumber) : Promise.resolve([]),
+    week && canTraining ? getCompletedWorkoutDaysForWeek(client.id, week.weekNumber) : Promise.resolve([]),
     getWeightProgress(client.id),
     getEffectiveClientMetrics(client.id),
-    getMealLogsForDate(client.id, todayDateSP(now)),
+    canNutrition ? getMealLogsForDate(client.id, todayDateSP(now)) : Promise.resolve([]),
     // Mesma fonte de `/portal/treino`: com sessão aberta, a Home oferece "Continuar treino".
-    getOpenWorkoutSession(client.id),
+    canTraining ? getOpenWorkoutSession(client.id) : Promise.resolve(null),
   ]);
   // Item 17: se o coach parou de acompanhar peso pra ESTE aluno, a Home não mostra nem o campo
   // vazio (sem linha em client_metric_settings = continua mostrando, igual sempre mostrou).
@@ -97,13 +148,20 @@ export default async function PortalHomePage() {
   // Sessões de uma versão anterior do plano (republicado no meio da semana) continuam contando.
   const doneDayIds = resolveCompletedDayIds(workout?.days ?? [], doneDays);
 
-  const checkinItem = buildCheckinItem(checkin, checkinWindow(now));
+  const checkinState = pickCheckinCardState({
+    released: checkinReleased,
+    instance: checkin ? { status: checkin.instance.status, weekNumber: checkin.instance.week_number } : null,
+    questionCount: checkin?.questions.length ?? 0,
+    window: checkinWindow(now),
+  });
+  // Aberto/enviado/avaliado: é o "agora" do aluno e fica no topo; os demais ficam depois da agenda.
+  const checkinOnTop = checkinState.kind === "open" || checkinState.kind === "submitted" || checkinState.kind === "reviewed";
+  const checkinConfigured = ["open", "submitted", "reviewed", "before_open"].includes(checkinState.kind);
   const workoutItem = buildWorkoutItem(workout, logs, doneDayIds, openSession, now);
   const hasMeals = !!nutrition && nutrition.meals.length > 0;
-  const checkinHero = checkinItem.actionable;
-  const checkinSent = checkin?.instance.status === "submitted";
+  const checkinHero = checkinState.kind === "open";
   // Nada publicado/iniciado pelo coach em NENHUM item: não dá pra mostrar agenda vazia.
-  const nothingConfigured = !checkinItem.configured && !workoutItem.configured && !hasMeals;
+  const nothingConfigured = status.legacy && !checkinConfigured && !workoutItem.configured && !hasMeals;
 
   // Relógio de refeições: só dados serializáveis vão para o cliente.
   const clockMeals = hasMeals
@@ -119,13 +177,12 @@ export default async function PortalHomePage() {
     }
   }
 
-  const firstName = client.name.trim().split(/\s+/)[0] || client.name;
   const focus = orientation?.focus?.trim() || client.objective?.trim() || null;
 
   const workoutProgress = workout ? pickNextWorkoutDay(workout.days, doneDayIds) : null;
 
   return (
-    <>
+    <div className="tk-stagger flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <span className="t-label text-ink-faint first-letter:uppercase">{formatLongDate(now)}</span>
         <h1 className="break-words font-display text-hero text-ink">
@@ -144,9 +201,11 @@ export default async function PortalHomePage() {
         )}
       </header>
 
+      {showProtocolReady && <ProtocolReadyBanner status={status} />}
+      {!status.legacy && publishedCount > 0 && status.stage.stage === "protocol_partial" && <ProtocolSummary status={status} compact />}
+
       {/* 1. Ação importante agora */}
-      {checkinSent && checkin && <SentStrip weekNumber={checkin.instance.week_number} />}
-      {checkinHero && <CheckinHero item={checkinItem} />}
+      {checkinOnTop && <CheckinCard state={checkinState} />}
 
       {/* 2. Agenda de hoje */}
       {nothingConfigured ? (
@@ -154,8 +213,14 @@ export default async function PortalHomePage() {
       ) : (
         <section aria-label="Sua agenda de hoje" className="flex flex-col gap-3">
           <h2 className="t-label text-ink-faint">Hoje</h2>
-          <WorkoutCard item={workoutItem} primary={!checkinHero} />
-          {hasMeals ? (
+          {canTraining ? (
+            <WorkoutCard item={workoutItem} primary={!checkinHero} />
+          ) : (
+            <ModuleStatusRow module="training" state={trainingAccess?.state} />
+          )}
+          {!canNutrition ? (
+            <ModuleStatusRow module="nutrition" state={nutritionAccess?.state} />
+          ) : hasMeals ? (
             <MealClockProvider meals={clockMeals} statuses={mealStatuses} initialNowMs={now.getTime()}>
               <NextMealCard details={mealDetails} />
             </MealClockProvider>
@@ -172,9 +237,11 @@ export default async function PortalHomePage() {
               }
             />
           )}
-          {!checkinHero && checkinItem.listed && <TodayRow item={checkinItem} />}
         </section>
       )}
+
+      {/* Check-in sempre visível: bloqueado/indisponível ficam depois da agenda */}
+      {!checkinOnTop && <CheckinCard state={checkinState} />}
 
       {/* 3. Coach + progresso */}
       {orientation && <CoachMessage orientation={orientation} />}
@@ -186,121 +253,13 @@ export default async function PortalHomePage() {
           weight={weightForHome}
         />
       )}
-    </>
+    </div>
   );
 }
 
 // ----------------------------------------------------------------------------
 // Montagem dos itens do dia
 // ----------------------------------------------------------------------------
-
-function buildCheckinItem(
-  checkin: Awaited<ReturnType<typeof getCurrentCheckin>>,
-  win: ReturnType<typeof checkinWindow>
-): TodayItem {
-  const base = {
-    key: "checkin" as const,
-    eyebrow: "Check-in",
-    href: "/portal/checkin",
-    icon: ICONS.checkin,
-    chips: [] as string[],
-    accent: "brand" as Accent,
-  };
-
-  if (!checkin) {
-    return {
-      ...base,
-      title: "Ainda não disponível",
-      detail: "Seu coach está finalizando o seu cadastro.",
-      cta: "Ver check-in",
-      tone: "muted",
-      actionable: false,
-      configured: false,
-      listed: false,
-    };
-  }
-
-  const { instance } = checkin;
-
-  if (instance.status === "reviewed") {
-    return {
-      ...base,
-      accent: "mint",
-      title: `Semana ${instance.week_number} concluída`,
-      detail: "Seu coach avaliou e enviou a orientação.",
-      cta: "Ver check-in",
-      tone: "ok",
-      actionable: false,
-      configured: true,
-      listed: true,
-    };
-  }
-  if (instance.status === "submitted") {
-    // A faixa "Enviado — seu coach está avaliando" (SentStrip) já cobre esse estado.
-    return {
-      ...base,
-      accent: "mint",
-      title: "Enviado",
-      detail: "Seu coach está avaliando.",
-      cta: "Ver check-in",
-      tone: "ok",
-      actionable: false,
-      configured: true,
-      listed: false,
-    };
-  }
-  if (checkin.questions.length === 0) {
-    return {
-      ...base,
-      title: "Ainda não configurado",
-      detail: "Seu coach ainda não montou as perguntas do check-in.",
-      cta: "Ver check-in",
-      tone: "muted",
-      actionable: false,
-      configured: false,
-      listed: false,
-    };
-  }
-
-  if (win.state === "open") {
-    return {
-      ...base,
-      eyebrow: "Check-in aberto",
-      title: `Check-in da semana ${instance.week_number}`,
-      detail: `Responda até ${win.closesLabel}. É por ele que seu coach ajusta o seu plano.`,
-      chips: ["Peso e fotos", "Alimentação", "Treino", "Bem-estar"],
-      cta: "Fazer check-in",
-      tone: "action",
-      actionable: true,
-      configured: true,
-      listed: true,
-    };
-  }
-  if (win.state === "reminder") {
-    return {
-      ...base,
-      accent: "orange",
-      title: "Abre amanhã",
-      detail: `Reserve um momento amanhã para o check-in da semana ${instance.week_number}.`,
-      cta: "Ver check-in",
-      tone: "warn",
-      actionable: false,
-      configured: true,
-      listed: true,
-    };
-  }
-  return {
-    ...base,
-    title: "Abre na sexta-feira",
-    detail: `Em ${win.daysUntilOpen} ${win.daysUntilOpen === 1 ? "dia" : "dias"}. Até lá, é só seguir o plano.`,
-    cta: "Ver check-in",
-    tone: "muted",
-    actionable: false,
-    configured: true,
-    // Fechado até sexta: sem indicador na Home (menos ruído), o hero cuida do que fazer hoje.
-    listed: false,
-  };
-}
 
 function buildWorkoutItem(
   plan: Awaited<ReturnType<typeof getActiveWorkoutForClient>>,
@@ -406,66 +365,111 @@ function buildWorkoutItem(
 // Componentes
 // ----------------------------------------------------------------------------
 
-/** Faixa de status quando o check-in da semana já foi enviado: a próxima ação é do coach. */
-function SentStrip({ weekNumber }: { weekNumber: number }) {
+/** Linha da agenda para módulo que não está liberado: cadeado (fora do pacote) ou em preparação. */
+function ModuleStatusRow({ module, state }: { module: ModuleId; state: string | undefined }) {
+  const locked = state === "not_contracted";
+  const label = MODULE_LABELS[module];
   return (
-    <Link
-      href="/portal/checkin"
-      className="flex min-h-16 items-center gap-3.5 rounded-lg border border-success/30 bg-success-tint px-4 py-3 transition-colors hover:border-success/60"
-    >
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success text-on-accent">
-        <Icon name="check" size={20} />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="break-words font-display text-base text-ink">
-          Enviado — seu coach está avaliando
-        </span>
-        <span className="text-xs text-ink-muted">Check-in da semana {weekNumber}. Você será avisado.</span>
-      </span>
-      <span className="shrink-0 text-ink-faint">{ICONS.chevron}</span>
-    </Link>
+    <MutedAgendaCard
+      href={module === "training" ? "/portal/treino" : "/portal/nutricao"}
+      icon={module === "training" ? ICONS.workout : ICONS.nutrition}
+      eyebrow={label}
+      title={locked ? `${label} não faz parte do seu pacote` : `Seu coach está preparando o seu ${module === "training" ? "treino" : "plano alimentar"}`}
+      detail={locked ? "Toque para ver como seria e falar com o seu coach." : "Aparece aqui assim que for publicado."}
+    />
   );
 }
 
-/** Check-in aberto: o card mais forte da tela (amarelo cheio) — é o que destrava o coach. */
-function CheckinHero({ item }: { item: TodayItem }) {
+const DUE_FMT = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", timeZone: "America/Sao_Paulo" });
+
+/** "Seu protocolo está pronto" (aparece por poucos dias após a notificação protocol_ready). */
+function ProtocolReadyBanner({ status }: { status: MyOnboardingStatus }) {
+  const modules = modulesOf(status.package);
   return (
     <section
-      aria-label="Sua ação de agora"
-      className="relative flex flex-col gap-4 overflow-hidden rounded-lg bg-brand p-5 text-on-accent"
+      aria-label="Seu protocolo está pronto"
+      className="relative flex flex-col gap-3 overflow-hidden rounded-lg border border-success/30 bg-success-tint p-5"
     >
-      <div className="flex items-center justify-between gap-3">
-        <span className="inline-flex items-center gap-2 text-sm font-bold">
-          {item.icon}
-          {item.eyebrow}
+      <div className="flex items-start gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-success text-on-accent">
+          <Icon name="check" size={20} strokeWidth={2.5} />
         </span>
-        <span className="rounded-full bg-on-accent px-2.5 py-1 text-xs font-bold text-brand">
-          Fecha no domingo
-        </span>
+        <div className="min-w-0">
+          <h2 className="font-display text-xl font-bold text-ink">Seu protocolo está pronto</h2>
+          <p className="text-sm text-ink-muted">Seu coach publicou o que você precisa para começar. Suas respostas do questionário ficam guardadas.</p>
+        </div>
       </div>
-      <div className="flex flex-col gap-1.5">
-        <h2 className="break-words font-display text-2xl font-extrabold leading-tight">
-          {item.title}
-        </h2>
-        <p className="break-words text-sm font-medium opacity-80">{item.detail}</p>
-      </div>
-      <ul className="flex flex-wrap gap-1.5" aria-label="Etapas do check-in">
-        {item.chips.map((chip, i) => (
-          <li
-            key={chip}
-            className="inline-flex items-center gap-1.5 rounded-full border border-on-accent/25 px-2.5 py-1 text-xs font-semibold"
+      <div className="flex flex-wrap gap-2">
+        {modules.map((m) => (
+          <Link
+            key={m}
+            href={m === "training" ? "/portal/treino" : "/portal/nutricao"}
+            className={buttonClass({ variant: "secondary", size: "md" })}
           >
-            <span className="tabular-nums opacity-60">{i + 1}</span>
-            {chip}
-          </li>
+            Abrir {MODULE_LABELS[m].toLowerCase()}
+          </Link>
         ))}
-      </ul>
-      <Link
-        href={item.href}
-        className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-md bg-on-accent px-6 text-base font-semibold text-brand transition-opacity hover:opacity-90 active:translate-y-px"
-      >
-        {item.cta}
-        <Icon name="arrow-right" size={18} />
+        <Link href="/portal/onboarding/respostas" className={buttonClass({ variant: "tertiary", size: "md" })}>
+          Ver minhas respostas
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Resumo do protocolo em preparação (ou parcialmente pronto): estado por módulo, prazo real
+ * (`protocol_due_at`) e atalho para as respostas enviadas. Sem upsell.
+ */
+function ProtocolSummary({ status, compact = false }: { status: MyOnboardingStatus; compact?: boolean }) {
+  const modules = modulesOf(status.package);
+  const info = status.stage;
+  const dueText = info.dueAt && !compact ? DUE_FMT.format(info.dueAt) : null;
+  return (
+    <section aria-labelledby="home-prep" className={`${CARD} flex flex-col gap-4 p-5`}>
+      <div className="flex flex-col gap-2">
+        <Badge tone={info.isOverdue ? "warning" : "accent"} dot>
+          {compact ? "Parcialmente pronto" : "Em preparação"}
+        </Badge>
+        <h2 id="home-prep" className="font-display text-2xl font-bold leading-tight text-ink">
+          {compact ? "Parte do seu protocolo já está pronta" : "Seu protocolo está sendo preparado"}
+        </h2>
+        <p className="text-sm text-ink-muted">
+          {studentStageText(info, status.package)}
+          {status.package ? ` · pacote ${packageLabel(status.package)}` : ""}
+        </p>
+      </div>
+      {dueText && (
+        <p className="flex items-start gap-2 text-sm text-ink">
+          <Icon name="calendar" size={18} className={info.isOverdue ? "mt-0.5 text-warning" : "mt-0.5 text-brand"} />
+          {info.isOverdue ? (
+            <span>A previsão era <strong className="font-semibold">{dueText}</strong>. Seu coach ainda está finalizando.</span>
+          ) : (
+            <span>Previsão de entrega: <strong className="font-semibold">até {dueText}</strong></span>
+          )}
+        </p>
+      )}
+      {modules.length > 0 && (
+        <ul className="flex flex-col gap-2">
+          {modules.map((m) => {
+            const ready = status.published[m];
+            return (
+              <li key={m} className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-3">
+                <span className="text-sm font-semibold text-ink">{MODULE_LABELS[m]}</span>
+                {ready ? (
+                  <Link href={m === "training" ? "/portal/treino" : "/portal/nutricao"} className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-success">
+                    Pronto · abrir <Icon name="chevron" size={16} />
+                  </Link>
+                ) : (
+                  <Badge tone="neutral">Em preparação</Badge>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <Link href="/portal/onboarding/respostas" className={buttonClass({ variant: "secondary", size: "md", width: "mobile" })}>
+        Ver respostas enviadas
       </Link>
     </section>
   );
@@ -556,32 +560,6 @@ function PreparingCard() {
   );
 }
 
-const ACCENT_TILE: Record<Accent, string> = {
-  brand: "bg-brand-tint text-brand",
-  mint: "bg-success-tint text-success",
-  orange: "bg-warning-tint text-warning",
-};
-
-function TodayRow({ item }: { item: TodayItem }) {
-  const tile = item.tone === "muted" ? "bg-surface-sunken text-ink-faint" : ACCENT_TILE[item.accent];
-  return (
-    <Link
-      href={item.href}
-      className={`${CARD} flex min-h-16 items-center gap-3.5 px-4 py-3.5 transition-colors hover:border-line-strong`}
-    >
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md ${tile}`}>
-        {item.icon}
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="t-label text-ink-faint">{item.eyebrow}</span>
-        <span className="break-words text-sm font-semibold text-ink">{item.title}</span>
-        {item.detail && <span className="break-words text-sm text-ink-muted">{item.detail}</span>}
-      </span>
-      <span className="shrink-0 text-ink-faint">{ICONS.chevron}</span>
-    </Link>
-  );
-}
-
 /** Orientação mais recente enviada pelo coach (somente leitura; nunca rascunho nem nota privada). */
 function CoachMessage({ orientation }: { orientation: SentOrientation }) {
   return (
@@ -596,6 +574,9 @@ function CoachMessage({ orientation }: { orientation: SentOrientation }) {
         </span>
       </div>
       <ExpandableText text={orientation.text} />
+      <Link href="/portal/avaliacao" className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-brand hover:underline">
+        Ver avaliação semanal
+      </Link>
     </section>
   );
 }

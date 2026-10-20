@@ -5,29 +5,44 @@
    para texto principal, cinza quente para texto secundário, champagne como accent
    único, vermelho queimado reservado a erro/atraso. Ver ARCHITECTURE.md. */
 
+/* V5 — linguagem visual inspirada no dashboard de referência (docs/v5-referencia-vega.png):
+   moldura preta profunda, painel de conteúdo grafite com cantos grandes, cartões grafite mais
+   escuros "encaixados" no painel, números grandes em branco, pílulas com seleção clara e cores de
+   estado fortes (verde = positivo, amarelo = atenção, vermelho/coral = crítico). Os NOMES de
+   token são os mesmos de antes (muitos componentes dependem deles); só valores mudaram e tokens
+   novos foram somados. Contrastes WCAG medidos estão anotados ao lado de cada tinta. */
+
 :root {
   color-scheme: dark;
 
-  /* superfícies — 3 níveis + borda: paper (fundo) < surface-sunken (sidebar, campos) < surface
-     (cards) < surface-raised (hover, menus, modais). Separação clara por luminosidade + linha. */
-  --paper: #060606;
-  --surface-sunken: #0c0c0d;
-  --surface: #131315;
-  --surface-raised: #1c1c20;
-  --surface-raised-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
-  --shadow-overlay: 0 24px 60px -12px rgba(0, 0, 0, 0.8);
+  /* superfícies — moldura e painel:
+       --paper   moldura do app (fundo do body, sidebar, barras fixas)
+       --canvas  painel de conteúdo do coach (cantos grandes, um degrau ACIMA da moldura)
+     e, dentro deles:
+       --surface-sunken  poços: campos, trilhos, blocos internos (mais escuro que tudo)
+       --surface         cartões (no painel ficam mais escuros que ele, como na referência;
+                         na moldura do portal ficam mais claros — os dois casos separam bem)
+       --surface-raised  hover, menus, modais, item ativo
+     Degraus de luminosidade bem visíveis + linha fina. */
+  --paper: #09090a;
+  --canvas: #1b1b1e;
+  --surface-sunken: #0e0e10;
+  --surface: #141416;
+  --surface-raised: #26262a;
+  --surface-raised-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-overlay: 0 24px 60px -12px rgba(0, 0, 0, 0.85);
 
-  /* tinta — branco levemente quente; cinzas medidos (WCAG) sobre --paper / --surface:
-     --ink-muted #b4b1a9 -> 9,9:1 / 8,7:1 · --ink-faint #8d8b86 -> 5,9:1 / 5,2:1 */
+  /* tinta — branco levemente quente; cinzas medidos sobre --canvas / --surface-raised:
+     --ink-muted #b4b1a9 -> 8,4:1 / 7,3:1 · --ink-faint #94918b -> 5,4:1 / 4,7:1 */
   --ink: #f6f2ea;
   --ink-muted: #b4b1a9;
-  --ink-faint: #8d8b86;
-  --line: #26262b;
-  --line-strong: #3b3b42;
-  /* borda de CONTROLES (campos, botão secundário): WCAG 1.4.11, >= 3,1:1 sobre paper/sunken/surface/raised */
-  --line-control: #6a6970;
+  --ink-faint: #94918b;
+  --line: #2a2a2f;
+  --line-strong: #3d3d44;
+  /* borda de CONTROLES (campos, botão secundário): WCAG 1.4.11, >= 3:1 em todas as superfícies */
+  --line-control: #77767d;
 
-  /* marca — amarelo vivo, só em ação primária, números de destaque e foco */
+  /* marca — amarelo vivo, só em ação primária, seleção, foco e tag "NOVO" */
   --brand: #f5c518;
   --brand-deep: #ffd84a;
   --brand-dark: #2a2205;
@@ -35,14 +50,18 @@
   --brand-tint-strong: rgba(245, 197, 24, 0.24);
   --on-accent: #0b0903; /* 12:1 sobre --brand */
 
-  /* cores semânticas — cada estado tem a própria cor, independente do accent */
-  --success: #4fe3a1; /* mint: pago, concluído, publicado */
-  --success-tint: rgba(79, 227, 161, 0.13);
-  --warning: #ff9f43; /* laranja: atenção, rascunho, pendência */
-  --warning-tint: rgba(255, 159, 67, 0.14);
-  --danger: #e5533f; /* coral: erro, atraso — fundo/borda */
-  --danger-tint: rgba(229, 83, 63, 0.15);
-  --danger-text: #ff7d6e; /* coral como TEXTO: 6,9:1 sobre --paper · 6,1:1 sobre --surface */
+  /* pílula selecionada (abas/segmentos): fundo claro, texto quase preto — 16:1 */
+  --pill-active: #f6f2ea;
+  --on-pill-active: #0d0d0f;
+
+  /* cores semânticas — fortes, como os estados do donut da referência */
+  --success: #36d399; /* verde-turquesa: pago, concluído, publicado, em dia */
+  --success-tint: rgba(54, 211, 153, 0.14);
+  --warning: #f4d35e; /* amarelo de atenção: pendente, rascunho, aguardando */
+  --warning-tint: rgba(244, 211, 94, 0.14);
+  --danger: #ef4f43; /* vermelho-coral: erro, atraso — fundo/borda/marca de gráfico */
+  --danger-tint: rgba(239, 79, 67, 0.15);
+  --danger-text: #ff8073; /* coral como TEXTO: 6,4:1 sobre --canvas · 7,0:1 sobre --surface */
   --on-danger: #14080a;
   --info: #6cb8ff;
   --info-tint: rgba(108, 184, 255, 0.13);
@@ -62,6 +81,16 @@
   --coral-text: var(--danger-text);
   --on-coral: var(--on-danger);
 
+  /* gráficos escuros (components/viz): grade quase invisível, série em cinza claro, área em
+     cinza translúcido, ponto destacado em branco. Cor só para ESTADO (donut/legenda). */
+  --chart-grid: rgba(255, 255, 255, 0.07);
+  --chart-axis: var(--ink-faint);
+  --chart-line: #cfccc5;
+  --chart-area: rgba(207, 204, 197, 0.16);
+  --chart-area-fade: rgba(207, 204, 197, 0.02);
+  --chart-point: #ffffff;
+  --chart-track: #2c2c31; /* trilho de anéis/donuts sem dado */
+
   /* tipografia — --font-display (Sora) e --font-body (Inter) vêm do next/font (app/layout.tsx).
      Não há mais fonte mono: números usam tabular-nums. */
 
@@ -69,8 +98,9 @@
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 18px;
+  --radius-xl: 26px; /* painel de conteúdo e blocos grandes */
   --radius-pill: 999px;
-  --sidebar-w: clamp(13.75rem, 4vw + 12rem, 15.5rem);
+  --sidebar-w: clamp(13.5rem, 3vw + 12rem, 15rem);
 
   /* espaçamento */
   --space-1: 4px;
@@ -85,10 +115,18 @@
   --border-width: 1px;
   --focus-ring: 0 0 0 3px rgba(245, 197, 24, 0.35);
 
+  /* movimento — curto, só transform/opacity/stroke (ver "Movimento" no fim do arquivo) */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-fast: 150ms;
+  --dur-base: 240ms;
+  --dur-slow: 700ms;
+
   /* escala tipográfica fluida (classes t-* abaixo) */
   --text-display: clamp(2.25rem, 1.6rem + 3vw, 3.25rem);
   --text-hero: clamp(1.75rem, 1.4rem + 1.4vw, 2.375rem);
   --text-counter: clamp(2.25rem, 1.6rem + 2.8vw, 3.5rem);
+  --text-stat: clamp(1.5rem, 1.25rem + 1vw, 2rem); /* valor do StatCard (linha de KPIs) */
   --text-label: clamp(0.75rem, 0.72rem + 0.1vw, 0.8125rem);
 
   /* clientes — cor de identidade em gráficos/avatares */
@@ -106,6 +144,12 @@
   --color-surface: var(--surface);
   --color-surface-sunken: var(--surface-sunken);
   --color-surface-raised: var(--surface-raised);
+  --color-canvas: var(--canvas);
+  --color-pill-active: var(--pill-active);
+  --color-on-pill-active: var(--on-pill-active);
+  --color-chart-grid: var(--chart-grid);
+  --color-chart-line: var(--chart-line);
+  --color-chart-track: var(--chart-track);
 
   --color-ink: var(--ink);
   --color-ink-muted: var(--ink-muted);
@@ -160,11 +204,13 @@
   --text-display: var(--text-display);
   --text-hero: var(--text-hero);
   --text-counter: var(--text-counter);
+  --text-stat: var(--text-stat);
   --text-label: var(--text-label);
 
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
   --radius-pill: var(--radius-pill);
 }
 
@@ -264,15 +310,120 @@ textarea {
     -webkit-text-stroke: 1.5px var(--brand);
   }
 
+  /* valor de KPI (StatCard): branco, grande, tabular — como os números da referência */
+  .t-stat {
+    font-family: var(--font-display), system-ui, sans-serif;
+    font-size: var(--text-stat);
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Cartão: grafite com linha fina. No painel (--canvas) fica um degrau mais escuro; a linha
+     superior clara dá o brilho de borda das superfícies da referência. */
   .card {
     border-radius: var(--radius-lg);
     border: var(--border-width) solid var(--line);
     background: var(--surface);
     box-shadow: var(--surface-raised-shadow);
   }
+
+  /* Tag "NOVO": rótulo curto em amarelo sólido para novidades (nunca para estado). */
+  .tag-new {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 6px;
+    background: var(--brand);
+    color: var(--on-accent);
+    padding: 2px 6px;
+    font-size: 0.625rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    line-height: 1.2;
+    text-transform: uppercase;
+  }
 }
 
-/* ---- Movimento (curto, só transform/opacity) -------------------------------------------- */
+/* ---- Movimento (curto, só transform/opacity/stroke) --------------------------------------
+   Sistema V5. Regra: a animação ORIENTA (o que entrou, o que mudou, o que foi concluído), nunca
+   decora em loop. Tudo abaixo é zerado em `prefers-reduced-motion: reduce` (bloco no fim).
+
+   Utilitários:
+     .tk-enter        entrada de bloco (fade + sobe 6px), 240ms
+     .tk-stagger      nos FILHOS diretos: entrada em cascata (40ms entre itens, até o 8º)
+     .tk-rise         número/valor que aparece ou muda (use `key={valor}` para reanimar)
+     .tk-ring-draw    traço de anel desenhando-se (SVG; precisa de --tk-ring-from)
+     .tk-seg-draw     segmento de donut crescendo (SVG; precisa de --tk-dash-from)
+     .tk-grow-y       área/barras crescendo da base (SVG/HTML; transform-origin embaixo)
+     .tk-success      pulso verde ao CONCLUIR algo (treino, check-in, avaliação) — 1 vez
+     .tk-pop          check "pop" ao concluir série / refeição / meta
+     .tk-fade         entrada mínima (estados vazios, toasts)
+     .tk-press        leve encolhimento ao pressionar (botões, pílulas)
+     .tk-grow-x       preenchimento de barra crescendo da esquerda (MeterBar)
+     .tk-slide-next/prev  troca de exercício na direção da navegação
+     .tk-check-draw   traço do ✓ desenhando-se (CompletionMark)
+     .tk-mark-in      marcador do item ativo da navegação acendendo
+------------------------------------------------------------------------------------------- */
+
+@keyframes tk-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.tk-enter { animation: tk-enter var(--dur-base) var(--ease-out) both; }
+.tk-stagger > * { animation: tk-enter var(--dur-base) var(--ease-out) both; }
+.tk-stagger > :nth-child(2) { animation-delay: 40ms; }
+.tk-stagger > :nth-child(3) { animation-delay: 80ms; }
+.tk-stagger > :nth-child(4) { animation-delay: 120ms; }
+.tk-stagger > :nth-child(5) { animation-delay: 160ms; }
+.tk-stagger > :nth-child(6) { animation-delay: 200ms; }
+.tk-stagger > :nth-child(7) { animation-delay: 240ms; }
+.tk-stagger > :nth-child(n + 8) { animation-delay: 280ms; }
+
+@keyframes tk-rise {
+  from { opacity: 0; transform: translateY(0.35em); }
+  to { opacity: 1; transform: none; }
+}
+.tk-rise { display: inline-block; animation: tk-rise 420ms var(--ease-out) both; }
+
+/* Anel: o elemento já tem o dashoffset final; a animação parte de --tk-ring-from (traço vazio). */
+@keyframes tk-ring-draw { from { stroke-dashoffset: var(--tk-ring-from); } }
+.tk-ring-draw { animation: tk-ring-draw var(--dur-slow) var(--ease-out) both; }
+/* Segmento de donut: cresce a partir do próprio início (precisa de --tk-dash-from: "0 <circ>"). */
+@keyframes tk-seg-draw { from { stroke-dasharray: var(--tk-dash-from); } }
+.tk-seg-draw { animation: tk-seg-draw var(--dur-slow) var(--ease-out) both; }
+
+@keyframes tk-grow-y { from { transform: scaleY(0); opacity: 0.2; } }
+.tk-grow-y { transform-origin: 50% 100%; transform-box: fill-box; animation: tk-grow-y var(--dur-slow) var(--ease-out) both; }
+
+@keyframes tk-success {
+  0% { box-shadow: 0 0 0 0 rgba(54, 211, 153, 0.55); transform: scale(1); }
+  35% { transform: scale(1.03); }
+  100% { box-shadow: 0 0 0 14px rgba(54, 211, 153, 0); transform: scale(1); }
+}
+.tk-success { animation: tk-success 900ms var(--ease-out) 1 both; }
+
+.tk-press { transition: transform var(--dur-fast) var(--ease-out); }
+.tk-press:active { transform: scale(0.97); }
+
+/* Barra de medição (MeterBar): o preenchimento cresce da esquerda ao montar. */
+@keyframes tk-grow-x { from { transform: scaleX(0); } }
+.tk-grow-x { transform-origin: 0 50%; animation: tk-grow-x var(--dur-slow) var(--ease-out) both; }
+
+/* Troca de exercício na sessão de treino: entra pelo lado da navegação (próximo = pela direita,
+   anterior = pela esquerda). Deslocamento curto para não "pular" no celular. */
+@keyframes tk-slide-next { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+@keyframes tk-slide-prev { from { opacity: 0; transform: translateX(-18px); } to { opacity: 1; transform: none; } }
+.tk-slide-next { animation: tk-slide-next var(--dur-base) var(--ease-out) both; }
+.tk-slide-prev { animation: tk-slide-prev var(--dur-base) var(--ease-out) both; }
+
+/* Check desenhando-se (CompletionMark): traço do ✓ aparece depois do "pop" do círculo. */
+@keyframes tk-check-draw { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+.tk-check-draw { stroke-dasharray: 24; animation: tk-check-draw 360ms var(--ease-out) 180ms both; }
+
+/* Item ativo da navegação: o marcador "acende" ao trocar de seção (escala vertical rápida). */
+@keyframes tk-mark-in { from { transform: scaleY(0.2); opacity: 0; } to { transform: none; opacity: 1; } }
+.tk-mark-in { animation: tk-mark-in 220ms var(--ease-spring) both; }
 
 /* Feedback discreto: check "pop" ao concluir série / refeição / meta. */
 @keyframes tk-pop {
@@ -281,7 +432,6 @@ textarea {
   100% { transform: scale(1); opacity: 1; }
 }
 .tk-pop { animation: tk-pop 320ms ease-out both; }
-
 /* Entrada suave de blocos (estados vazios, toasts, confirmações). */
 @keyframes tk-fade {
   from { opacity: 0; transform: translateY(4px); }
@@ -324,11 +474,35 @@ dialog.tk-drawer[open]::backdrop { animation: tk-backdrop-in 180ms ease-out both
 @media (prefers-reduced-motion: reduce) {
   .tk-pop,
   .tk-fade,
+  .tk-enter,
+  .tk-stagger > *,
+  .tk-rise,
+  .tk-ring-draw,
+  .tk-seg-draw,
+  .tk-grow-y,
+  .tk-grow-x,
+  .tk-slide-next,
+  .tk-slide-prev,
+  .tk-check-draw,
+  .tk-mark-in,
+  .tk-success,
   .tk-skeleton,
   .tk-spin,
   .animate-pulse,
   dialog.tk-modal[open],
   dialog.tk-drawer[open],
   dialog[open]::backdrop { animation: none !important; }
-  * { scroll-behavior: auto !important; }
+  .animate-spin,
+  .animate-ping,
+  .animate-bounce { animation: none !important; }
+  .tk-press:active { transform: none; }
+  /* Transições de hover/cor continuam instantâneas (sem deslocamento perceptível); o que se move
+     (transform de pílulas, barras de progresso, gavetas) deixa de animar. */
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+  }
 }

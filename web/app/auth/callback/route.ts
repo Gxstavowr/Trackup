@@ -82,17 +82,23 @@ export async function GET(request: Request) {
           if (linkError) console.error("Não foi possível vincular o consentimento:", linkError.message);
         }
 
-        // Best-effort: notifica o COACH que o aluno aceitou o convite (`event_type` reaproveita
-        // `'checkin_received'` — não existe um "invite_accepted" no CHECK constraint).
+        // Best-effort: notifica o COACH que o aluno aceitou o convite. `invite_accepted` entrou no
+        // CHECK de `notifications.event_type` na migração 0022; enquanto ela não estiver aplicada o
+        // insert é recusado e cai no tipo antigo (`checkin_received`), como antes.
         for (const activated of (activatedClients ?? []) as { id: string; name: string }[]) {
+          const message = `${activated.name} aceitou o convite e ativou a conta.`;
           try {
             await createNotification(activated.id, {
-              event_type: "checkin_received",
+              event_type: "invite_accepted",
               recipient: "coach",
-              message: `${activated.name} aceitou o convite e ativou a conta.`,
+              message,
             });
-          } catch (err) {
-            console.error("Não foi possível criar a notificação de convite aceito:", err);
+          } catch {
+            try {
+              await createNotification(activated.id, { event_type: "checkin_received", recipient: "coach", message });
+            } catch (err) {
+              console.error("Não foi possível criar a notificação de convite aceito:", err);
+            }
           }
         }
       }

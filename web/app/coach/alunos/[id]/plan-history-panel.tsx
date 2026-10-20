@@ -25,7 +25,7 @@ export default function PlanHistoryPanel({ logs }: { logs: PlanChangeLog[] }) {
 
   return (
     <section className="flex flex-col gap-4">
-      <h2 className="text-lg font-medium text-ink">Histórico de alterações</h2>
+      <h2 className="t-subtitle text-ink">Histórico de alterações</h2>
       <ul className="flex flex-col gap-2 card p-1">
         {logs.map((log) => (
           <li key={log.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-3 py-2 text-sm">

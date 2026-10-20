@@ -7,16 +7,17 @@ export type ButtonSize = "sm" | "md" | "lg";
 /** `full` = 100%, `mobile` = 100% no celular e automático a partir de `sm`, `auto` = largura do conteúdo. */
 export type ButtonWidth = "auto" | "mobile" | "full";
 
+// V5: botões em pílula (mesma linguagem das abas/segmentos), pressão com leve escala.
 const BASE =
-  "inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-md font-semibold " +
-  "transition-[background-color,border-color,color,transform,opacity] duration-150 " +
+  "inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-full font-semibold " +
+  "transition-[background-color,border-color,color,transform,opacity] duration-150 ease-[var(--ease-out)] " +
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand " +
-  "active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50";
+  "active:scale-[0.97] motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50";
 
 const VARIANTS: Record<ButtonVariant, string> = {
   primary: "bg-brand text-on-accent hover:bg-brand-deep disabled:hover:bg-brand",
   secondary:
-    "border border-line-control bg-transparent text-ink hover:border-brand hover:text-brand active:bg-brand-tint",
+    "border border-line-control bg-white/[0.03] text-ink hover:border-ink-muted hover:bg-surface-raised active:bg-surface-raised",
   tertiary:
     "border border-transparent bg-transparent text-ink-muted hover:bg-surface-raised hover:text-ink",
   danger:

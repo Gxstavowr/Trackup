@@ -155,6 +155,12 @@ export type SessionTimingLike = {
  * fechado + a pausa em andamento, se houver, calculada até `now`). Usa `ended_at` como fim se
  * a sessão já terminou; senão `now`. Nunca negativo.
  */
+export function computeClockOffsetMs(serverNowIso: string | null | undefined, clientNowMs: number): number {
+  const server = serverNowIso ? new Date(serverNowIso).getTime() : NaN;
+  if (!Number.isFinite(server) || !Number.isFinite(clientNowMs)) return 0;
+  return server - clientNowMs;
+}
+
 export function computeElapsedSeconds(session: SessionTimingLike, now: Date = new Date()): number {
   const start = new Date(session.started_at).getTime();
   const end = session.ended_at ? new Date(session.ended_at).getTime() : now.getTime();

@@ -7,7 +7,7 @@ import { buttonClass } from "@/components/ui/button";
 
 const initialState: LoginState = null;
 
-export default function LoginForm() {
+export default function LoginForm({ next = "" }: { next?: string }) {
   const [mode, setMode] = useState<"coach" | "aluno">("coach");
 
   return (
@@ -37,17 +37,18 @@ export default function LoginForm() {
         </button>
       </div>
 
-      {mode === "coach" ? <CoachLoginForm /> : <StudentLoginForm />}
+      {mode === "coach" ? <CoachLoginForm next={next} /> : <StudentLoginForm />}
     </div>
   );
 }
 
-function CoachLoginForm() {
+function CoachLoginForm({ next }: { next: string }) {
   const [state, action, pending] = useActionState(loginCoach, initialState);
 
   return (
     <form action={action} className="flex flex-col gap-4">
       <h1 className="font-display text-hero text-ink">Entrar</h1>
+      {next && <input type="hidden" name="next" value={next} />}
 
       <Field label="E-mail" name="email" type="email" autoComplete="email" />
       <Field

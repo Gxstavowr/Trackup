@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { resolveHomeForCurrentUser } from "@/lib/auth/resolve-home";
 import { getMissingConsents } from "@/lib/legal/consent";
+import DemoBanner from "@/components/demo-banner";
 import ConsentForm from "./consent-form";
 
 /**
@@ -21,5 +22,15 @@ export default async function ConsentPage() {
   const missing = await getMissingConsents(supabase, user!.id, role);
   if (missing.length === 0) redirect(home);
 
-  return <ConsentForm role={role} purposes={missing} />;
+  // No Laboratório (conta demo), a faixa com "Voltar ao painel admin" precisa aparecer aqui também:
+  // os logins demo podem cair no consentimento no primeiro acesso.
+  return (
+    <>
+      {/* Faixa encaixada no topo do cartão (sangra até as bordas, com respiro antes do título). */}
+      <div className="-mx-7 -mt-7 mb-6 overflow-hidden rounded-t-[var(--radius-lg)] empty:hidden">
+        <DemoBanner area={role === "coach" ? "coach" : "portal"} />
+      </div>
+      <ConsentForm role={role} purposes={missing} />
+    </>
+  );
 }

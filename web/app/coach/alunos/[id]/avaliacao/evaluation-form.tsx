@@ -4,6 +4,7 @@ import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { saveEvaluationAction, type EvaluationActionState } from "./actions";
 import CycleDoneBanner from "./cycle-done-banner";
 import { textareaClass } from "@/components/ui/field";
+import Icon from "@/components/ui/icon";
 import { buttonClass } from "@/components/ui/button";
 
 const initialState: EvaluationActionState = null;
@@ -108,13 +109,13 @@ function EvaluationFields({
           (~3.6rem: pt-5 + kicker + gap-1 + t-subtitle + pb-3 + borda) enquanto o form rola. */}
       <label
         htmlFor={textId}
-        className="-mb-2.5 text-sm font-semibold text-ink lg:sticky lg:top-[3.6rem] lg:z-[5] lg:-mx-5 lg:-mt-1.5 lg:-mb-4 lg:bg-surface lg:px-5 lg:py-1.5"
+        className="-mb-2.5 text-sm font-semibold text-ink xl:sticky xl:top-[3.6rem] xl:z-[5] xl:-mx-5 xl:-mt-1.5 xl:-mb-4 xl:bg-surface xl:px-5 xl:py-1.5"
       >
         Orientação para {firstName}
       </label>
       <div className="flex flex-col gap-1.5 text-sm">
-        <span id={hintId} className="text-xs text-ink-muted">
-          O aluno vê este texto no portal quando você finalizar a avaliação.
+        <span id={hintId} className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand">
+          <Icon name="message" size={14} /> O aluno vê este texto no portal ao finalizar.
         </span>
         <textarea
           id={textId}
@@ -128,12 +129,17 @@ function EvaluationFields({
         />
       </div>
 
-      <label className="flex flex-col gap-1.5 text-sm">
-        <span className="font-semibold text-ink">Nota do coach</span>
-        <span className="text-xs text-ink-muted">Privada: só você vê. Registre o que observou nesta avaliação.</span>
+      {/* Nota privada: bloco próprio, tracejado e rebaixado — nunca vai para o aluno. */}
+      <label className="flex flex-col gap-1.5 rounded-lg border border-dashed border-line-strong bg-surface-sunken p-3 text-sm">
+        <span className="flex items-center justify-between gap-2">
+          <span className="font-semibold text-ink">Nota do coach</span>
+          <span className="inline-flex items-center gap-1 rounded-full border border-line px-2 py-0.5 text-xs text-ink-muted">
+            <Icon name="privacy" size={12} /> Privada · só você vê
+          </span>
+        </span>
         <textarea
           name="coachNote"
-          rows={3}
+          rows={2}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           className={textareaClass}
@@ -154,8 +160,7 @@ function EvaluationFields({
           role="status"
           className="tk-fade rounded-md border border-brand/30 bg-brand-tint px-3 py-2 text-sm text-brand"
         >
-          Rascunho salvo{state.savedAt ? ` às ${state.savedAt}` : ""}. Você pode sair e continuar
-          depois — o aluno ainda não vê nada.
+          Rascunho salvo{state.savedAt ? ` às ${state.savedAt}` : ""}. O aluno ainda não vê nada.
         </p>
       )}
 
@@ -183,11 +188,7 @@ function EvaluationFields({
                 ? "Atualizar rascunho"
                 : "Salvar rascunho"}
           </button>
-          {empty && (
-            <p className="text-xs text-ink-faint">
-              Escreva a orientação para poder finalizar. O rascunho pode ser salvo a qualquer momento.
-            </p>
-          )}
+          {empty && <p className="text-xs text-ink-faint">Escreva a orientação para finalizar. O rascunho pode ser salvo a qualquer hora.</p>}
         </div>
       ) : (
         <div

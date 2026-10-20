@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import { addDays, daysBetween, monthRange, todayInSaoPaulo, type DateOnly, type MonthKey } from "./dates";
+import { groupTotals, receiptsByMonth, type MonthReceipt, type GroupTotal } from "./breakdown";
+import { addDays, daysBetween, monthRange, shiftMonth, todayInSaoPaulo, type DateOnly, type MonthKey } from "./dates";
 import {
   displayPaymentStatus,
   sumCents,
@@ -35,6 +36,7 @@ export const HISTORY_FILTERS: HistoryFilter[] = ["all", "paid", "pending", "over
 
 export const HISTORY_LIMIT = 50;
 export const UPCOMING_DAYS = 30;
+export const RECEIPT_MONTHS = 6;
 
 export type FinancePayment = {
   id: string;
@@ -74,6 +76,16 @@ export type FinanceOverview = {
   /** Todos os pagamentos atrasados HOJE (qualquer mês), do mais antigo pro mais recente. */
   late: FinancePayment[];
   lateTotalCents: number;
+  /** Momento real em que estes dados foram lidos (faixa "última atualização"). */
+  readAt: Date;
+  /** Recebimentos (paid_date) por mês, nos RECEIPT_MONTHS meses que terminam no mês escolhido. */
+  receiptsByMonth: MonthReceipt[];
+  /** Cobranças com vencimento no mês (assinaturas não canceladas) por situação exibida. */
+  statusBreakdown: Record<"paid" | "pending" | "overdue", { count: number; cents: number }>;
+  /** Cobranças do mês por plano (contagem e valor previsto). */
+  byPlan: GroupTotal[];
+  /** Recebimentos do mês por meio de pagamento. */
+  byMethod: GroupTotal[];
   /** `pending` com vencimento entre hoje e hoje+30 dias, por vencimento. */
   upcoming: FinancePayment[];
   upcomingTotalCents: number;
@@ -135,6 +147,11 @@ function fail(what: string, message: string): never {
   throw new Error(`Não foi possível carregar ${what}: ${message}`);
 }
 
+function statusSlice(items: FinancePayment[], status: PaymentStatus) {
+  const rows = items.filter((p) => p.status === status);
+  return { count: rows.length, cents: sumCents(rows) };
+}
+
 export async function getFinanceOverview(input: { month: MonthKey }): Promise<FinanceOverview> {
   const { month } = input;
   const supabase = await createClient();
@@ -142,7 +159,7 @@ export async function getFinanceOverview(input: { month: MonthKey }): Promise<Fi
   const { start, end } = monthRange(month);
   const upcomingEnd = addDays(today, UPCOMING_DAYS);
 
-  const [subsRes, dueRes, paidRes, lateRes, upcomingRes] = await Promise.all([
+  const [subsRes, dueRes, paidRes, lateRes, upcomingRes, historyRes] = await Promise.all([
     supabase.from("subscriptions").select("price_cents, period, status, created_at, cancelled_at"),
     supabase
       .from("payments")
@@ -152,7 +169,7 @@ export async function getFinanceOverview(input: { month: MonthKey }): Promise<Fi
       .in("status", ["paid", "pending", "overdue"]),
     supabase
       .from("payments")
-      .select("amount_cents")
+      .select(PAYMENT_SELECT)
       .eq("status", "paid")
       .gte("paid_date", start)
       .lte("paid_date", end),
@@ -170,8 +187,15 @@ export async function getFinanceOverview(input: { month: MonthKey }): Promise<Fi
       .lte("due_date", upcomingEnd)
       .order("due_date", { ascending: true })
       .order("id", { ascending: true }),
+    supabase
+      .from("payments")
+      .select("amount_cents, paid_date")
+      .eq("status", "paid")
+      .gte("paid_date", monthRange(shiftMonth(month, -(RECEIPT_MONTHS - 1))).start)
+      .lte("paid_date", end),
   ]);
 
+  if (historyRes.error) fail("a série de recebimentos", historyRes.error.message);
   if (subsRes.error) fail("as assinaturas", subsRes.error.message);
   if (dueRes.error) fail("as cobranças do mês", dueRes.error.message);
   if (paidRes.error) fail("os recebimentos do mês", paidRes.error.message);
@@ -180,7 +204,7 @@ export async function getFinanceOverview(input: { month: MonthKey }): Promise<Fi
 
   const subscriptionFacts = (subsRes.data ?? []) as SubscriptionFact[];
   const dueInMonth = ((dueRes.data ?? []) as unknown as RawPayment[]).map((r) => normalize(r, today));
-  const paidRows = (paidRes.data ?? []) as { amount_cents: number }[];
+  const paidRows = ((paidRes.data ?? []) as unknown as RawPayment[]).map((r) => normalize(r, today));
   const late = ((lateRes.data ?? []) as unknown as RawPayment[]).map((r) => normalize(r, today));
   // Cobrança de assinatura cancelada não é mais esperada: fica de fora do que é "previsto",
   // "a receber" e "próximas cobranças". Continua nos atrasados (é dívida) e no histórico.
@@ -197,11 +221,27 @@ export async function getFinanceOverview(input: { month: MonthKey }): Promise<Fi
     subscriptions: summarizeSubscriptions(subscriptionFacts, month),
     monthTotals: {
       forecastCents: sumCents(expectedThisMonth),
-      receivedCents: paidRows.reduce((total, p) => total + p.amount_cents, 0),
+      receivedCents: sumCents(paidRows),
       toReceiveCents: sumCents(expectedThisMonth.filter((p) => p.status === "pending")),
     },
     late,
     lateTotalCents: sumCents(late),
+    readAt: new Date(),
+    receiptsByMonth: receiptsByMonth(
+      ((historyRes.data ?? []) as { amount_cents: number; paid_date: string }[]).map((r) => ({
+        paidDate: r.paid_date,
+        amountCents: r.amount_cents,
+      })),
+      month,
+      RECEIPT_MONTHS,
+    ),
+    statusBreakdown: {
+      paid: statusSlice(expectedThisMonth, "paid"),
+      pending: statusSlice(expectedThisMonth, "pending"),
+      overdue: statusSlice(expectedThisMonth, "overdue"),
+    },
+    byPlan: groupTotals(expectedThisMonth, (p) => p.planName),
+    byMethod: groupTotals(paidRows, (p) => p.method ?? "manual"),
     upcoming,
     upcomingTotalCents: sumCents(upcoming),
   };

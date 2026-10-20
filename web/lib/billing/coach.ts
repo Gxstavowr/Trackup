@@ -3,6 +3,7 @@ import { cache } from "react";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { BILLING_PATH_HEADER } from "./path-header";
+import { isBillingExemptRoute } from "./exempt-path";
 import { safeCheckoutUrl, type BillingStatus } from "./state";
 
 export type CoachBilling = {
@@ -36,19 +37,16 @@ export function coachCheckoutUrl(): string | null {
   return safeCheckoutUrl(process.env.SYNCPAY_COACH_CHECKOUT_URL);
 }
 
-export const SUSPENDED_PATH = "/coach/suspenso";
+export { SUSPENDED_PATH, PAYMENT_METHOD_PATH } from "./exempt-path";
 export const SUBSCRIPTION_PATH = "/coach/configuracoes?secao=assinatura";
-/** "Assinar o Trackly / Forma de pagamento" (Pix Automático ou cartão recorrente). */
-export const PAYMENT_METHOD_PATH = "/coach/assinatura";
 
 /**
- * Rotas do coach que continuam abertas com o plano suspenso: a tela de suspensão, a assinatura e
- * a escolha da forma de pagamento.
+ * Rotas do coach que continuam abertas com o plano suspenso (só para RENDERIZAR a página): a tela
+ * de suspensão, a assinatura e a escolha da forma de pagamento. Regra pura em `exempt-path.ts`.
+ * Requisição de Server Action (header `next-action`) nunca é liberada: nela o caminho repassado é o
+ * da página de origem. O `proxy.ts` também só repassa o caminho em GET/HEAD.
  */
 export async function isBillingExemptPath(): Promise<boolean> {
-  const raw = (await headers()).get(BILLING_PATH_HEADER);
-  if (!raw) return false;
-  const url = new URL(raw, "http://local");
-  if (url.pathname === SUSPENDED_PATH || url.pathname === PAYMENT_METHOD_PATH) return true;
-  return url.pathname === "/coach/configuracoes" && url.searchParams.get("secao") === "assinatura";
+  const h = await headers();
+  return isBillingExemptRoute({ path: h.get(BILLING_PATH_HEADER), isServerAction: h.has("next-action") });
 }

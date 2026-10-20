@@ -31,7 +31,7 @@ const TABS: Tab[] = [
   { href: "/portal", label: "Início", exact: true, icon: ICONS.home, also: ["/portal/checkin"] },
   { href: "/portal/treino", label: "Treino", icon: ICONS.workout },
   { href: "/portal/nutricao", label: "Nutrição", icon: ICONS.nutrition },
-  { href: "/portal/progresso", label: "Progresso", icon: <Icon name="tracking" /> },
+  { href: "/portal/progresso", label: "Progresso", icon: <Icon name="tracking" />, also: ["/portal/avaliacao"] },
 ];
 
 function isActive(pathname: string, tab: Tab): boolean {

@@ -2,19 +2,25 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Segmented } from "@/components/ui/segmented";
 import Icon from "@/components/ui/icon";
+import QueueRow from "./queue-row";
 import ClientRow, { LIST_GRID_XL, ROW_SUBGRID_XL } from "./client-row";
 import {
+  BUCKET_LABEL,
+  BUCKET_ORDER,
   DEFAULT_CONTROLS,
   PAYMENT_FILTER_LABEL,
   PAYMENT_FILTER_ORDER,
   TRACKING_FILTER_ORDER,
   TRACKING_LABEL,
+  countBuckets,
   GROUP_LABEL,
   filterAndSort,
   groupOf,
   hasActiveFilters,
   type ListControls,
+  type ListView,
   type SortKey,
   type StudentEntry,
 } from "./student-situation";
@@ -34,7 +40,14 @@ const SORT_LABEL: Record<SortKey, string> = {
  * dois blocos ("Precisam da sua ação" / "Sem ação agora"), borda de destaque na linha, o texto
  * "Próxima ação" e o botão principal preenchido.
  */
-export default function StudentList({ entries }: { entries: StudentEntry[] }) {
+export default function StudentList({
+  entries,
+  onboardingUnavailable = false,
+}: {
+  entries: StudentEntry[];
+  /** Falha ao ler a fila de cadastros novos: avisa em vez de sumir com a aba. */
+  onboardingUnavailable?: boolean;
+}) {
   const [controls, setControls] = useState<ListControls>(DEFAULT_CONTROLS);
   const set = <K extends keyof ListControls>(key: K, value: ListControls[K]) =>
     setControls((c) => ({ ...c, [key]: value }));
@@ -42,13 +55,47 @@ export default function StudentList({ entries }: { entries: StudentEntry[] }) {
   const visible = useMemo(() => filterAndSort(entries, controls), [entries, controls]);
   const needsActionTotal = useMemo(() => entries.filter((e) => e.needsAction).length, [entries]);
   const filtersOn = hasActiveFilters(controls);
-  const grouped = controls.sort === "urgency";
+  const inQueue = controls.view === "new";
+  const grouped = controls.sort === "urgency" && !inQueue;
+  const buckets = useMemo(() => countBuckets(entries), [entries]);
+  // Sem nenhum cadastro novo (ou sem a view, migração pendente), a aba nem aparece.
+  const showQueueTabs = buckets.total > 0 || inQueue;
 
-  const clearFilters = () => setControls((c) => ({ ...DEFAULT_CONTROLS, sort: c.sort }));
+  const clearFilters = () => setControls((c) => ({ ...DEFAULT_CONTROLS, sort: c.sort, view: c.view }));
   const select = `${selectClass} min-h-11 md:min-h-10 text-sm`;
 
   return (
     <div className="flex flex-col gap-4">
+      {onboardingUnavailable && (
+        <p role="status" className="text-sm text-ink-muted">
+          Novos cadastros: não foi possível carregar agora.
+        </p>
+      )}
+      {showQueueTabs && (
+        <div className="flex flex-col gap-2.5">
+          <Segmented
+            label="Visão da lista"
+            value={controls.view}
+            onChange={(id) => setControls((c) => ({ ...c, view: id as ListView, newFilter: "all" }))}
+            items={[
+              { id: "all", label: "Todos os alunos" },
+              { id: "new", label: "Novos cadastros", count: buckets.total },
+            ]}
+          />
+          {inQueue && (
+            <Segmented
+              label="Filtrar novos cadastros"
+              size="sm"
+              value={controls.newFilter}
+              onChange={(id) => set("newFilter", id as ListControls["newFilter"])}
+              items={[
+                { id: "all", label: "Todos", count: buckets.total },
+                ...BUCKET_ORDER.map((b) => ({ id: b, label: BUCKET_LABEL[b], count: buckets[b] })),
+              ]}
+            />
+          )}
+        </div>
+      )}
       <section aria-label="Buscar e filtrar alunos" className="flex flex-col gap-2.5">
         <div className="flex flex-col gap-2.5">
           <label className="relative block">
@@ -68,7 +115,7 @@ export default function StudentList({ entries }: { entries: StudentEntry[] }) {
             />
           </label>
 
-          <div className="grid grid-cols-2 gap-2.5 lg:flex">
+          <div className={`grid grid-cols-2 gap-2.5 lg:flex ${inQueue ? "hidden" : ""}`}>
             <label className="lg:w-52">
               <span className="sr-only">Filtrar por situação do acompanhamento</span>
               <select
@@ -121,6 +168,7 @@ export default function StudentList({ entries }: { entries: StudentEntry[] }) {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <button
             type="button"
+            hidden={inQueue}
             aria-pressed={controls.onlyNeedsAction}
             onClick={() => set("onlyNeedsAction", !controls.onlyNeedsAction)}
             className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand active:translate-y-px md:min-h-9 ${
@@ -148,8 +196,12 @@ export default function StudentList({ entries }: { entries: StudentEntry[] }) {
       {visible.length === 0 ? (
         <EmptyState
           icon="search"
-          title="Nenhum aluno encontrado"
-          text="Nenhum aluno combina com a busca e os filtros atuais. Ajuste-os ou limpe para ver todos."
+          title={inQueue ? "Nenhum novo cadastro nesta fila" : "Nenhum aluno encontrado"}
+          text={
+            inQueue
+              ? "Ninguém combina com a busca e o filtro atuais. Troque o filtro ou volte para Todos os alunos."
+              : "Nenhum aluno combina com a busca e os filtros atuais. Ajuste-os ou limpe para ver todos."
+          }
           action={
             <Button variant="secondary" onClick={clearFilters}>
               Limpar filtros
@@ -157,6 +209,13 @@ export default function StudentList({ entries }: { entries: StudentEntry[] }) {
           }
         />
       ) : (
+        inQueue ? (
+          <ul className="flex flex-col gap-2">
+            {visible.map((entry) => (
+              <QueueRow key={entry.id} entry={entry} />
+            ))}
+          </ul>
+        ) : (
         <>
           {/* Desktop (>= 1280px): a lista vira uma grade e cada linha (e o cabeçalho) usa subgrid,
               então as colunas ficam alinhadas e a de ação se ajusta ao botão mais largo. */}
@@ -193,6 +252,7 @@ export default function StudentList({ entries }: { entries: StudentEntry[] }) {
             })}
           </ul>
         </>
+        )
       )}
     </div>
   );

@@ -29,7 +29,7 @@ export default function TemplatesPanel({
 }) {
   return (
     <section className="flex flex-col gap-4">
-      <h2 className="text-lg font-medium text-ink">Templates de dieta {templates.length > 0 && `(${templates.length})`}</h2>
+      <h2 className="t-subtitle text-ink">Templates de dieta {templates.length > 0 && `(${templates.length})`}</h2>
 
       {templates.length === 0 ? (
         <EmptyState compact icon="nutrition" title="Nenhum template salvo ainda" text="Salve um plano deste aluno como template para reaproveitar em outros." />

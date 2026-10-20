@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { requireCoach } from "../require-coach";
+import { requireActiveCoach } from "../require-coach";
 import type { SettingsFormState } from "./actions";
 import { WEIGHT_QUESTION_KEY } from "@/lib/checkin-steps";
 import { normalizeHelpText } from "@/lib/checkin-catalog";
@@ -93,7 +93,7 @@ export async function saveQuestionAction(
   _prev: SettingsFormState,
   formData: FormData
 ): Promise<SettingsFormState> {
-  await requireCoach();
+  await requireActiveCoach();
   const id = String(formData.get("id") ?? "");
   const label = clean(formData.get("label"), 140);
   const type = String(formData.get("type") ?? "");
@@ -186,7 +186,7 @@ export async function saveQuestionAction(
 
 /** Sobe ou desce uma pergunta ativa (reescreve a ordem 0..n). */
 export async function moveQuestionAction(formData: FormData): Promise<void> {
-  await requireCoach();
+  await requireActiveCoach();
   const id = String(formData.get("id") ?? "");
   const dir = formData.get("dir") === "up" ? -1 : 1;
   const { supabase, templateId } = await loadTemplate();
@@ -212,7 +212,7 @@ export async function removeQuestionAction(
   _prev: SettingsFormState,
   formData: FormData
 ): Promise<SettingsFormState> {
-  await requireCoach();
+  await requireActiveCoach();
   const id = String(formData.get("id") ?? "");
   const { supabase, templateId } = await loadTemplate();
   if (!templateId) return { error: "Modelo de check-in não encontrado." };

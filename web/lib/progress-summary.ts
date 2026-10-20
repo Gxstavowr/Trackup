@@ -7,6 +7,7 @@ import {
   type EvolutionPeriod,
 } from "@/lib/evolution-format";
 import { dateShort } from "@/lib/week-comparison-format";
+import { isSensitiveKey } from "@/lib/checkin-catalog";
 
 /**
  * Resumo da evolução do aluno (V2 tarefa 27) — módulo PURO, só regras sobre registros reais.
@@ -32,10 +33,15 @@ export type SummaryItem = {
   href: string;
 };
 
+/** Origem do texto do resumo — a tela rotula conforme isto. Hoje só `rules` existe. */
+export type SummarySource = "rules" | "ai";
+
 export type ProgressSummary =
   | { status: "insufficient"; reason: string }
   | {
       status: "ok";
+      /** `rules` = regras fixas deste módulo; `ai` = devolvido por um `SummaryProvider` de IA. */
+      source: SummarySource;
       /** "Semanas 5 a 8 · 02/09 a 23/09". */
       periodLabel: string;
       items: SummaryItem[];
@@ -150,5 +156,95 @@ export function buildProgressSummary(input: SummaryInput): ProgressSummary {
     };
   }
 
-  return { status: "ok", periodLabel, items };
+  return { status: "ok", source: "rules", periodLabel, items };
+}
+
+// ---------------------------------------------------------------------------
+// Contrato para uma futura integração de IA (V5 item 32) — NADA aqui chama IA nem envia dados.
+// ---------------------------------------------------------------------------
+//
+// Quando houver um provedor real, ele implementa `SummaryProvider` e recebe SÓ o
+// `SummaryPayload`: números e rótulos de métricas do catálogo, sem nome, e-mail, texto livre,
+// respostas do check-in, fotos, notas do coach ou qualquer chave sensível. O resultado volta no
+// mesmo formato (`ProgressSummary` com `source: "ai"`), então a tela (`EvolutionSummary`) já sabe
+// rotular e a regra continua: se o provedor falhar ou não existir, vale `buildProgressSummary`.
+// Por que um payload separado: a decisão do que SAI do app fica num único lugar, testável.
+
+export type SummaryPayloadMetric = {
+  key: string;
+  label: string;
+  unit: string | null;
+  goalDirection: string | null;
+  firstWeek: number;
+  firstValue: number;
+  latestWeek: number;
+  latestValue: number;
+  delta: number;
+};
+
+export type SummaryPayload = {
+  /** Versão do formato — um provedor recusa versões que não conhece. */
+  version: 1;
+  firstWeek: number;
+  lastWeek: number;
+  metrics: SummaryPayloadMetric[];
+  checkins: { sent: number; total: number } | null;
+  goals: { success: number; partial: number; fail: number } | null;
+};
+
+export interface SummaryProvider {
+  /** Identificador estável (ex.: "rules", "claude"). */
+  readonly id: string;
+  readonly source: SummarySource;
+  summarize(payload: SummaryPayload): Promise<SummaryItem[]> | SummaryItem[];
+}
+
+/**
+ * Recorte estruturado e mínimo do período, pronto para um provedor. `null` quando não há dado
+ * suficiente (mesma regra do resumo por regras). Métricas sensíveis nunca entram.
+ */
+export function buildSummaryPayload(input: SummaryInput): SummaryPayload | null {
+  const { evolution, checkins, goals, currentWeek, period = SUMMARY_WEEKS } = input;
+  const periodWeeks = evolution ? selectPeriodWeeks(evolution.weeks, period) : [];
+  if (!evolution || periodWeeks.length < 2) return null;
+  const first = periodWeeks[0];
+  const last = periodWeeks[periodWeeks.length - 1];
+
+  const metrics: SummaryPayloadMetric[] = [];
+  for (const m of evolution.metrics) {
+    if (isSensitiveKey(m.key)) continue;
+    const t = computeMetricTrend(periodWeeks, m.key, m.goalDirection);
+    if (!t.hasEnoughData || t.first == null || t.latest == null || t.delta == null) continue;
+    metrics.push({
+      key: m.key,
+      label: m.label,
+      unit: m.unit ?? null,
+      goalDirection: m.goalDirection ?? null,
+      firstWeek: t.firstWeek as number,
+      firstValue: t.first,
+      latestWeek: t.latestWeek as number,
+      latestValue: t.latest,
+      delta: t.delta,
+    });
+  }
+
+  let checkinStat: SummaryPayload["checkins"] = null;
+  let goalStat: SummaryPayload["goals"] = null;
+  if (currentWeek != null) {
+    const from = Math.max(1, first.weekNumber);
+    const sent = new Set(checkins.filter((c) => c.status === "submitted" || c.status === "reviewed").map((c) => c.weekNumber));
+    const upTo = sent.has(currentWeek) ? currentWeek : currentWeek - 1;
+    if (upTo >= from) {
+      let done = 0;
+      for (let w = from; w <= upTo; w += 1) if (sent.has(w)) done += 1;
+      checkinStat = { sent: done, total: upTo - from + 1 };
+    }
+    const resolved = goals.filter((g) => g.weekNumber >= from && g.weekNumber <= currentWeek && g.resultStatus !== "pending");
+    if (resolved.length > 0) {
+      const count = (s: SummaryGoal["resultStatus"]) => resolved.filter((g) => g.resultStatus === s).length;
+      goalStat = { success: count("success"), partial: count("partial"), fail: count("fail") };
+    }
+  }
+
+  return { version: 1, firstWeek: first.weekNumber, lastWeek: last.weekNumber, metrics, checkins: checkinStat, goals: goalStat };
 }

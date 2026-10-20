@@ -36,6 +36,8 @@ import {
 import CheckinSent from "./checkin-sent";
 import { inputBaseClass } from "@/components/ui/field";
 import Icon from "@/components/ui/icon";
+import { ProgressRing } from "@/components/viz/progress-ring";
+import { StepStrip } from "@/components/viz/step-strip";
 import { buttonClass } from "@/components/ui/button";
 
 // ---------------------------------------------------------------------------------------------
@@ -1052,56 +1054,49 @@ export default function CheckinForm({
     <form onSubmit={handleNext} noValidate className="flex flex-col gap-5 [&~*]:mb-[4.5rem]">
       <p className="-mt-3 text-sm text-ink-muted">{period}</p>
 
-      {/* Progresso */}
-      <div className="flex flex-col gap-2.5">
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="font-display text-base font-extrabold text-ink">
-            {onReview ? (
-              "Revisão final"
-            ) : (
-              <>
-                Passo <span className="text-brand">{position}</span>
-                <span className="text-ink-faint">/{steps.length}</span>
-              </>
-            )}
-          </span>
-          <span
-            aria-live="polite"
-            className={`min-h-4 text-right text-xs ${saveState === "error" ? "text-warn" : "text-ink-faint"}`}
+      {/* Progresso: anel + faixa de etapas (item 29) */}
+      <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
+        <div className="flex items-center gap-4">
+          <ProgressRing
+            value={onReview ? steps.length : stepIndex}
+            max={steps.length}
+            size={64}
+            thickness={7}
+            tone={onReview ? "success" : "accent"}
+            label="Progresso do check-in"
           >
-            {saveText}
-          </span>
-        </div>
-        <div
-          role="progressbar"
-          aria-label="Progresso do check-in"
-          aria-valuemin={1}
-          aria-valuemax={steps.length}
-          aria-valuenow={Math.min(position, steps.length)}
-          aria-valuetext={onReview ? "Revisão final" : `Passo ${position} de ${steps.length}`}
-          className="flex gap-1.5"
-        >
-          {/* Um segmento por passo de perguntas — o mesmo N de "Passo x/N". Na Revisão, todos
-              ficam concluídos (verdes). */}
-          {steps.map((_, i) => (
+            {onReview ? (
+              <Icon name="check" size={22} strokeWidth={2.6} />
+            ) : (
+              <span className="font-display text-sm font-extrabold tabular-nums text-ink">
+                {position}
+                <span className="text-ink-faint">/{steps.length}</span>
+              </span>
+            )}
+          </ProgressRing>
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="t-label text-ink-faint">
+              {onReview ? "Revisão final" : `Passo ${position} de ${steps.length}`}
+            </span>
+            <span className="break-words font-display text-base font-extrabold leading-tight text-ink">
+              {onReview ? "Tudo respondido" : current.title}
+            </span>
             <span
-              key={i}
-              className={`h-2 flex-1 rounded-full transition-all duration-500 ${
-                i < stepIndex ? "bg-success" : i === stepIndex ? "bg-brand" : "bg-line"
-              }`}
-            />
-          ))}
-        </div>
-        <ol className="hidden justify-between gap-2 text-xs sm:flex" aria-hidden>
-          {steps.map((st, i) => (
-            <li
-              key={st.id}
-              className={i < stepIndex ? "text-success" : i === stepIndex ? "text-brand" : "text-ink-faint"}
+              aria-live="polite"
+              className={`min-h-4 text-xs ${saveState === "error" ? "text-warn" : "text-ink-faint"}`}
             >
-              {st.title}
-            </li>
-          ))}
-        </ol>
+              {saveText}
+            </span>
+          </div>
+        </div>
+        <StepStrip
+          label="Etapas do check-in"
+          steps={steps.map((st, i) => ({
+            key: st.id,
+            label: st.title,
+            state: onReview || i < stepIndex ? "done" : i === stepIndex ? "current" : "upcoming",
+          }))}
+        />
       </div>
 
       <div className="flex flex-col gap-1">

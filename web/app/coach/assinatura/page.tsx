@@ -9,6 +9,7 @@ import { currentPixView, getCoachIdentity, readBillingRow } from "@/lib/billing/
 import { BILLING_STATUS_LABEL } from "@/lib/billing/state";
 import type { SwitchTiming } from "@/lib/billing/switch";
 import { pixAutomaticoConfigured } from "@/lib/billing/syncpay";
+import { isCurrentCoachDemo } from "@/lib/demo";
 import { requireCoach } from "../require-coach";
 import PaymentMethodFlow, { type SwitchOffer, type SwitchTimingView } from "./payment-method";
 
@@ -44,6 +45,8 @@ export default async function CoachPaymentMethodPage() {
   await requireCoach();
   const identity = await getCoachIdentity();
   if (!identity) redirect("/login");
+  // Laboratório (item 28 V5): conta demo nunca recebe o link real do checkout nem fala com a SyncPay.
+  const isDemo = await isCurrentCoachDemo();
 
   const row = await readBillingRow(identity.accountId);
   const status = row?.status ?? "none";
@@ -66,7 +69,7 @@ export default async function CoachPaymentMethodPage() {
     }
   }
   // Troca que já ativou mas cuja assinatura antiga ainda não foi cancelada: tenta de novo.
-  after(async () => {
+  if (!isDemo) after(async () => {
     try {
       await retryPendingSwitchCancellation(identity.accountId);
     } catch (err) {
@@ -100,11 +103,21 @@ export default async function CoachPaymentMethodPage() {
         )}
       </header>
 
+      {isDemo && (
+        <p
+          role="status"
+          className="rounded-md border border-brand/40 bg-brand-tint px-3 py-2 text-sm text-ink"
+        >
+          Cobrança simulada em demonstração: nesta conta demo nenhuma cobrança real é iniciada e o
+          link de cadastro do cartão não é exibido.
+        </p>
+      )}
+
       <PaymentMethodFlow
         initialDocument={row?.document ? formatTaxDocument(row.document) : null}
         email={identity.email}
-        pixAvailable={pixAutomaticoConfigured()}
-        cardUrl={coachCheckoutUrl()}
+        pixAvailable={!isDemo && pixAutomaticoConfigured()}
+        cardUrl={isDemo ? null : coachCheckoutUrl()}
         active={status === "active"}
         initialPix={pixView}
         switchOffer={switchOffer}

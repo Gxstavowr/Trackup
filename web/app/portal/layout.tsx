@@ -5,6 +5,7 @@ import PortalNav from "./portal-nav";
 import LegalLinks from "../legal-links";
 import { requireClient } from "./require-client";
 import Brand from "@/components/brand";
+import DemoBanner from "@/components/demo-banner";
 
 /**
  * Casca de TODO o lado do aluno (`/portal/*`) — item 23. Mesma identidade dark do coach (tokens
@@ -27,7 +28,7 @@ import Brand from "@/components/brand";
  * `<meta>` manual.
  */
 export const viewport: Viewport = {
-  themeColor: "#060606",
+  themeColor: "#09090a",
   viewportFit: "cover",
 };
 
@@ -44,6 +45,7 @@ export default async function PortalLayout({ children }: LayoutProps<"/portal">)
   // Barras de ação fixas dentro do portal (ex.: check-in) se posicionam com o mesmo valor.
   return (
     <div className="flex flex-1 flex-col [--portal-nav-h:4.25rem]">
+      <DemoBanner area="portal" />
       <header className="sticky top-0 z-30 border-b border-line bg-surface-sunken">
         <div className="mx-auto flex h-14 w-full max-w-xl items-center gap-2 px-4">
           <Link href="/portal" className="flex min-h-11 min-w-0 items-center">

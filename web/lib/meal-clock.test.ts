@@ -171,3 +171,16 @@ test("duas refeições na janela 'Agora': destaca a mais recente", () => {
   if (c.headline.kind === "now") assert.equal(c.headline.meal.id, "b");
   assert.equal(c.previous?.meal.id, "a");
 });
+
+test("contagem regressiva local: Em 40 / 20 / 10 min e Agora conforme o relógio avança", () => {
+  const meals = [meal("a", "12:00")];
+  const labelAt = (nowMin: number) => {
+    const c = computeMealClock(meals, 3, nowMin, {});
+    return headlineLabels(c.headline).when;
+  };
+  assert.equal(labelAt(at(11, 20)), "Em 40 min");
+  assert.equal(labelAt(at(11, 40)), "Em 20 min");
+  assert.equal(labelAt(at(11, 50)), "Em 10 min");
+  assert.equal(labelAt(at(11, 59, 30)), "Em 1 min");
+  assert.equal(labelAt(at(12, 0)), "Agora");
+});

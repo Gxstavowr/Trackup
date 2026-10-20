@@ -22,7 +22,9 @@ import { BILLING_PATH_HEADER } from "@/lib/billing/path-header";
  *     request (o Next.js aplica o nonce nos próprios scripts a partir dele) e da response.
  *  4. Repassa o caminho pedido (`BILLING_PATH_HEADER`) pra renderização: o bloqueio de plano
  *     suspenso (`app/coach/require-coach.ts`) precisa saber se a rota é a da assinatura. O valor
- *     do cliente é sempre sobrescrito aqui.
+ *     do cliente é sempre sobrescrito aqui (vazio fora de GET/HEAD). O matcher tem uma entrada
+ *     extra `/coach/:path*` pra que nenhum caminho do coach (nem um terminado em .png) escape do
+ *     Proxy com o header falsificado.
  *
  * Fora do matcher: `/api/webhooks/*` (chamadas servidor-a-servidor, sem sessão — o webhook da
  * SyncPay tem 5s de timeout e não deve pagar a ida ao Supabase Auth).
@@ -32,9 +34,13 @@ const PROTECTED_PREFIXES = ["/coach", "/portal"];
 
 export async function proxy(request: NextRequest) {
   const csp = buildContentSecurityPolicy(createNonce());
+  // O valor vindo do cliente é SEMPRE descartado (sobrescrito). Só renderização de página (GET/HEAD)
+  // recebe o caminho; POST (Server Actions, inclusive formulário sem JS) recebe vazio = nunca é
+  // liberado pela exceção do plano suspenso.
+  const isPageRender = request.method === "GET" || request.method === "HEAD";
   const { response, user } = await updateSession(request, {
     "Content-Security-Policy": csp,
-    [BILLING_PATH_HEADER]: request.nextUrl.pathname + request.nextUrl.search,
+    [BILLING_PATH_HEADER]: isPageRender ? request.nextUrl.pathname + request.nextUrl.search : "",
   });
 
   const { pathname } = request.nextUrl;
@@ -57,6 +63,9 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
+    // Todo /coach/* passa pelo Proxy, mesmo com extensão de imagem: senão o `BILLING_PATH_HEADER`
+    // mandado pelo cliente chegaria intacto numa rota dinâmica (ex.: /coach/alunos/x.png).
+    "/coach/:path*",
     "/((?!_next/static|_next/image|api/webhooks/|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

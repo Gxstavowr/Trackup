@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import type { CheckinPhoto } from "@/lib/storage/checkin-photos";
-import { isLegacyPhotoAngle, type PhotoAngle } from "@/lib/storage/photo-angles";
+import { CHECKIN_PHOTO_ANGLES, isLegacyPhotoAngle, PHOTO_ANGLE_SHORT_LABEL, type PhotoAngle } from "@/lib/storage/photo-angles";
+import { coverageLabel, suggestShortcuts } from "@/lib/evolution-compare";
 import { selectClass } from "@/components/ui/field";
 import {
   ANGLE_LABEL,
@@ -18,9 +19,9 @@ import {
 } from "@/lib/week-comparison-format";
 import { PhotoImage } from "@/app/coach/alunos/[id]/photo-triptych";
 import CompareSlider, { type SideView } from "@/app/coach/alunos/[id]/avaliacao/compare-slider";
-import { weekPeriodLabel } from "./week-label";
+import { weekPeriodLabel, weekRange } from "./week-label";
 
-type Mode = "side" | "slider";
+type Mode = "side" | "slider" | "all";
 
 /**
  * Comparação de fotos (V3 tarefa 12) — primeiro conteúdo da área Progresso. Parte da semana MAIS
@@ -31,6 +32,14 @@ type Mode = "side" | "slider";
  * a foto só aparece se `week_number` e posição baterem — nunca a lateral antiga no lugar de
  * esquerda/direita. Abaixo, as medidas das duas semanas com a diferença numérica crua.
  */
+/** Cobertura em forma curta para caber no select em 390px ("2/4 fotos+"). */
+function shortCoverage(angles: Parameters<typeof coverageLabel>[0]): string {
+  return coverageLabel(angles)
+    .replace(/^(\d) de 4 posições/, "$1/4 fotos")
+    .replace(/^4 posições/, "4/4 fotos")
+    .replace(/ \+ antiga$/, "+");
+}
+
 export default function WeekCompare({
   weeks,
   photos,
@@ -41,7 +50,6 @@ export default function WeekCompare({
 }) {
   const first = weeks[0];
   const last = weeks[weeks.length - 1];
-  const previous = weeks[weeks.length - 2];
   const [fromWeek, setFromWeek] = useState(first.weekNumber);
   const [toWeek, setToWeek] = useState(last.weekNumber);
   const [userAngle, setUserAngle] = useState<PhotoAngle | null>(null);
@@ -91,16 +99,39 @@ export default function WeekCompare({
 
   const weekOptions = weeks.map((w) => (
     <option key={w.weekNumber} value={w.weekNumber}>
-      {weekPeriodLabel(w)}
+      {`S${w.weekNumber} · ${weekRange(w)} · ${shortCoverage(w.photoAngles)}`}
     </option>
   ));
 
-  const shortcuts = [
-    { label: "Início × mais recente", a: first.weekNumber, b: last.weekNumber },
-    ...(previous.weekNumber !== first.weekNumber
-      ? [{ label: "Anterior × mais recente", a: previous.weekNumber, b: last.weekNumber }]
-      : []),
-  ];
+  const shortcuts = suggestShortcuts(weeks.map((w) => w.weekNumber)).map((s) => ({
+    label: s.label,
+    a: s.from,
+    b: s.to,
+  }));
+
+  /** Miniatura de uma semana numa posição, para a visão das quatro posições. */
+  function thumb(week: ComparisonWeek, a: PhotoAngle) {
+    const photo = photos.find((p) => p.week_number === week.weekNumber && p.angle === a);
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setUserAngle(a);
+          setMode("side");
+        }}
+        aria-label={`Ver ${ANGLE_LABEL[a].toLowerCase()} em tamanho maior — ${weekPeriodLabel(week)}`}
+        className="relative aspect-[3/4] overflow-hidden rounded-md border border-line bg-surface-sunken"
+      >
+        {photo?.url ? (
+          <PhotoImage key={photo.url} src={photo.url} alt={`${ANGLE_LABEL[a]} — ${weekPeriodLabel(week)}`} />
+        ) : (
+          <span className="absolute inset-0 flex items-center justify-center px-1 text-center text-[0.65rem] leading-tight text-ink-faint">
+            Sem foto
+          </span>
+        )}
+      </button>
+    );
+  }
 
   const pill = (on: boolean) =>
     `inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-medium transition-colors ${
@@ -149,6 +180,7 @@ export default function WeekCompare({
             {(
               [
                 { value: "side", label: "Lado a lado" },
+                { value: "all", label: "4 posições" },
                 { value: "slider", label: "Deslizar" },
               ] as const
             ).map((m) => (
@@ -176,6 +208,7 @@ export default function WeekCompare({
 
       {anyPhoto ? (
         <div className="flex flex-col gap-3">
+          {mode !== "all" && (
           <div role="group" aria-label="Posição da foto" className="grid grid-cols-2 gap-1 rounded-lg border border-line bg-surface-sunken p-1 sm:grid-cols-4">
             {angleOptions.map((a) => {
               const enabled = inEither(a);
@@ -195,8 +228,34 @@ export default function WeekCompare({
               );
             })}
           </div>
+          )}
 
-          {mode === "slider" && !sameWeek ? (
+          {mode === "all" && !sameWeek ? (
+            <div className="flex flex-col gap-2">
+              {[from, to].map((w, i) => (
+                <div key={w.weekNumber} className="flex flex-col gap-1.5">
+                  <p className="text-xs">
+                    <span className="t-label text-ink-faint">{i === 0 ? "Antes" : "Depois"}</span>{" "}
+                    <span className="font-semibold text-ink">{weekPeriodLabel(w)}</span>
+                  </p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {CHECKIN_PHOTO_ANGLES.map((a) => (
+                      <div key={a} className="flex min-w-0 flex-col gap-1">
+                        {thumb(w, a)}
+                        <span className="truncate text-center text-[0.65rem] text-ink-faint">{PHOTO_ANGLE_SHORT_LABEL[a]}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {(from.photoAngles.includes("side") || to.photoAngles.includes("side")) && (
+                <p className="text-xs text-ink-faint">
+                  A lateral de registro antigo não aparece aqui; veja em “Lado a lado”.
+                </p>
+              )}
+              <p className="text-xs text-ink-faint">Toque numa foto para ver a posição em tamanho maior.</p>
+            </div>
+          ) : mode === "slider" && !sameWeek ? (
             <div className="flex flex-col gap-2">
               <div className="flex justify-between gap-3 text-xs">
                 <span className="font-semibold text-ink">Antes · {weekPeriodLabel(from)}</span>

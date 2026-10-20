@@ -4,6 +4,7 @@ import { getFinanceOverview, type FinancePayment } from "@/lib/finance/queries";
 import { getClients, getPaymentStatusForClients } from "@/lib/repository";
 import { getOrigin } from "@/lib/site-url";
 import { requireCoach } from "../require-coach";
+import { getOnboardingRows } from "../protocol-queue";
 import AddClientForm from "./add-client-form";
 import StudentList from "./student-list";
 import { buildStudentEntry } from "./student-situation";
@@ -23,10 +24,12 @@ export default async function CoachStudentsPage() {
 
   const clients = await getClients();
   const origin = await getOrigin();
-  const [queue, paymentStatusByClient] = await Promise.all([
+  const [queue, paymentStatusByClient, onboarding] = await Promise.all([
     getEvaluationQueue(), // deduplicado por requisição com o badge da navegação
     getPaymentStatusForClients(clients.map((c) => c.id)),
+    getOnboardingRows(), // view do cadastro novo (V5); sem linhas se a migração não foi aplicada
   ]);
+  const onboardingByClient = new Map(onboarding.rows.map((row) => [row.client_id, row]));
 
   // Detalhes da cobrança em atraso (valor, vencimento, telefone) só são necessários pra quem
   // está atrasado; aproveita a mesma consulta do Financeiro pra a mensagem de WhatsApp sair
@@ -52,6 +55,7 @@ export default async function CoachStudentsPage() {
       paymentStatus: paymentStatusByClient.get(client.id) ?? "sem_assinatura",
       latePayment: latePaymentByClient.get(client.id) ?? null,
       inviteUrl: `${origin}/convite?id=${client.id}`,
+      onboardingRow: onboardingByClient.get(client.id) ?? null,
     })
   );
 
@@ -79,7 +83,7 @@ export default async function CoachStudentsPage() {
           text="Adicione seu primeiro aluno para gerar o link de convite e começar o acompanhamento."
         />
       ) : (
-        <StudentList entries={entries} />
+        <StudentList entries={entries} onboardingUnavailable={!onboarding.available} />
       )}
     </div>
   );

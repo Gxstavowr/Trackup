@@ -1739,6 +1739,53 @@ export async function duplicateWorkoutPlan(input: {
 }
 
 /**
+ * V5: avisa o aluno quando a publicação que acabou de acontecer COMPLETA o protocolo do pacote
+ * (todos os módulos contratados com plano publicado ativo; rascunho não conta). Só para quem
+ * passou pelo novo cadastro (`onboarding_required = true`) — aluno legado que ganhou pacote
+ * depois nunca recebe. Só na PRIMEIRA publicação do módulo (`replacedPrevious = false`): republicar
+ * uma nova versão não é "protocolo pronto" de novo. Best-effort e tolerante: se a view/CHECK da
+ * migração 0022 ainda não existir, nada acontece. Devolve se o protocolo está completo.
+ */
+async function notifyProtocolReadyIfComplete(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  clientId: string | null,
+  replacedPrevious: boolean
+): Promise<boolean> {
+  if (!clientId) return false;
+  try {
+    const { data, error } = await supabase
+      .from("client_onboarding_status")
+      .select("package, onboarding_required, questionnaire_status, training_published, nutrition_published")
+      .eq("client_id", clientId)
+      .maybeSingle();
+    if (error || !data) return false;
+    const row = data as {
+      package: "training" | "nutrition" | "hybrid" | null;
+      onboarding_required: boolean;
+      questionnaire_status: "draft" | "submitted" | null;
+      training_published: boolean;
+      nutrition_published: boolean;
+    };
+    if (!row.package) return false;
+    const complete =
+      (row.package === "nutrition" || row.training_published) &&
+      (row.package === "training" || row.nutrition_published);
+    if (!complete) return false;
+    if (row.onboarding_required && row.questionnaire_status === "submitted" && !replacedPrevious) {
+      await createNotification(clientId, {
+        event_type: "protocol_ready",
+        recipient: "client",
+        message: "Seu protocolo está pronto. Confira seu plano.",
+      });
+    }
+    return true;
+  } catch (err) {
+    console.error("Não foi possível avaliar/notificar o protocolo pronto:", err);
+    return false;
+  }
+}
+
+/**
  * Publica o rascunho (função SQL `publish_workout_plan`, 0007 — atômico: arquiva a versão
  * publicada anterior e ativa o rascunho na mesma transação). É isso que faz o treino
  * aparecer pro aluno em `getActiveWorkoutForClient`. Falha (mensagem traduzida) se o plano
@@ -1793,6 +1840,7 @@ export async function publishWorkoutPlan(planId: string): Promise<void> {
     } catch (err) {
       console.error("Não foi possível criar a notificação de treino atualizado:", err);
     }
+    await notifyProtocolReadyIfComplete(supabase, clientId, !!archivedPlanId);
   }
 }
 
@@ -4356,6 +4404,7 @@ export async function publishNutritionPlan(planId: string): Promise<void> {
     } catch (err) {
       console.error("Não foi possível criar a notificação de nutrição atualizada:", err);
     }
+    await notifyProtocolReadyIfComplete(supabase, clientId, !!archivedPlanId);
   }
 }
 
@@ -5029,7 +5078,7 @@ export async function getPaymentStatusForClients(
 // client) dentro da própria policy — não é possível com uma migration inalterada.
 // ============================================================================
 
-/** CHECK constraint de `event_type` na migration — 7 valores fechados. */
+/** CHECK constraint de `event_type` (0022: superconjunto com os eventos do onboarding V5). */
 export type NotificationEventType =
   | "checkin_received"
   | "checkin_overdue"
@@ -5037,7 +5086,11 @@ export type NotificationEventType =
   | "orientation_ready"
   | "payment_overdue"
   | "workout_updated"
-  | "nutrition_updated";
+  | "nutrition_updated"
+  | "invite_accepted"
+  | "questionnaire_submitted"
+  | "protocol_ready"
+  | "package_changed";
 
 export type NotificationRecipient = "coach" | "client";
 

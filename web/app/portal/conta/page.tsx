@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getMyServicePackage, respondToContractChange } from "@/lib/onboarding/contracts";
+import { BILLING_PERIOD_LABELS, PACKAGES, formatPriceBRL } from "@/lib/onboarding/packages";
 import { logout } from "@/lib/actions/logout";
 import { buttonClass } from "@/components/ui/button";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
@@ -13,8 +16,35 @@ import { resolveClientNotificationPrefs } from "@/lib/student-profile";
 import { CARD, PageHeader } from "../portal-ui";
 import { requireClient } from "../require-client";
 import { NotificationPrefsForm, ProfileForm } from "./profile-forms";
+import ContractChangeCard, { type ContractResponseState } from "./contract-change-card";
 
 export const metadata: Metadata = { title: "Minha conta · Trackly" };
+
+/**
+ * Resposta do aluno a uma mudança de pacote (V5, item 14). Roda com a sessão do aluno; a RPC
+ * `respond_to_contract_change` deriva o aluno de auth.uid() e só aceita contratos dele.
+ */
+async function respondToContractChangeAction(
+  _prev: ContractResponseState,
+  formData: FormData
+): Promise<ContractResponseState> {
+  "use server";
+  await requireClient();
+  const contractId = String(formData.get("contractId") ?? "");
+  const decision = String(formData.get("decision") ?? "");
+  if (!contractId || (decision !== "accept" && decision !== "decline")) {
+    return { error: "Resposta inválida. Recarregue a página e tente de novo." };
+  }
+  const result = await respondToContractChange({ contractId, accept: decision === "accept" });
+  if (!result.ok) return { error: result.error };
+  revalidatePath("/portal/conta");
+  return { ok: true, accepted: decision === "accept" };
+}
+
+function formatDay(date: string): string {
+  const [y, m, d] = date.slice(0, 10).split("-");
+  return y && m && d ? `${d}/${m}/${y}` : date;
+}
 
 const SUBSCRIPTION_STATUS: Record<string, { label: string; tone: BadgeTone }> = {
   active: { label: "Ativo", tone: "success" },
@@ -120,6 +150,15 @@ export default async function AccountPage() {
     .maybeSingle();
   const prefs = resolveClientNotificationPrefs(prefsRow);
 
+  // Pacote de serviço (V5). Sem a migração 0022: `available = false` e a seção não aparece.
+  const servicePackage = await getMyServicePackage();
+  const currentPackage = servicePackage.current;
+  // A mudança pendente pode já estar em vigor (a confirmação não segura a vigência).
+  const pendingChanges = [...(currentPackage ? [currentPackage] : []), ...servicePackage.upcoming].filter(
+    (e) => e.clientConfirmation === "pending"
+  );
+  const otherUpcoming = servicePackage.upcoming.filter((e) => e.clientConfirmation !== "pending");
+
   // Mesma regra do coach: `pending` vencida é "em atraso". Atrasada não é "próxima": linhas separadas.
   const today = todayInSaoPaulo();
   const isLate = (p: { status: string; due_date: string }) =>
@@ -160,6 +199,54 @@ export default async function AccountPage() {
               ))}
             </dl>
           </div>
+        </Section>
+      )}
+
+      {servicePackage.available && (currentPackage || servicePackage.upcoming.length > 0) && (
+        <Section title="Meu pacote" hint="O serviço que você contratou com seu coach.">
+          {currentPackage && (
+            <div className={`${CARD} overflow-hidden`}>
+              <div className="flex flex-col gap-0.5 border-b border-line bg-surface-raised px-4 py-3.5">
+                <span className="t-label text-ink-faint">Pacote atual</span>
+                <span className="font-display text-base font-bold text-ink">{PACKAGES[currentPackage.package].label}</span>
+                <span className="text-xs text-ink-muted">{PACKAGES[currentPackage.package].includes}</span>
+              </div>
+              <dl>
+                <Row label="Valor combinado">
+                  {currentPackage.priceCents === 0 ? "Cortesia" : formatPriceBRL(currentPackage.priceCents)}
+                  <span className="font-normal text-ink-muted">
+                    {" · "}
+                    {BILLING_PERIOD_LABELS[currentPackage.billingPeriod]}
+                  </span>
+                </Row>
+                <Row label="Desde">{formatDay(currentPackage.effectiveFrom)}</Row>
+              </dl>
+            </div>
+          )}
+          {pendingChanges.map((change) => (
+            <ContractChangeCard
+              key={change.contractId}
+              contractId={change.contractId}
+              current={
+                currentPackage && currentPackage.contractId !== change.contractId
+                  ? { package: currentPackage.package, priceCents: currentPackage.priceCents, billingPeriod: currentPackage.billingPeriod }
+                  : null
+              }
+              next={{ package: change.package, priceCents: change.priceCents, billingPeriod: change.billingPeriod }}
+              effectiveFrom={change.effectiveFrom}
+              startsToday={change.effectiveFrom <= today}
+              respondAction={respondToContractChangeAction}
+            />
+          ))}
+          {otherUpcoming.map((change) => (
+            <p key={change.contractId} className="rounded-lg border border-dashed border-line-strong px-4 py-3.5 text-sm text-ink-muted">
+              A partir de {formatDay(change.effectiveFrom)}, seu pacote passa a ser{" "}
+              <span className="font-medium text-ink">{PACKAGES[change.package].label}</span> (
+              {change.priceCents === 0 ? "cortesia" : formatPriceBRL(change.priceCents)} ·{" "}
+              {BILLING_PERIOD_LABELS[change.billingPeriod].toLowerCase()})
+              {change.clientConfirmation === "confirmed" ? ", como você confirmou." : change.clientConfirmation === "declined" ? ". Você recusou esta mudança; fale com seu coach." : "."}
+            </p>
+          ))}
         </Section>
       )}
 

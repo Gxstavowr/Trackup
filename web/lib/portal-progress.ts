@@ -17,6 +17,12 @@ import { buildProgressSummary, type ProgressSummary } from "@/lib/progress-summa
  * libera: `metrics`/`goals`/`history_events`/`checkin_instances`/`photos` (`*_client_read`),
  * `client_metric_settings` (`client_metric_settings_client_read`).
  *
+ * V5 (módulos por pacote): esta leitura NÃO toca `workout_plans`/`nutrition_plans` nem exercícios/
+ * refeições — só métricas, check-ins, fotos, metas, eventos e orientações. O client admin é usado
+ * apenas em `orientations` (filtrado pelo `client.id` da sessão), então não há plano de módulo não
+ * contratado a filtrar aqui. Se uma leitura de plano entrar neste arquivo, aplique antes
+ * `moduleAccess`/`canUseModule` (`lib/onboarding/module-access.ts`) — o admin ignora a RLS.
+ *
  * `orientations.coach_note` NUNCA é selecionado (a RLS é por linha; a coluna é só do coach).
  */
 

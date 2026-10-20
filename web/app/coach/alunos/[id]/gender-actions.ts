@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { GENDER_FORM_OPTIONS } from "@/lib/checkin-catalog";
-import { requireCoach } from "../../require-coach";
+import { requireActiveCoach } from "../../require-coach";
 
 export type GenderFormState = { ok?: string; error?: string } | null;
 
@@ -19,7 +19,7 @@ export async function saveClientGenderAction(
   _prev: GenderFormState,
   formData: FormData
 ): Promise<GenderFormState> {
-  await requireCoach();
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") ?? "");
   const value = String(formData.get("gender") ?? "");
   if (!clientId) return { error: "Aluno inválido." };

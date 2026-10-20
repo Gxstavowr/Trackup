@@ -2,8 +2,11 @@
 
 import { useCallback, useState, type ReactNode } from "react";
 import type { CheckinPhoto } from "@/lib/storage/checkin-photos";
-import { isLegacyPhotoAngle, type PhotoAngle } from "@/lib/storage/photo-angles";
+import type { PhotoAngle } from "@/lib/storage/photo-angles";
 import { Modal } from "@/components/ui/overlay";
+import Icon from "@/components/ui/icon";
+import { Segmented } from "@/components/ui/segmented";
+import { pillItemClass, pillTrackClass } from "@/components/ui/pill";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { selectClass } from "@/components/ui/field";
@@ -38,11 +41,6 @@ type Loaded = { status: "loading" } | (WeekPhotosState & { at: number });
 
 /** A URL assinada vale 600 s; renova antes disso (com folga) quando o coach volta a mexer na tela. */
 const STALE_AFTER_MS = 480_000;
-
-const SEGMENT_BASE =
-  "inline-flex min-h-11 flex-1 items-center justify-center gap-1 rounded-md px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-50";
-const SEGMENT_ON = "bg-brand text-on-accent";
-const SEGMENT_OFF = "text-ink-muted hover:bg-surface-raised hover:text-ink";
 
 type ViewMode = "side" | "slider";
 
@@ -277,10 +275,10 @@ export default function WeekComparison({
   return (
     <Shell context={context} heading={heading}>
       <div data-compare-week={compare?.weekNumber ?? ""} data-current-week={current.weekNumber} className="flex flex-col gap-4">
-        {/* Controles: semana comparativa + modo + ângulo. */}
+        {/* Controles: semana comparativa + ângulo + modo. */}
         {compare && previousWeek && firstWeek && (
-          <div className="flex flex-col gap-3">
-            <div className="flex min-w-0 flex-col gap-2">
+          <div className="flex flex-col gap-2 @lg:flex-row @lg:items-end">
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               <label htmlFor="compare-week" className="t-label text-ink-faint">
                 Comparar a semana {current.weekNumber} com
               </label>
@@ -298,7 +296,7 @@ export default function WeekComparison({
                 ))}
               </select>
             </div>
-            <div role="group" aria-label="Atalhos de semana comparativa" className="flex flex-wrap gap-2">
+            <div role="group" aria-label="Atalhos de semana comparativa" className="flex gap-2">
               <ShortcutButton
                 active={compare.weekNumber === previousWeek.weekNumber}
                 onClick={() => selectWeek(previousWeek.weekNumber)}
@@ -315,8 +313,8 @@ export default function WeekComparison({
           </div>
         )}
 
-        <div className="flex flex-col gap-3">
-          <div role="group" aria-label="Ângulo da foto" className="grid grid-cols-2 gap-1 rounded-lg border border-line bg-surface-sunken p-1 sm:grid-cols-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div role="group" aria-label="Ângulo da foto" className={`${pillTrackClass} !flex-wrap !overflow-visible !rounded-3xl self-start`}>
             {angleOptions.map((a) => {
               const enabled = inEither(a);
               const partial = enabled && !inBoth(a) && compare != null;
@@ -328,49 +326,38 @@ export default function WeekComparison({
                   aria-pressed={angle === a}
                   onClick={() => selectAngle(a)}
                   title={!enabled ? "Sem fotos nesta posição" : partial ? "Só uma das semanas tem foto" : undefined}
-                  className={`${SEGMENT_BASE} flex-col gap-0 leading-tight ${
-                    isLegacyPhotoAngle(a) ? "col-span-2 sm:col-span-4" : ""
-                  } ${angle === a ? SEGMENT_ON : SEGMENT_OFF}`}
+                  className={pillItemClass(angle === a, "sm")}
                 >
                   {ANGLE_LABEL[a]}
-                  {!enabled && <span className="text-xs font-normal">sem fotos</span>}
-                  {partial && <span className="text-xs font-normal">em uma semana</span>}
+                  {partial && <span aria-hidden className="size-1.5 rounded-full bg-warning" />}
+                  {partial && <span className="sr-only">em uma semana</span>}
+                  {!enabled && <span className="sr-only">sem fotos</span>}
                 </button>
               );
             })}
           </div>
-          {compare && (
-            <div role="group" aria-label="Modo de comparação" className="flex gap-1 rounded-lg border border-line bg-surface-sunken p-1">
-              <button
-                type="button"
-                aria-pressed={mode === "side"}
-                onClick={() => setMode("side")}
-                className={`${SEGMENT_BASE} ${mode === "side" ? SEGMENT_ON : SEGMENT_OFF}`}
-              >
-                Lado a lado
-              </button>
-              <button
-                type="button"
-                aria-pressed={mode === "slider"}
-                onClick={() => setMode("slider")}
-                className={`${SEGMENT_BASE} ${mode === "slider" ? SEGMENT_ON : SEGMENT_OFF}`}
-              >
-                Slider
-              </button>
-            </div>
+          {compare && anyPhoto && (
+            <Segmented
+              label="Modo de comparação"
+              size="sm"
+              value={mode}
+              onChange={(id) => setMode(id as ViewMode)}
+              items={[
+                { id: "side", label: "Lado a lado" },
+                { id: "slider", label: "Slider" },
+              ]}
+              className="self-start"
+            />
           )}
         </div>
 
         {!anyPhoto ? (
-          <EmptyState
-            icon="camera"
-            title="Sem fotos para comparar"
-            text={
-              compare
-                ? `Nem a ${weekLabel(compare)} nem a ${weekLabel(current)} têm fotos. As métricas de cada semana continuam abaixo.`
-                : `O aluno não enviou fotos na ${weekLabel(current)}. Quando enviar, elas aparecem aqui.`
-            }
-          />
+          <p className="flex items-center gap-2 rounded-lg border border-dashed border-line-strong px-4 py-3 text-sm text-ink-muted">
+            <Icon name="camera" size={18} className="shrink-0" />
+            {compare
+              ? `Sem fotos na ${weekLabel(compare)} nem na ${weekLabel(current)}. As variações estão abaixo.`
+              : `Sem fotos na ${weekLabel(current)}.`}
+          </p>
         ) : null}
 
         {anyPhoto && !compare && (
@@ -410,7 +397,7 @@ export default function WeekComparison({
         )}
         {!anyPhoto && !compare && <div className="mx-auto w-full max-w-sm">{panelFor(current, currentTag, false)}</div>}
 
-        {!compare && <p className="text-xs text-ink-faint">{noComparisonMessage(current.weekNumber)}</p>}
+        {!compare && <p className="text-sm text-ink-muted">{noComparisonMessage(current.weekNumber)}</p>}
 
         {partialAngles.length > 0 && anyPhoto && (
           <p className="text-xs text-ink-faint">
@@ -465,7 +452,7 @@ function Shell({
 }) {
   const title = heading?.title ?? (context === "evaluation" ? "Comparação de fotos" : "Comparar semanas");
   return (
-    <section aria-label={heading?.title ?? "Comparação de fotos"} className="card flex flex-col gap-4 p-4 sm:p-5">
+    <section aria-label={heading?.title ?? "Comparação de fotos"} className="@container card tk-enter flex flex-col gap-4 p-4 sm:p-5">
       <div className="flex flex-col gap-1">
         <h2 className="t-subtitle text-ink">{title}</h2>
         <p className="t-helper">
@@ -635,14 +622,14 @@ function DeltaStrip({
       <p className="t-label text-ink-faint">
         Variação: semana {current.weekNumber} menos semana {compare.weekNumber}
       </p>
-      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <ul className="grid grid-cols-1 gap-2 @lg:grid-cols-3">
         {key3.map((def) => {
           const a = compare.metrics[def.key];
           const b = current.metrics[def.key];
           return (
-            <li key={def.key} data-metric={def.key} className="flex items-baseline justify-between gap-2 rounded-md bg-surface-sunken px-3 py-2 sm:flex-col sm:items-start sm:gap-0.5">
+            <li key={def.key} data-metric={def.key} className="flex items-baseline justify-between gap-2 rounded-md bg-surface-sunken px-3 py-2 @lg:flex-col @lg:items-start @lg:gap-0.5">
               <span className="text-xs text-ink-muted">{def.label}</span>
-              <span className="font-display text-base text-ink" data-cell="delta">
+              <span className="whitespace-nowrap font-display text-xl text-ink tabular-nums" data-cell="delta">
                 {a != null && b != null ? (
                   formatMetricDelta(def, metricDelta(a, b))
                 ) : (
@@ -705,10 +692,7 @@ function DeltaStrip({
           </table>
         </div>
       </details>
-      <p className="text-xs text-ink-faint">
-        É só a diferença numérica entre as duas semanas; o que ela significa depende do objetivo do aluno. “—” = sem
-        registro naquela semana.
-      </p>
+      <p className="text-xs text-ink-faint">Só a diferença numérica entre as duas semanas. “—” = sem registro.</p>
     </div>
   );
 }

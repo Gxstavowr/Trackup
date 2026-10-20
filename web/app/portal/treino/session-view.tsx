@@ -7,6 +7,7 @@ import { groupDayExercises, groupKindLabel } from "@/lib/workout-builder";
 import {
   buildHighlights,
   buildSessionSummary,
+  computeClockOffsetMs,
   computeElapsedSeconds,
   computeSessionProgress,
   firstIncompleteIndex,
@@ -21,9 +22,11 @@ import {
   type SetKey,
   type SummaryLogLike,
 } from "@/lib/workout-session";
+import { cardioSummary, completionFlash, exerciseSegments, type CompletionFlash } from "@/lib/workout-session-ui";
 import { buttonClass } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Icon from "@/components/ui/icon";
+import { CompletionMark } from "@/components/ui/completion-mark";
 import { CARD } from "../portal-ui";
 import {
   completeSessionAction,
@@ -59,13 +62,17 @@ export default function SessionView({
   day,
   initialLogs,
   previousPerformance,
+  serverNow,
 }: {
   clientId: string;
   session: WorkoutSession;
   day: WorkoutDayWithExercises | null;
   initialLogs: WorkoutSetLog[];
   previousPerformance: Record<string, WorkoutSetLog[]>;
+  /** "Agora" do servidor na renderização — corrige relógio do aparelho desajustado. */
+  serverNow: string;
 }) {
+  const [clockOffsetMs] = useState(() => computeClockOffsetMs(serverNow, Date.now()));
   const flat = [...(day?.exercises ?? [])].sort((a, b) => a.sort_order - b.sort_order);
 
   const [status, setStatus] = useState(session.status);
@@ -79,6 +86,13 @@ export default function SessionView({
   const [popped, setPopped] = useState<{ weId: string; set: number } | null>(null);
   const [pauseError, setPauseError] = useState<string | null>(null);
   const [pauseBusy, setPauseBusy] = useState(false);
+  // Feedback discreto ao concluir série/exercício (some sozinho; só texto + aria-live).
+  const [flash, setFlash] = useState<CompletionFlash | null>(null);
+  useEffect(() => {
+    if (!flash) return;
+    const id = setTimeout(() => setFlash(null), 2600);
+    return () => clearTimeout(id);
+  }, [flash]);
 
   const [logged, setLogged] = useState<LoggedByExercise>(() => {
     const map: LoggedByExercise = {};
@@ -124,12 +138,21 @@ export default function SessionView({
     for (const n of Object.keys(bySet)) doneKeys.add(setKey(weId, Number(n)));
   }
   const progress = computeSessionProgress(flat, doneKeys);
+  const cardio = cardioSummary(flat);
   const exercisesDone = flat.filter((ex) => isExerciseDone(ex, doneKeys)).length;
   const allDone = flat.length > 0 && progress.done === progress.total;
 
   const [idx, setIdx] = useState(() => firstIncompleteIndex(flat, doneKeys) ?? 0);
   const safeIdx = Math.min(idx, Math.max(0, flat.length - 1));
+  const segments = exerciseSegments(flat, doneKeys, safeIdx);
   const paused = status === "paused";
+  // Direção da última troca de exercício (V5): o novo entra pelo lado para onde o aluno navegou.
+  const [shownIdx, setShownIdx] = useState(safeIdx);
+  const [slideDir, setSlideDir] = useState<"next" | "prev" | null>(null);
+  if (shownIdx !== safeIdx) {
+    setShownIdx(safeIdx);
+    setSlideDir(safeIdx > shownIdx ? "next" : "prev");
+  }
 
   useEffect(() => {
     window.scrollTo({ top: 0 });
@@ -141,7 +164,7 @@ export default function SessionView({
       paused_at: pausedAt,
       paused_total_sec: pausedTotalSec,
       ended_at: null,
-    });
+    }, new Date(Date.now() + clockOffsetMs));
 
   function groupInfoFor(i: number): GroupInfo | null {
     const we = flat[i];
@@ -205,6 +228,16 @@ export default function SessionView({
     for (const [weId, bySet] of Object.entries(next)) for (const n of Object.keys(bySet)) keys.add(setKey(weId, Number(n)));
     const { next: nextIdx, rest: wantsRest } = nextAfterSet(flat, i, keys);
     if (nextIdx != null) setIdx(nextIdx);
+    setFlash(
+      completionFlash({
+        flat: flat.map((f) => ({ id: f.id, sets: f.sets, block_type: f.block_type, name: activeExerciseOf(f).name })),
+        idx: i,
+        setNumber,
+        doneBefore: doneKeys,
+        doneAfter: keys,
+        nextIdx,
+      })
+    );
 
     const restSec = restSecondsAfter(i, setNumber);
     if (wantsRest && nextIdx != null && restSec != null && restSec > 0) {
@@ -325,6 +358,23 @@ export default function SessionView({
 
   return (
     <section className="flex flex-col gap-4">
+      {/* Feedback de série/exercício: fixo logo acima da navegação, onde o aluno está olhando. */}
+      <div
+        role="status"
+        aria-live="polite"
+        className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--portal-nav-h,4.5rem)+env(safe-area-inset-bottom)+0.75rem)] z-40 flex justify-center px-4"
+      >
+        {flash && (
+          <p
+            key={flash.text}
+            className={`tk-enter rounded-full border px-4 py-2 text-sm font-medium shadow-[var(--surface-raised-shadow)] ${
+              flash.kind === "set" ? "border-line-strong bg-surface-raised text-ink" : "border-success/60 bg-success-tint text-success"
+            }`}
+          >
+            {flash.text}
+          </p>
+        )}
+      </div>
       <header className="flex flex-col gap-3">
         {/* Status + cronômetro numa linha própria, acima dos botões, para nunca quebrar. */}
         <span className="t-label block whitespace-nowrap text-ink-faint">
@@ -333,6 +383,7 @@ export default function SessionView({
             startedAt={session.started_at}
             pausedAt={pausedAt}
             pausedTotalSec={pausedTotalSec}
+            clockOffsetMs={clockOffsetMs}
           />
         </span>
         <div className="-mt-1.5 flex items-center justify-between gap-3">
@@ -367,8 +418,30 @@ export default function SessionView({
               aria-label="Progresso do treino"
               className="h-2.5 overflow-hidden rounded-full bg-surface-raised"
             >
-              <div className="h-full rounded-full bg-brand transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${progress.pct}%` }} />
+              <div className="h-full rounded-full bg-brand transition-[width] duration-500 ease-out motion-reduce:transition-none" style={{ width: `${progress.pct}%` }} />
             </div>
+            {segments.length > 1 && (
+              <ol aria-hidden className="flex gap-1">
+                {segments.map((seg, i) => (
+                  <li key={seg.id} className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={() => {
+                        setIdx(i);
+                        setView("focus");
+                      }}
+                      className={`block h-1.5 w-full overflow-hidden rounded-full ${seg.state === "current" ? "bg-brand/30 ring-1 ring-brand" : "bg-surface-raised"}`}
+                    >
+                      <span
+                        className={`block h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none ${seg.state === "done" ? "bg-success" : "bg-brand"}`}
+                        style={{ width: `${seg.pct}%` }}
+                      />
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
             <p className="flex justify-between text-xs tabular-nums text-ink-muted">
               <span>
                 {progress.done}/{progress.total} séries
@@ -378,6 +451,11 @@ export default function SessionView({
               </span>
             </p>
           </div>
+        )}
+        {cardio && (
+          <p className="text-xs font-medium text-ink-muted">
+            <Badge tone="warning">{cardio.label}</Badge> <span className="text-ink-faint">incluído no treino de hoje</span>
+          </p>
         )}
         {pauseError && (
           <p role="alert" className="text-sm text-danger-text">
@@ -438,11 +516,9 @@ export default function SessionView({
         </>
       ) : allDone ? (
         <div className="flex flex-col gap-4">
-          <div className={`${CARD} flex flex-col gap-1 p-5`}>
-            <span className="tk-pop flex size-10 items-center justify-center rounded-full bg-success-tint text-success">
-              <Icon name="check" size={22} strokeWidth={2.5} />
-            </span>
-            <h2 className="font-display text-2xl font-bold text-ink">Todas as séries feitas</h2>
+          <div className={`${CARD} tk-success flex flex-col gap-1 p-5`}>
+            <CompletionMark size={44} soft />
+            <h2 className="mt-2 font-display text-2xl font-bold text-ink">Todas as séries feitas</h2>
             <p className="text-sm text-ink-muted">Bom trabalho. Finalize para ver o resumo do treino.</p>
           </div>
           <FinishPanel note={sessionNote} onNoteChange={setSessionNote} onFinish={finish} allDone />
@@ -451,24 +527,26 @@ export default function SessionView({
           </button>
         </div>
       ) : (
-        <ExerciseFocus
-          key={current.id}
-          we={current}
-          index={safeIdx}
-          total={flat.length}
-          group={groupInfoFor(safeIdx)}
-          loggedSets={logged[current.id] ?? {}}
-          previousSets={previousPerformance[current.id]}
-          substituteId={substituteOn[current.id] ?? null}
-          onSubstituteChange={(id) => setSubstituteOn((s) => ({ ...s, [current.id]: id }))}
-          note={notes[current.id] ?? ""}
-          onNoteChange={(text) => setNotes((n) => ({ ...n, [current.id]: text }))}
-          onNoteCommit={() => commitNote(safeIdx)}
-          onLogSet={(setNumber, values) => logSet(safeIdx, setNumber, values)}
-          popSet={popped?.weId === current.id ? popped.set : null}
-          onPrev={safeIdx > 0 ? () => setIdx(safeIdx - 1) : undefined}
-          onNext={safeIdx < flat.length - 1 ? () => setIdx(safeIdx + 1) : undefined}
-        />
+        <div key={current.id} className={slideDir === "next" ? "tk-slide-next" : slideDir === "prev" ? "tk-slide-prev" : "tk-enter"}>
+          <ExerciseFocus
+            key={current.id}
+            we={current}
+            index={safeIdx}
+            total={flat.length}
+            group={groupInfoFor(safeIdx)}
+            loggedSets={logged[current.id] ?? {}}
+            previousSets={previousPerformance[current.id]}
+            substituteId={substituteOn[current.id] ?? null}
+            onSubstituteChange={(id) => setSubstituteOn((s) => ({ ...s, [current.id]: id }))}
+            note={notes[current.id] ?? ""}
+            onNoteChange={(text) => setNotes((n) => ({ ...n, [current.id]: text }))}
+            onNoteCommit={() => commitNote(safeIdx)}
+            onLogSet={(setNumber, values) => logSet(safeIdx, setNumber, values)}
+            popSet={popped?.weId === current.id ? popped.set : null}
+            onPrev={safeIdx > 0 ? () => setIdx(safeIdx - 1) : undefined}
+            onNext={safeIdx < flat.length - 1 ? () => setIdx(safeIdx + 1) : undefined}
+          />
+        </div>
       )}
     </section>
   );
@@ -485,17 +563,19 @@ function Elapsed({
   startedAt,
   pausedAt,
   pausedTotalSec,
+  clockOffsetMs,
 }: {
+  clockOffsetMs: number;
   startedAt: string;
   pausedAt: string | null;
   pausedTotalSec: number;
 }) {
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState(() => new Date(Date.now() + clockOffsetMs));
   useEffect(() => {
     if (pausedAt) return;
-    const id = setInterval(() => setNow(new Date()), 1000);
+    const id = setInterval(() => setNow(new Date(Date.now() + clockOffsetMs)), 1000);
     return () => clearInterval(id);
-  }, [pausedAt]);
+  }, [pausedAt, clockOffsetMs]);
   const sec = computeElapsedSeconds(
     { started_at: startedAt, paused_at: pausedAt, paused_total_sec: pausedTotalSec, ended_at: null },
     now

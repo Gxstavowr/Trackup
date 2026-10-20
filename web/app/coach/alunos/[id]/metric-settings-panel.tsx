@@ -28,7 +28,7 @@ export default async function MetricSettingsPanel({ clientId }: { clientId: stri
 
   return (
     <section aria-label="Métricas acompanhadas" className="flex flex-col gap-3">
-      <h2 className="text-lg font-medium text-ink">Métricas acompanhadas</h2>
+      <h2 className="t-subtitle text-ink">Métricas acompanhadas</h2>
       <div className={PANEL}>
         <h3 className={PANEL_TITLE}>Por aluno</h3>
         <p className="text-sm text-ink-muted">

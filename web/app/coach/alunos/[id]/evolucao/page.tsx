@@ -41,7 +41,7 @@ export default async function StudentEvolutionPage({
     <div className="flex flex-col gap-6">
       <EvolutionSubnav clientId={id} active="evolucao" />
       <section aria-label="Evolução" className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-ink">Evolução</h2>
+        <h2 className="t-subtitle text-ink">Evolução</h2>
         <p className="text-sm text-ink-muted">
           A tendência numérica de {data.clientName} ao longo das semanas — peso e as métricas que
           você está acompanhando para este aluno.

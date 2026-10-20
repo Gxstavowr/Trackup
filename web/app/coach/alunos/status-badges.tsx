@@ -63,5 +63,31 @@ export function TrackingStatusBadge({ state, late = false }: { state: TrackingSt
       return <Badge tone="warning" className="whitespace-nowrap">{TRACKING_LABEL[state]}</Badge>;
     case "paused":
       return <Badge tone="neutral" className="whitespace-nowrap">{TRACKING_LABEL[state]}</Badge>;
+    // Cadastro novo (V5): cada estágio tem rótulo próprio. Convite (sem conta) e questionário (com
+    // conta) usam tons diferentes; "recebido" (a montar) nunca se parece com "pronto" (verde).
+    case "invite_failed":
+      return <Badge tone="danger" dot className="whitespace-nowrap">{TRACKING_LABEL[state]}</Badge>;
+    case "invite_accepted":
+    case "account_created":
+    case "questionnaire_pending":
+      return <Badge tone="info" dot className="whitespace-nowrap">{TRACKING_LABEL[state]}</Badge>;
+    case "questionnaire_submitted":
+    case "protocol_preparing":
+    case "protocol_partial":
+      return (
+        <Badge tone={late ? "danger" : "warning"} dot className="whitespace-nowrap">
+          {TRACKING_LABEL[state]}
+          {late && " · atrasado"}
+        </Badge>
+      );
   }
+}
+
+/** Selo de prazo do protocolo (fila "Novos cadastros"). */
+export function ProtocolDueBadge({ overdue, dueLabel }: { overdue: boolean; dueLabel: string }) {
+  return (
+    <Badge tone={overdue ? "danger" : "neutral"} className="whitespace-nowrap">
+      {overdue ? `Atrasado desde ${dueLabel}` : `Prazo ${dueLabel}`}
+    </Badge>
+  );
 }

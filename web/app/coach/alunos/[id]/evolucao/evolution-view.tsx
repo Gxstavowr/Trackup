@@ -61,7 +61,7 @@ export default function EvolutionView({
   );
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="@container flex flex-col gap-8">
       <div className="flex flex-col gap-3">
         <PeriodSelector period={period} onChange={setPeriod} />
         <PeriodCaption weeks={weeks} totalWeeks={data.weeks.length} period={period} />
@@ -72,7 +72,7 @@ export default function EvolutionView({
       {cardMetrics.length > 0 && (
         <section aria-label="Outras métricas" className="flex flex-col gap-4">
           <h3 className={EYEBROW}>{weightMetric ? "Outras métricas" : "Métricas acompanhadas"}</h3>
-          <div className="grid grid-cols-2 gap-x-5 gap-y-6 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-x-5 gap-y-6 @lg:grid-cols-3 @3xl:grid-cols-4">
             {cardMetrics.map((m) => (
               <MetricCard key={m.key} metric={m} weeks={weeks} />
             ))}
@@ -155,12 +155,12 @@ function WeightHero({ metric, weeks }: { metric: EvolutionMetricDef; weeks: Evol
   return (
     <section
       aria-label="Peso"
-      className="flex flex-col gap-6 card p-5 shadow-[var(--surface-raised-shadow)] sm:p-6"
+      className="flex flex-col gap-6 card p-5 shadow-[var(--surface-raised-shadow)] @xl:p-6"
     >
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-5 @xl:flex-row @xl:items-end @xl:justify-between">
         <div className="flex flex-col gap-2">
           <span className={EYEBROW}>Peso</span>
-          <span className="font-display text-counter leading-none text-ink">
+          <span className="font-display text-counter whitespace-nowrap leading-none text-ink">
             {trend.latest != null ? formatMetricValue("kg", trend.latest) : "—"}
           </span>
           {singlePoint && (
@@ -205,7 +205,7 @@ function WeightFacts({
   targetValue: number | null;
 }) {
   return (
-    <dl className="grid grid-cols-3 gap-x-6 border-t border-line pt-4 sm:border-t-0 sm:pt-0">
+    <dl className="grid grid-cols-3 gap-x-6 border-t border-line pt-4 @xl:border-t-0 @xl:pt-0">
       <div className="flex min-w-0 flex-col gap-1">
         <dt className={EYEBROW}>Início</dt>
         <dd className="text-base text-ink">{trend.first != null ? formatMetricValue("kg", trend.first) : "—"}</dd>

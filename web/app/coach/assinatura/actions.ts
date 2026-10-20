@@ -18,6 +18,7 @@ import {
 } from "@/lib/billing/pix";
 import { PAYMENT_METHOD_LABEL, type PaymentMethod, type SwitchTiming } from "@/lib/billing/switch";
 import { pixAutomaticoConfigured } from "@/lib/billing/syncpay";
+import { demoBillingGuard } from "../billing-actions";
 
 /**
  * Ações da tela "Assinar o Trackly / Forma de pagamento". A conta é SEMPRE a da sessão (nunca um
@@ -33,6 +34,9 @@ export type DocumentState =
 export async function saveBillingDocumentAction(_prev: DocumentState, formData: FormData): Promise<DocumentState> {
   const identity = await getCoachIdentity();
   if (!identity) return { ok: false, error: "Sua sessão expirou. Entre de novo." };
+  // Laboratório (item 28 V5): conta demo não grava dados de cobrança.
+  const demo = await demoBillingGuard();
+  if (demo.blocked) return { ok: false, error: demo.message };
 
   const document = parseTaxDocument(formData.get("document"));
   if (!document) {
@@ -55,6 +59,8 @@ export async function saveBillingDocumentAction(_prev: DocumentState, formData: 
 export async function startPixAutomaticoAction(phone: string | null): Promise<PixView> {
   const identity = await getCoachIdentity();
   if (!identity) return { kind: "error", message: "Sua sessão expirou. Entre de novo." };
+  const demo = await demoBillingGuard();
+  if (demo.blocked) return { kind: "error", message: demo.message };
   if (!pixAutomaticoConfigured()) return { kind: "error", message: "O Pix Automático estará disponível em breve." };
   const parsed = parsePhone(phone ?? "");
   try {
@@ -68,6 +74,8 @@ export async function startPixAutomaticoAction(phone: string | null): Promise<Pi
 export async function pollPixAutomaticoAction(): Promise<PixView> {
   const identity = await getCoachIdentity();
   if (!identity) return { kind: "error", message: "Sua sessão expirou. Entre de novo." };
+  const demo = await demoBillingGuard();
+  if (demo.blocked) return { kind: "error", message: demo.message };
   try {
     return await pollPixAutomatico(identity);
   } catch (err) {
@@ -104,6 +112,9 @@ export async function confirmMethodSwitchAction(target: PaymentMethod, phone: st
   const identity = await getCoachIdentity();
   if (!identity) return { kind: "error", message: "Sua sessão expirou. Entre de novo." };
   if (target !== "pix_automatico" && target !== "credit_card") return { kind: "error", message: "Forma de pagamento inválida." };
+  // Antes de qualquer leitura/escrita na SyncPay: conta demo só simula.
+  const demo = await demoBillingGuard();
+  if (demo.blocked) return { kind: "error", message: demo.message };
 
   try {
     const ctx = await readSwitchContext(identity.accountId);

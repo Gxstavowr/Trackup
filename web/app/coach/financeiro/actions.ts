@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { todayInSaoPaulo } from "@/lib/finance/dates";
-import { requireCoach } from "../require-coach";
+import { requireActiveCoach } from "../require-coach";
 
 export type MarkPaidState = { error?: string; success?: boolean } | null;
 
@@ -29,7 +29,7 @@ function first<T>(value: T | T[]): T {
  * Pagamento do aluno: aquela grava `paid_date` com `new Date().toISOString()` (data em UTC —
  * depois das 21h em São Paulo cairia no dia seguinte), não confere se a atualização atingiu
  * alguma linha e não devolve feedback. Aqui:
- *   1. sessão + role: `requireCoach()` (sem sessão -> /login; aluno -> /portal);
+ *   1. sessão + role: `requireActiveCoach()` (sem sessão -> /login; aluno -> /portal);
  *   2. posse: o pagamento é lido pelo client autenticado (RLS) e a conta do cliente dono é
  *      comparada explicitamente com a conta do coach — defesa em profundidade além da RLS;
  *   3. só `pending`/`overdue` viram pagos, e o UPDATE repete esse filtro (duplo clique ou
@@ -41,7 +41,7 @@ export async function markPaymentPaidAction(
   _prev: MarkPaidState,
   formData: FormData
 ): Promise<MarkPaidState> {
-  await requireCoach();
+  await requireActiveCoach();
 
   const paymentId = String(formData.get("paymentId") || "");
   if (!UUID_RE.test(paymentId)) {

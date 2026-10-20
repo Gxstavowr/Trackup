@@ -13,7 +13,7 @@ import {
   type FoodMacros,
 } from "@/lib/repository";
 import { toFriendlyActionError, validateFoodEquivalenceInput } from "@/lib/nutrition-builder";
-import { requireCoach } from "../require-coach";
+import { requireActiveCoach } from "../require-coach";
 
 /**
  * Ações da área global de Nutrição do coach (`/coach/nutricao`). Reaproveitam as funções de
@@ -55,7 +55,7 @@ export async function saveFoodAction(
   _prev: GlobalNutritionState,
   fd: FormData
 ): Promise<GlobalNutritionState> {
-  await requireCoach();
+  await requireActiveCoach();
   const foodId = text(fd.get("foodId"));
   const name = text(fd.get("name"));
   if (!name) return { error: "Informe o nome do alimento." };
@@ -88,7 +88,7 @@ export async function saveFoodAction(
 }
 
 export async function setFoodArchivedAction(fd: FormData): Promise<void> {
-  await requireCoach();
+  await requireActiveCoach();
   const foodId = text(fd.get("foodId"));
   if (!foodId) return;
   try {
@@ -104,7 +104,7 @@ export async function createEquivalenceAction(
   _prev: GlobalNutritionState,
   fd: FormData
 ): Promise<GlobalNutritionState> {
-  await requireCoach();
+  await requireActiveCoach();
   const foodId = text(fd.get("foodId"));
   const equivalentFoodId = text(fd.get("equivalentFoodId"));
   const factor = num(fd.get("factor")) ?? null;
@@ -126,7 +126,7 @@ export async function createEquivalenceAction(
 }
 
 export async function deleteEquivalenceAction(fd: FormData): Promise<void> {
-  await requireCoach();
+  await requireActiveCoach();
   const id = text(fd.get("equivalenceId"));
   if (!id) return;
   try {
@@ -141,7 +141,7 @@ export async function duplicateTemplateAction(
   _prev: GlobalNutritionState,
   fd: FormData
 ): Promise<GlobalNutritionState> {
-  await requireCoach();
+  await requireActiveCoach();
   const templateId = text(fd.get("templateId"));
   const name = text(fd.get("name"));
   if (!templateId || !name) return { error: "Informe o nome da cópia." };
@@ -158,7 +158,7 @@ export async function applyTemplateToClientAction(
   _prev: GlobalNutritionState,
   fd: FormData
 ): Promise<GlobalNutritionState> {
-  await requireCoach();
+  await requireActiveCoach();
   const templateId = text(fd.get("templateId"));
   const clientId = text(fd.get("clientId"));
   if (!templateId || !clientId) return { error: "Selecione o aluno." };
@@ -172,7 +172,7 @@ export async function applyTemplateToClientAction(
 }
 
 export async function deleteTemplateAction(fd: FormData): Promise<void> {
-  await requireCoach();
+  await requireActiveCoach();
   const id = text(fd.get("templateId"));
   if (!id) return;
   try {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { buttonClass } from "@/components/ui/button";
 import Icon, { type IconName } from "@/components/ui/icon";
@@ -10,12 +10,13 @@ import {
   evaluationHref,
 } from "../avaliacoes/evaluation-ui";
 import ChargeButton from "../financeiro/charge-button";
-import { sendInviteAction } from "./actions";
+import { resendInviteAction, sendInviteAction } from "./actions";
 import RowMenu from "./row-menu";
 import { PaymentStatusBadge, TrackingStatusBadge } from "./status-badges";
 import {
   PRIMARY_ACTION_LABEL,
   formatAge,
+  firstMissingModuleSegment,
   formatHeight,
   type StudentEntry,
 } from "./student-situation";
@@ -83,6 +84,55 @@ function CopyInviteButton({
       <span aria-live="polite">{copied ? "Link copiado!" : label}</span>
       {studentName && <span className="sr-only"> — {studentName}</span>}
     </button>
+  );
+}
+
+/**
+ * "Marcar como enviado" / "Reenviar convite": dispara o envio real (`resendInviteAction`) e mostra o
+ * resultado. Se o envio não estiver disponível no ambiente, cai no comportamento antigo (só marca).
+ */
+function ResendInviteItem({ clientId, label }: { clientId: string; label: string }) {
+  const [pending, startTransition] = useTransition();
+  const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
+
+  function run() {
+    setMessage(null);
+    startTransition(async () => {
+      try {
+        const result = await resendInviteAction(clientId);
+        if (result.ok) {
+          setMessage({
+            ok: true,
+            text: result.simulated
+              ? `Envio simulado para ${result.sentTo} (e-mail real não configurado).`
+              : `Convite enviado para ${result.sentTo}.`,
+          });
+        } else if (result.unavailable) {
+          const fd = new FormData();
+          fd.set("clientId", clientId);
+          await sendInviteAction(fd);
+          setMessage({ ok: true, text: "Marcado como enviado (envio por e-mail indisponível)." });
+        } else {
+          setMessage({ ok: false, text: result.error || "Falha ao enviar o convite." });
+        }
+      } catch {
+        setMessage({ ok: false, text: "Falha ao enviar o convite. Tente de novo." });
+      }
+    });
+  }
+
+  return (
+    <>
+      <button type="button" onClick={run} disabled={pending} className={`${MENU_ITEM} disabled:opacity-60`}>
+        <Icon name="check" size={18} className="shrink-0 text-ink-muted" />
+        {pending ? "Enviando..." : label}
+      </button>
+      {message && (
+        <p role="status" className={`px-3 pb-2 text-xs leading-snug ${message.ok ? "text-ink-muted" : "text-late-text"}`}>
+          {message.text}
+        </p>
+      )}
+    </>
   );
 }
 
@@ -170,6 +220,23 @@ export default function ClientRow({ entry }: { entry: StudentEntry }) {
           />
         );
       case "view_tracking":
+        if (tracking.state === "questionnaire_submitted") {
+          return (
+            <Link href={`${profile}/questionario`} className={primaryClass}>
+              Abrir questionário
+              <span className="sr-only"> — {entry.name}</span>
+            </Link>
+          );
+        }
+        if (tracking.state === "protocol_preparing" || tracking.state === "protocol_partial") {
+          const segment = entry.onboarding ? firstMissingModuleSegment(entry.onboarding) : null;
+          return (
+            <Link href={segment ? `${profile}/${segment}` : profile} className={primaryClass}>
+              Preparar protocolo
+              <span className="sr-only"> — {entry.name}</span>
+            </Link>
+          );
+        }
         return (
           <Link href={profile} className={primaryClass}>
             {label}
@@ -285,13 +352,10 @@ export default function ClientRow({ entry }: { entry: StudentEntry }) {
             <CopyInviteButton url={entry.inviteUrl} iconInside className={MENU_ITEM} />
           )}
           {isInviteState && (
-            <form action={sendInviteAction} className="contents">
-              <input type="hidden" name="clientId" value={entry.id} />
-              <button type="submit" className={MENU_ITEM}>
-                <Icon name="check" size={18} className="shrink-0 text-ink-muted" />
-                {tracking.state === "invite_sent" ? "Reenviar convite" : "Marcar como enviado"}
-              </button>
-            </form>
+            <ResendInviteItem
+              clientId={entry.id}
+              label={tracking.state === "invite_sent" ? "Reenviar convite" : "Enviar convite por e-mail"}
+            />
           )}
           {payment.status === "atrasado" &&
             !chargeIsPrimary &&

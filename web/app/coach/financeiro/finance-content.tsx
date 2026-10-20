@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { MonthKey } from "@/lib/finance/dates";
 import { getFinanceOverview, type HistoryFilter } from "@/lib/finance/queries";
 import { withTimeout } from "./timeout";
-import { MetricCards } from "./metric-cards";
+import { FinanceBreakdowns, FinanceCharts, FinanceKpis } from "./metric-cards";
 import { HistorySection, LateSection, UpcomingSection } from "./sections";
 import { BUTTON_PRIMARY } from "./ui";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -39,8 +39,10 @@ export default async function FinanceContent({
   }
 
   return (
-    <div className="flex flex-col gap-10">
-      <MetricCards overview={overview} />
+    <div className="flex flex-col gap-6">
+      <FinanceKpis overview={overview} />
+      <FinanceCharts overview={overview} />
+      <FinanceBreakdowns overview={overview} />
       <LateSection overview={overview} />
       <UpcomingSection overview={overview} />
       <HistorySection filter={historyFilter} month={month} />

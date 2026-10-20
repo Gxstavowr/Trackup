@@ -5,6 +5,7 @@ import { getEvaluationDetail } from "@/lib/evaluations";
 import { getWeekRecord, type WeekRecord } from "@/lib/evaluation-week";
 import { parseWeekParam } from "@/lib/evaluation-answers";
 import { SITUATION_META, getSituation } from "@/lib/evaluation-situation";
+import Icon from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
 import { requireCoach } from "../../../require-coach";
 import {
@@ -22,6 +23,7 @@ import MarkReviewOpened from "./mark-review-opened";
 import PastWeekView from "./past-week-view";
 import ReceivedSection from "./received-section";
 import SectionNav from "./section-nav";
+import { SignalStrip } from "./signal-cards";
 import WeekComparison from "./week-comparison";
 import { EmptyState } from "@/components/ui/empty-state";
 
@@ -149,43 +151,46 @@ export default async function StudentEvaluationPage({
       <MarkReviewOpened key={id} clientId={id} weekNumber={row.weekNumber} pending={row.state === "pending"} />
 
       {/* Situação do ciclo — sempre no topo, com linguagem de ciclo explícita. */}
-      <section aria-label="Situação da avaliação" className="flex flex-col gap-3">
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <h2 className="t-title text-ink">Semana {row.weekNumber}</h2>
-            <StateBadge state={row.state} />
-            <span className="text-sm text-ink-muted">
-              {formatDateOnlyShort(row.periodStart)} a {formatDateOnlyShort(row.periodEnd)}
-            </span>
+      <section aria-label="Situação da avaliação" className="tk-enter flex flex-col gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <h2 className="t-title text-ink">Semana {row.weekNumber}</h2>
+              <StateBadge state={row.state} />
+              <span className="text-sm text-ink-muted">
+                {formatDateOnlyShort(row.periodStart)} a {formatDateOnlyShort(row.periodEnd)}
+              </span>
+            </div>
+            <p className="text-sm text-ink-muted">
+              {row.state === "pending" && "Aguardando a sua avaliação."}
+              {row.state === "in_progress" && "Avaliação aberta. A orientação ainda não foi enviada."}
+              {row.state === "draft" && "Rascunho salvo. Falta finalizar e enviar ao aluno."}
+              {done && row.reviewedAt && `Orientação enviada em ${formatDateTime(row.reviewedAt)}.`}
+            </p>
           </div>
-          <p className="text-sm text-ink-muted">
-            {row.submittedAt ? `Check-in enviado em ${formatDateTime(row.submittedAt)}. ` : ""}
-            {row.state === "pending" &&
-              "Aguardando a sua avaliação. Ela passa a constar como em andamento assim que você abrir esta tela."}
-            {row.state === "in_progress" && "Você já abriu esta avaliação. A orientação ainda não foi enviada."}
-            {row.state === "draft" && "Há um rascunho de orientação salvo. Falta finalizar e enviar ao aluno."}
-            {done && row.reviewedAt && `Orientação enviada em ${formatDateTime(row.reviewedAt)}.`}
-          </p>
-          {done && (
-            <CycleDoneBanner>
-              Ciclo da semana {row.weekNumber} concluído: a orientação foi enviada e {client.name} já
-              recebeu a notificação.
-            </CycleDoneBanner>
-          )}
+          <SectionNav
+            items={[
+              { href: "#recebido", label: "Recebido" },
+              { href: "#comparar", label: "Comparar" },
+              { href: "#contexto", label: "Contexto" },
+            ]}
+            decision={{ href: "#orientacao", label: done ? "Ver orientação enviada" : "Ir para a decisão" }}
+          />
         </div>
-        <SectionNav
-          items={[
-            { href: "#recebido", label: "Recebido" },
-            { href: "#comparar", label: "Comparar" },
-            { href: "#contexto", label: "Contexto" },
-          ]}
-          decision={{ href: "#orientacao", label: done ? "Ver orientação enviada" : "Ir para a decisão" }}
-        />
+        {done && (
+          <CycleDoneBanner>
+            Ciclo da semana {row.weekNumber} concluído: a orientação foi enviada e {client.name} já
+            recebeu a notificação.
+          </CycleDoneBanner>
+        )}
       </section>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+      {/* Sinais em chips compactos (detalhe recolhido em "Contexto histórico"). */}
+      <SignalStrip detail={detail} contextHref="#contexto" />
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
         {/* A + B + C: o que chegou, a comparação e o contexto — nesta ordem. */}
-        <div className="flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-1">
+        <div className="flex min-w-0 flex-col gap-5 xl:col-start-1 xl:row-start-1">
           <ReceivedSection
             id="recebido"
             variant="current"
@@ -214,7 +219,7 @@ export default async function StudentEvaluationPage({
                 panelMetrics={false}
                 heading={{
                   title: "Comparar com outra semana",
-                  text: `A semana ${row.weekNumber} fica fixa; escolha com qual semana comparar. As variações são calculadas só entre as duas semanas selecionadas.`,
+                  text: `A semana ${row.weekNumber} fica fixa; escolha a semana de comparação.`,
                 }}
               />
             ) : (
@@ -231,10 +236,10 @@ export default async function StudentEvaluationPage({
         <section
           id="orientacao"
           aria-label="Decisão do coach"
-          className="card flex min-w-0 scroll-mt-4 flex-col gap-4 border-brand/35 p-4 sm:p-5 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto"
+          className="card flex min-w-0 scroll-mt-4 flex-col gap-4 border-brand/60 p-4 shadow-[0_0_0_1px_var(--color-brand),0_12px_40px_-18px_var(--color-brand)] sm:p-5 xl:sticky xl:top-6 xl:col-start-2 xl:row-start-1 xl:max-h-[calc(100dvh-3rem)] xl:overflow-y-auto"
         >
           {/* Desktop: o painel rola por dentro (ex.: confirmação aberta) — o título fica preso no topo. */}
-          <div className="flex flex-col gap-1 lg:sticky lg:-top-5 lg:z-10 lg:-mx-5 lg:-mt-5 lg:rounded-t-[inherit] lg:border-b lg:border-line lg:bg-surface lg:px-5 lg:pt-5 lg:pb-3">
+          <div className="flex flex-col gap-1 xl:sticky xl:-top-5 xl:z-10 xl:-mx-5 xl:-mt-5 xl:rounded-t-[inherit] xl:border-b xl:border-line xl:bg-surface xl:px-5 xl:pt-5 xl:pb-3">
             <span className="t-kicker text-brand">Decisão do coach</span>
             <h2 className="t-subtitle text-ink">
               {done ? "Orientação enviada" : `Avaliação da semana ${row.weekNumber}`}
@@ -252,8 +257,12 @@ export default async function StudentEvaluationPage({
               </div>
               {o?.coach_note && (
                 <div className="flex flex-col gap-1.5 border-t border-line pt-4">
-                  <span className="t-label text-ink-faint">Nota do coach (privada)</span>
-                  <p className="whitespace-pre-wrap break-words text-sm text-ink-muted">{o.coach_note}</p>
+                  <span className="t-label inline-flex items-center gap-1.5 text-ink-faint">
+                    <Icon name="privacy" size={14} /> Nota privada · só você vê
+                  </span>
+                  <p className="whitespace-pre-wrap break-words rounded-lg border border-dashed border-line-strong bg-surface-sunken px-3 py-2.5 text-sm text-ink-muted">
+                    {o.coach_note}
+                  </p>
                 </div>
               )}
             </div>

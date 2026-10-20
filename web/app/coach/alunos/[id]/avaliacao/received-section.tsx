@@ -7,6 +7,7 @@ import { formatAnswerForCoach, splitAnswers, type CoachAnswer } from "@/lib/eval
 import { isStoredLateOverdue } from "@/lib/evaluation-late";
 import { formatMetricValue, formatNumber, metricDefs, type ComparisonWeek, type MetricKey } from "@/lib/week-comparison-format";
 import { formatDateOnlyShort, formatDateTime } from "../../../avaliacoes/evaluation-ui";
+import { ProgressRing } from "@/components/viz";
 import PhotoTriptych from "../photo-triptych";
 import type { WeekPhotosState } from "./week-comparison";
 
@@ -72,7 +73,7 @@ export default function ReceivedSection({
     <section
       id={id}
       aria-label={title}
-      className={`card flex min-w-0 scroll-mt-4 flex-col gap-5 p-4 sm:p-5 ${
+      className={`@container card tk-enter flex min-w-0 scroll-mt-4 flex-col gap-5 p-4 sm:p-5 ${
         current ? "border-brand/45 shadow-[inset_3px_0_0_var(--color-brand)]" : ""
       }`}
     >
@@ -84,10 +85,11 @@ export default function ReceivedSection({
           </Badge>
         </div>
         <p className="text-sm text-ink-muted">
-          Semana {weekNumber} · {formatDateOnlyShort(periodStart)} a {formatDateOnlyShort(periodEnd)}
+          {/* Semana atual: o período já está no cabeçalho da página — aqui só quando foi enviado. */}
+          {!current && `Semana ${weekNumber} · ${formatDateOnlyShort(periodStart)} a ${formatDateOnlyShort(periodEnd)}`}
           {sent && checkin.submittedAt ? (
             <>
-              {" · "}
+              {!current && " · "}
               <span className="text-ink">Enviado em {formatDateTime(checkin.submittedAt)}</span>
             </>
           ) : null}
@@ -108,43 +110,79 @@ export default function ReceivedSection({
 
       {/* Métricas: cada valor aparece UMA vez, sem variação (a variação fica na comparação). */}
       {(sent || (metrics && Object.keys(metrics.metrics).length > 0)) && (
-        <Block title="Métricas da semana">
+        <Block title="Números da semana">
           {metrics ? (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            // Colunas pela largura do BLOCO (container query), não da tela: em 1024 px a coluna de
+            // "Recebido" é estreita e a grade de 3 colunas cortava o peso e os rótulos dos anéis.
+            <div className="@container">
+            <div className="tk-stagger grid grid-cols-2 gap-2.5 @xl:grid-cols-[1.35fr_1fr_1fr]">
               {coreDefs.map((d) => {
                 const value = metrics.metrics[d.key];
-                const primary = d.key === "weight_kg";
+                const weight = d.key === "weight_kg";
+                const ringMax = d.key === "adherence" && !adherenceIsScale ? 100 : 5;
                 return (
                   <div
                     key={d.key}
                     data-metric={d.key}
-                    className={`flex min-w-0 flex-col gap-1 rounded-lg border bg-surface-sunken p-3 ${
-                      primary && current ? "border-brand/35" : "border-line"
+                    className={`flex min-w-0 items-center gap-2.5 rounded-xl border p-3 @xl:gap-3 @xl:p-3.5 ${
+                      weight
+                        ? `col-span-2 flex-col items-start justify-between gap-1 @xl:col-span-1 ${
+                            current ? "border-brand/45 bg-brand-tint" : "border-line bg-surface-sunken"
+                          }`
+                        : "border-line bg-surface-sunken"
                     }`}
                   >
-                    <span className="text-xs text-ink-muted">{d.label}</span>
-                    {value != null ? (
-                      <span
-                        className={`whitespace-nowrap font-display leading-none tabular-nums ${
-                          primary ? "text-2xl sm:text-[1.75rem] lg:text-2xl" : "text-xl"
-                        } ${primary && current ? "text-brand" : "text-ink"}`}
-                      >
-                        {/* Valor + unidade numa linha só; a unidade menor cabe na célula estreita do desktop. */}
-                        {formatNumber(value)}
-                        {d.suffix && (
-                          <>
-                            {" "}
-                            <span className="text-sm">{d.suffix}</span>
-                          </>
+                    {weight ? (
+                      <>
+                        <span className="text-xs font-semibold text-ink-muted">{d.label}</span>
+                        {value != null ? (
+                          <span
+                            className={`whitespace-nowrap font-display leading-none tabular-nums text-4xl sm:text-[2.5rem] ${
+                              current ? "text-brand" : "text-ink"
+                            }`}
+                          >
+                            {formatNumber(value)}
+                            {d.suffix && (
+                              <>
+                                {" "}
+                                <span className="text-lg">{d.suffix}</span>
+                              </>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-ink-faint">Não informado</span>
                         )}
-                      </span>
+                      </>
+                    ) : value != null ? (
+                      <>
+                        <ProgressRing
+                          value={value}
+                          max={ringMax}
+                          label={d.label}
+                          size={52}
+                          thickness={6}
+                          tone={d.key === "energy" ? "info" : "accent"}
+                        >
+                          <span className="text-sm">{formatNumber(value)}</span>
+                        </ProgressRing>
+                        <span className="flex min-w-0 flex-col gap-0.5">
+                          <span className="text-xs font-semibold text-ink-muted">{d.label}</span>
+                          <span className="whitespace-nowrap text-xs text-ink-faint">
+                            {d.suffix ? d.suffix : ringMax === 100 ? "%" : ""}
+                          </span>
+                        </span>
+                      </>
                     ) : (
-                      <span className="text-sm text-ink-faint">Não informado</span>
+                      <span className="flex flex-col gap-0.5">
+                        <span className="text-xs font-semibold text-ink-muted">{d.label}</span>
+                        <span className="text-sm text-ink-faint">Não informado</span>
+                      </span>
                     )}
                   </div>
                 );
               })}
               <GoalsTile goals={goals} />
+            </div>
             </div>
           ) : (
             <Notice>Não foi possível carregar as métricas desta semana. As respostas abaixo trazem os valores informados.</Notice>
@@ -207,9 +245,6 @@ export default function ReceivedSection({
           ) : (
             <AnswersList answers={regular} />
           )}
-          {shownAsMetric.length > 0 && regular.length > 0 && (
-            <p className="text-xs text-ink-faint">Peso, aderência, energia e outras métricas numéricas aparecem acima.</p>
-          )}
           {sensitive.length > 0 && <SensitiveAnswers answers={sensitive} />}
         </Block>
       )}
@@ -241,7 +276,7 @@ function GoalsTile({ goals }: { goals: EvaluationGoal[] }) {
   const failed = goals.filter((g) => g.result_status === "fail").length;
   const open = goals.filter((g) => g.result_status === "pending").length;
   return (
-    <div className="flex min-w-0 flex-col gap-1 rounded-lg border border-line bg-surface-sunken p-3" data-metric="goals">
+    <div className="col-span-2 flex min-w-0 flex-col gap-1 rounded-xl border border-line bg-surface-sunken p-3.5 @xl:col-span-3" data-metric="goals">
       <span className="text-xs text-ink-muted">Metas da semana</span>
       {goals.length === 0 ? (
         <span className="text-sm text-ink-faint">Nenhuma meta definida</span>
@@ -301,7 +336,7 @@ function AnswersList({ answers }: { answers: CoachAnswer[] }) {
   return (
     <div className="overflow-hidden rounded-lg border border-line">
       {short.length > 0 && (
-        <dl className="grid gap-px bg-line sm:grid-cols-2">
+        <dl className="grid gap-px bg-line @lg:grid-cols-2">
           {short.map((a, i) => (
             <div
               key={a.key}

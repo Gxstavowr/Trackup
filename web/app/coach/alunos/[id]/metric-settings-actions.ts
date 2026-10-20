@@ -9,6 +9,7 @@ import {
 import type { MetricDirection } from "@/lib/metrics-catalog";
 import { actionErrorMessage } from "@/lib/action-errors";
 import { isAlwaysTrackedMetric } from "@/lib/checkin-steps";
+import { requireActiveCoach } from "../../require-coach";
 
 /**
  * Server Actions da configuração de métricas por aluno (item 17 do master TODO) — painel em
@@ -26,6 +27,7 @@ export async function addCustomMetricAction(
   _prevState: MetricSettingsActionState,
   formData: FormData
 ): Promise<MetricSettingsActionState> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const label = String(formData.get("label") || "").trim();
   const unit = String(formData.get("unit") || "").trim();
@@ -51,6 +53,7 @@ export async function addCustomMetricAction(
  * — uma falha aqui não precisa de feedback dedicado na UI (a lista simplesmente não muda).
  */
 export async function toggleMetricTrackedAction(formData: FormData): Promise<void> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const metricKey = String(formData.get("metricKey") || "");
   const nextTracked = formData.get("nextTracked") === "true";
@@ -69,6 +72,7 @@ function parseDirection(raw: FormDataEntryValue | null): MetricDirection | null 
 
 /** Define a meta (valor-alvo + direção) de uma métrica pro aluno. Mesmo padrão sem estado do toggle. */
 export async function setMetricGoalAction(formData: FormData): Promise<void> {
+  await requireActiveCoach();
   const clientId = String(formData.get("clientId") || "");
   const metricKey = String(formData.get("metricKey") || "");
   if (!clientId || !metricKey) return;

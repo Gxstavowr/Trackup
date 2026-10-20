@@ -2,6 +2,7 @@ import type { KnownTotals } from "@/lib/food-macros";
 import { formatNumber, MACRO_KEYS } from "@/lib/food-macros";
 import { KCAL_MISSING_LABEL, missingKcalNote, type KcalSum } from "@/lib/meal-kcal";
 import type { NutritionTargets } from "@/lib/nutrition-builder";
+import { MeterBar } from "@/components/viz";
 import { CARD } from "../portal-ui";
 
 type Props = {
@@ -106,10 +107,11 @@ export default function DaySummaryCard({
   const kcalRef = hasTarget ? targets.target_kcal : progressFromConsumed ? plannedKcal.kcal : null;
   const kcalPct = progressKcal != null && kcalRef ? Math.round((progressKcal / kcalRef) * 100) : null;
 
+  // Cores CATEGÓRICAS (não de estado): verde/amarelo ficam reservados a "ok"/"atenção".
   const bars = [
-    { key: "protein_g", label: "Proteína", color: "bg-info", target: targets.target_protein_g, plan: plannedMacros.protein_g, value: progressMacros.protein_g },
-    { key: "carbs_g", label: "Carboidrato", color: "bg-warning", target: targets.target_carbs_g, plan: plannedMacros.carbs_g, value: progressMacros.carbs_g },
-    { key: "fat_g", label: "Gordura", color: "bg-success", target: targets.target_fat_g, plan: plannedMacros.fat_g, value: progressMacros.fat_g },
+    { key: "protein_g", label: "Proteína", color: "var(--info)", target: targets.target_protein_g, plan: plannedMacros.protein_g, value: progressMacros.protein_g },
+    { key: "carbs_g", label: "Carboidrato", color: "var(--c2)", target: targets.target_carbs_g, plan: plannedMacros.carbs_g, value: progressMacros.carbs_g },
+    { key: "fat_g", label: "Gordura", color: "var(--c3)", target: targets.target_fat_g, plan: plannedMacros.fat_g, value: progressMacros.fat_g },
   ] as const;
 
   return (
@@ -151,28 +153,30 @@ export default function DaySummaryCard({
               </span>
             )}
           </div>
-          <div
-            role="progressbar"
-            aria-label={`kcal — ${sourceLabel.toLowerCase()}`}
-            aria-valuemin={0}
-            aria-valuemax={kcalRef}
-            aria-valuenow={progressKcal ?? 0}
-            className="h-2.5 overflow-hidden rounded-full bg-surface-sunken"
-          >
-            <div
-              className="h-full rounded-full bg-brand transition-[width]"
-              style={{ width: `${kcalPct != null ? Math.min(100, kcalPct) : 0}%` }}
-            />
-          </div>
+          <MeterBar value={progressKcal} max={kcalRef} label={`kcal — ${sourceLabel.toLowerCase()}`} size="lg" />
           {!hasTarget && mode === "today" && <span className="text-xs text-ink-faint">Sem meta de calorias definida.</span>}
         </div>
       )}
 
-      <div className="flex flex-col gap-3">
-        <span className="text-xs font-medium text-ink-faint">Macros · {sourceLabel.toLowerCase()}</span>
+      <details className="group rounded-md border border-line bg-surface-sunken/40 px-3 py-2">
+        <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center justify-between gap-x-3 gap-y-1 marker:hidden">
+          <span className="flex flex-wrap gap-x-3 text-sm tabular-nums">
+            {bars.map((bar) => (
+              <span key={bar.key} className="text-ink-muted">
+                {bar.label.slice(0, 1)}{" "}
+                <b className="font-display text-ink">{bar.value == null ? "—" : `${formatNumber(bar.value)} g`}</b>
+              </span>
+            ))}
+          </span>
+          <span className="text-xs font-medium text-ink-faint">
+            Macros · {sourceLabel.toLowerCase()}
+            <span className="ml-1 inline-block group-open:hidden">▾</span>
+            <span className="ml-1 hidden group-open:inline-block">▴</span>
+          </span>
+        </summary>
+        <div className="mt-2 flex flex-col gap-3 pb-1">
         {bars.map((bar) => {
           const ref = bar.target && bar.target > 0 ? bar.target : bar.plan;
-          const pct = bar.value != null && ref ? Math.min(100, (bar.value / ref) * 100) : 0;
           return (
             <div key={bar.key} className="flex flex-col gap-1">
               <div className="flex items-baseline justify-between gap-2 text-sm">
@@ -182,20 +186,12 @@ export default function DaySummaryCard({
                   {ref != null && <span className="text-ink-faint"> / {formatNumber(ref)} g</span>}
                 </span>
               </div>
-              <div
-                role="progressbar"
-                aria-label={bar.label}
-                aria-valuemin={0}
-                aria-valuemax={ref ?? 0}
-                aria-valuenow={bar.value ?? 0}
-                className="h-2 overflow-hidden rounded-full bg-surface-sunken"
-              >
-                <div className={`h-full rounded-full ${bar.color} transition-[width]`} style={{ width: `${pct}%` }} />
-              </div>
+              <MeterBar value={bar.value} max={ref} label={bar.label} color={bar.color} />
             </div>
           );
         })}
-      </div>
+        </div>
+      </details>
     </section>
   );
 }

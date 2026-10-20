@@ -33,15 +33,15 @@ export default async function CoachWorkoutsPage() {
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <Card padding="sm">
           <p className="t-value">{activeExercises}</p>
-          <p className="t-label">Exercícios na biblioteca</p>
+          <p className="t-label mt-2 text-ink-muted">Exercícios na biblioteca</p>
         </Card>
         <Card padding="sm">
           <p className="t-value">{customExercises}</p>
-          <p className="t-label">Personalizados</p>
+          <p className="t-label mt-2 text-ink-muted">Personalizados</p>
         </Card>
         <Card padding="sm">
           <p className="t-value">{templates.length}</p>
-          <p className="t-label">Templates de treino</p>
+          <p className="t-label mt-2 text-ink-muted">Templates de treino</p>
         </Card>
       </div>
 

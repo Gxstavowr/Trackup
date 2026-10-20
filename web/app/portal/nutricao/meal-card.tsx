@@ -116,6 +116,13 @@ export default function NutritionMealCard({
 
   const logged = status != null;
   const done = status === "done";
+  // Animações só na TRANSIÇÃO para "feita" (marcar agora), nunca ao carregar a página já com ela feita.
+  const [wasDone, setWasDone] = useState(done);
+  const [justDone, setJustDone] = useState(false);
+  if (done !== wasDone) {
+    setWasDone(done);
+    if (done) setJustDone(true);
+  }
   // Enquanto o otimista não chega do servidor, o relógio ainda não sabe do registro: mostra o
   // selo de status em vez do slot ("Agora"/"Em X min") pra não contradizer o check.
   const slot = status !== formProps.initialStatus ? null : (live?.slot ?? null);
@@ -135,12 +142,12 @@ export default function NutritionMealCard({
   return (
     <li
       id={`refeicao-${meal.id}`}
-      className={`flex scroll-mt-24 flex-col gap-3 rounded-[var(--radius-lg,1rem)] border p-4 ${surface}`}
+      className={`flex scroll-mt-24 flex-col gap-3 rounded-[var(--radius-lg,1rem)] border p-4 transition-colors duration-300 motion-reduce:transition-none ${surface} ${justDone ? "tk-success" : ""}`}
     >
       <div className="flex items-start gap-3">
         <div className="flex w-[4.25rem] shrink-0 flex-col items-start">
           {done ? (
-            <span className="flex size-10 items-center justify-center rounded-full bg-success text-on-accent" aria-hidden>
+            <span className={`${justDone ? "tk-pop " : ""}flex size-10 items-center justify-center rounded-full bg-success text-on-accent`} aria-hidden>
               <Icon name="check" size={22} strokeWidth={2.5} />
             </span>
           ) : (

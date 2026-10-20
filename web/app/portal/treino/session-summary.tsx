@@ -1,7 +1,7 @@
 import type { Highlight, SessionSummary } from "@/lib/workout-session";
 import { formatDuration } from "@/lib/workout-session";
 import { buttonClass } from "@/components/ui/button";
-import Icon from "@/components/ui/icon";
+import { CompletionMark } from "@/components/ui/completion-mark";
 import { CARD } from "../portal-ui";
 
 /** Resumo ao finalizar o treino (V2 tarefa 20): séries, volume (Σ carga × reps), duração e,
@@ -18,24 +18,23 @@ export default function SessionSummaryScreen({
   highlights: Highlight[];
 }) {
   return (
-    <section className="flex flex-col gap-5">
+    <section className="tk-enter flex flex-col gap-5">
       <div className="flex flex-col gap-2">
-        <span className="tk-pop flex size-12 items-center justify-center rounded-full bg-success-tint text-success">
-          <Icon name="check" size={26} strokeWidth={2.5} />
-        </span>
+        <CompletionMark size={56} />
         <span className="t-label text-success">Treino concluído</span>
         <h1 className="font-display text-3xl font-bold text-ink">{dayName}</h1>
       </div>
 
       <div className={`${CARD} grid grid-cols-2 gap-x-4 gap-y-5 p-5`}>
-        <Stat label="Séries" value={`${summary.setsDone}/${summary.setsTotal}`} accent />
+        <Stat label="Séries" value={`${summary.setsDone}/${summary.setsTotal}`} accent delay={150} />
         <Stat
           label="Volume"
           value={summary.totalVolume > 0 ? `${Math.round(summary.totalVolume).toLocaleString("pt-BR")} kg` : "—"}
           accent
+          delay={230}
         />
-        <Stat label="Duração" value={formatDuration(summary.durationSec)} />
-        <Stat label="Exercícios" value={`${summary.exercisesDone}/${summary.exercisesTotal}`} />
+        <Stat label="Duração" value={formatDuration(summary.durationSec)} delay={310} />
+        <Stat label="Exercícios" value={`${summary.exercisesDone}/${summary.exercisesTotal}`} delay={390} />
       </div>
 
       {highlights.length > 0 && (
@@ -67,11 +66,13 @@ export default function SessionSummaryScreen({
   );
 }
 
-function Stat({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
+function Stat({ label, value, accent = false, delay = 0 }: { label: string; value: string; accent?: boolean; delay?: number }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <span className="t-label text-ink-faint">{label}</span>
-      <span className={`font-display text-3xl font-bold tabular-nums ${accent ? "text-brand" : "text-ink"}`}>{value}</span>
+      <span className={`tk-rise font-display text-3xl font-bold tabular-nums ${accent ? "text-brand" : "text-ink"}`} style={{ animationDelay: `${delay}ms` }}>
+        {value}
+      </span>
     </div>
   );
 }

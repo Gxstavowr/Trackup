@@ -39,3 +39,17 @@ test("refeição e dia somam os itens", () => {
   assert.equal(formatKcalSum(day), "1.500 kcal · parcial");
   assert.equal(formatItemKcal(null), "kcal não informada");
 });
+
+test("total do dia = soma dos totais das refeições (coerente), parcial se faltar kcal", () => {
+  const meals = [
+    { items: [{ macros: { kcal: 300 } }, { macros: { kcal: 120 } }] },
+    { items: [{ macros: { kcal: 500 } }, { macros: {} }] },
+  ];
+  const perMeal = meals.map((m) => mealKcal(m).kcal ?? 0);
+  const day = mealsKcal(meals);
+  assert.equal(day.kcal, perMeal.reduce((a, b) => a + b, 0));
+  assert.equal(day.partial, true);
+  assert.equal(day.missingCount, 1);
+  // Sem nenhuma kcal conhecida: null, nunca 0 inventado.
+  assert.equal(mealsKcal([{ items: [{ macros: {} }] }]).kcal, null);
+});

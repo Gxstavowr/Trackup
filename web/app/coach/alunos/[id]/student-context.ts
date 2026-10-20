@@ -5,6 +5,7 @@ import { monthOf, todayInSaoPaulo } from "@/lib/finance/dates";
 import { getFinanceOverview, type FinancePayment } from "@/lib/finance/queries";
 import { getClient, getPaymentStatusForClients, type Client } from "@/lib/repository";
 import { getOrigin } from "@/lib/site-url";
+import { getClientOnboardingRow } from "../../protocol-queue";
 import { buildStudentEntry, type StudentEntry } from "../student-situation";
 
 export type StudentContext = {
@@ -53,6 +54,7 @@ export const getStudentContext = cache(async (id: string): Promise<StudentContex
     paymentStatus,
     latePayment,
     inviteUrl: `${origin}/convite?id=${client.id}`,
+    onboardingRow: await getClientOnboardingRow(id),
   });
 
   return { client, entry, evaluation };

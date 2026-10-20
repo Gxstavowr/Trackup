@@ -6,6 +6,8 @@ import { Badge, Icon, type IconName } from "@/components/ui";
 import { cardClass } from "@/components/ui/card";
 import { requireCoach } from "../require-coach";
 import PrivacySection from "./privacy-section";
+import ServicePricesSection from "./service-prices-section";
+import { getCoachServicePrices } from "@/lib/onboarding/prices";
 import QuestionsManager, { type ManagedQuestion } from "./questions-manager";
 import { buildCheckinSteps } from "@/lib/checkin-steps";
 import { PasswordForm, ProfileForm } from "./settings-forms";
@@ -19,6 +21,7 @@ const SECTIONS = [
   { id: "notificacoes", label: "Notificações", icon: "bell" },
   { id: "acompanhamento", label: "Acompanhamento semanal", icon: "checkin" },
   { id: "conta", label: "Conta", icon: "settings" },
+  { id: "pacotes", label: "Pacotes e preços", icon: "wallet" },
   { id: "assinatura", label: "Minha assinatura", icon: "wallet" },
   { id: "privacidade", label: "Privacidade e LGPD", icon: "privacy" },
 ] as const satisfies readonly { id: string; label: string; icon: IconName }[];
@@ -104,6 +107,7 @@ export default async function CoachSettingsPage(props: PageProps<"/coach/configu
           {active === "notificacoes" && <NotificationsSection />}
           {active === "acompanhamento" && <TrackingSection />}
           {active === "conta" && <AccountSection email={user.email ?? ""} />}
+          {active === "pacotes" && <PackagesSection />}
           {active === "assinatura" && <SubscriptionSection />}
           {active === "privacidade" && (
             <PrivacySection
@@ -358,4 +362,9 @@ async function SubscriptionSection() {
       </Link>
     </SectionCard>
   );
+}
+
+async function PackagesSection() {
+  const { prices, available } = await getCoachServicePrices();
+  return <ServicePricesSection prices={available ? prices : null} />;
 }

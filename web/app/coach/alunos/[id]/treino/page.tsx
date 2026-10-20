@@ -9,6 +9,7 @@ import {
   getWorkoutTemplates,
 } from "@/lib/repository";
 import { requireCoach } from "../../../require-coach";
+import { ModuleNotice } from "../protocol-panel";
 import { CreateDraftForm } from "./plan-lifecycle";
 import PlanWorkspace from "./plan-workspace";
 import TemplatesPanel from "./templates-panel";
@@ -56,6 +57,7 @@ export default async function ClientWorkoutPage({
 
   return (
     <div className="flex flex-col gap-6">
+      <ModuleNotice clientId={id} module="training" />
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-ink-muted">
         <p>
           Treino individual de {client.name}. Exercícios e templates da conta ficam em{" "}

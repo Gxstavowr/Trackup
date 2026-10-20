@@ -27,17 +27,19 @@ export default function RestTimer({
 }) {
   const running = isRestRunning(rest);
   const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!running) return;
-    const id = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(id);
-  }, [running]);
-
   const remainingMs = restRemainingMs(rest, now);
   const remaining = Math.ceil(remainingMs / 1000);
   const done = remaining <= 0;
   const frozen = !running && !done;
+
+  // Só tica enquanto há o que contar. Um `now` atrasado após retomar/somar é inofensivo:
+  // `restRemainingMs` limita ao restante congelado (ver rest-timer-state.ts).
+  const ticking = running && !done;
+  useEffect(() => {
+    if (!ticking) return;
+    const id = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, [ticking]);
 
   useEffect(() => {
     if (done && typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate?.(200);
@@ -54,11 +56,11 @@ export default function RestTimer({
         : `Descanso de ${formatRestClock(Math.round(rest.totalMs / 1000))} em andamento.`;
 
   return (
-    <div className="sticky top-[3.75rem] z-20 overflow-hidden rounded-md border border-brand-tint-strong bg-surface shadow-[var(--surface-raised-shadow)]">
+    <div className={`${done ? "tk-success border-success/60" : "tk-enter border-brand-tint-strong"} sticky top-[3.75rem] z-20 overflow-hidden rounded-md border bg-surface shadow-[var(--surface-raised-shadow)]`}>
       <p className="sr-only" role="status" aria-live="polite">
         {status}
       </p>
-      <div className="flex flex-col gap-1 px-4 py-3">
+      <div className="flex flex-col gap-1 px-3 py-2">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-baseline gap-3">
             <span className="t-label text-brand">
@@ -66,7 +68,7 @@ export default function RestTimer({
             </span>
             <span
               aria-hidden
-              className={`font-display text-3xl font-bold tabular-nums ${
+              className={`font-display text-2xl font-bold tabular-nums ${
                 done ? "text-success" : frozen ? "text-ink-muted" : "text-ink"
               }`}
             >
@@ -108,7 +110,7 @@ export default function RestTimer({
         <p className="break-words text-xs text-ink-muted">{rest.label}</p>
       </div>
       <div aria-hidden className="h-1 bg-surface-raised">
-        <div className={`h-full ${frozen ? "bg-ink-faint" : "bg-brand"}`} style={{ width: `${done ? 100 : pct}%` }} />
+        <div className={`h-full transition-[width] duration-300 ease-linear motion-reduce:transition-none ${done ? "bg-success" : frozen ? "bg-ink-faint" : "bg-brand"}`} style={{ width: `${done ? 100 : pct}%` }} />
       </div>
     </div>
   );

@@ -3,6 +3,8 @@ import { formatBRL, formatDateShort } from "@/lib/finance/format";
 import type { FinancePayment } from "@/lib/finance/queries";
 import type { Client, ClientPaymentStatus } from "@/lib/repository";
 import { formatRelativeTime } from "@/lib/format-relative-time";
+import { deriveOnboardingStage, type OnboardingStage, type OnboardingStatusRow } from "@/lib/onboarding/stage";
+import { packageLabel, type ModuleId, type PackageId } from "@/lib/onboarding/packages";
 import { SITUATION_META } from "@/lib/evaluation-situation";
 import { formatDateOnlyShort, whatsappDigits } from "../avaliacoes/evaluation-ui";
 
@@ -20,7 +22,104 @@ import { formatDateOnlyShort, whatsappDigits } from "../avaliacoes/evaluation-ui
  * ordenação e o botão principal saírem da MESMA regra.
  */
 
-export type TrackingState = EvaluationState | "invite_pending" | "invite_sent" | "paused";
+/**
+ * Estágios do cadastro novo (V5) que substituem o ciclo de avaliação enquanto o aluno ainda não
+ * recebeu o protocolo. Cada um tem rótulo próprio: nunca "Pendente" genérico.
+ */
+export type OnboardingTrackingState =
+  | "invite_failed"
+  | "invite_accepted"
+  | "account_created"
+  | "questionnaire_pending"
+  | "questionnaire_submitted"
+  | "protocol_preparing"
+  | "protocol_partial";
+
+export type TrackingState =
+  | EvaluationState
+  | "invite_pending"
+  | "invite_sent"
+  | "paused"
+  | OnboardingTrackingState;
+
+/** Fila "Novos cadastros": cada aluno cai em no máximo um balde. */
+export type NewSignupBucket = "invite_pending" | "awaiting_questionnaire" | "awaiting_protocol";
+
+export const BUCKET_LABEL: Record<NewSignupBucket, string> = {
+  awaiting_questionnaire: "Aguardando questionário",
+  invite_pending: "Convite sem aceite",
+  awaiting_protocol: "Aguardando protocolo",
+};
+
+export const BUCKET_ORDER: NewSignupBucket[] = ["awaiting_protocol", "awaiting_questionnaire", "invite_pending"];
+
+/** Linha de `client_onboarding_status` (0022) com o que a lista precisa. Sem respostas. */
+export type OnboardingRow = OnboardingStatusRow & {
+  client_id: string;
+  questionnaire_id: string | null;
+  questionnaire_submitted_at: string | null;
+};
+
+/** Situação de cadastro de um aluno (serializável: datas em ISO). */
+export type OnboardingInfo = {
+  stage: OnboardingStage;
+  bucket: NewSignupBucket | null;
+  packageId: PackageId | null;
+  packageLabel: string | null;
+  /** Quando o questionário foi recebido. */
+  receivedAt: string | null;
+  dueAt: string | null;
+  overdue: boolean;
+  missingModules: ModuleId[];
+};
+
+const BUCKET_BY_STAGE: Partial<Record<OnboardingStage, NewSignupBucket>> = {
+  invite_not_sent: "invite_pending",
+  invite_failed: "invite_pending",
+  invite_sent: "invite_pending",
+  invite_accepted: "awaiting_questionnaire",
+  account_created: "awaiting_questionnaire",
+  questionnaire_pending: "awaiting_questionnaire",
+  questionnaire_submitted: "awaiting_protocol",
+  protocol_preparing: "awaiting_protocol",
+  protocol_partial: "awaiting_protocol",
+};
+
+/** Pura: linha da view -> situação de cadastro. `null` quando não há linha (view ausente). */
+export function buildOnboardingInfo(row: OnboardingRow | null | undefined, now: Date = new Date()): OnboardingInfo | null {
+  if (!row) return null;
+  const info = deriveOnboardingStage(row, now);
+  // Só entra na fila quem passa pelo cadastro novo (exige onboarding) ou já tem questionário.
+  const inFlow = row.onboarding_required || row.questionnaire_status !== null;
+  const iso = (v: string | Date | null) => (v ? new Date(v).toISOString() : null);
+  return {
+    stage: info.stage,
+    bucket: inFlow ? (BUCKET_BY_STAGE[info.stage] ?? null) : null,
+    packageId: row.package,
+    packageLabel: row.package ? packageLabel(row.package) : null,
+    receivedAt: iso(row.questionnaire_submitted_at),
+    dueAt: info.dueAt ? info.dueAt.toISOString() : null,
+    overdue: info.isOverdue,
+    missingModules: info.missingModules,
+  };
+}
+
+const DAY_FMT = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  timeZone: "America/Sao_Paulo",
+});
+
+export function formatInstantDay(iso: string | null): string | null {
+  return iso ? DAY_FMT.format(new Date(iso)) : null;
+}
+
+/** Módulo do protocolo a abrir primeiro ("Preparar protocolo"): o primeiro ainda não publicado. */
+export function firstMissingModuleSegment(info: OnboardingInfo): "treino" | "nutricao" | null {
+  const m = info.missingModules[0];
+  return m === "training" ? "treino" : m === "nutrition" ? "nutricao" : null;
+}
 
 /** Uma única ação principal por aluno — o botão preenchido/de destaque da linha. */
 export type PrimaryAction =
@@ -50,20 +149,34 @@ export const TRACKING_LABEL: Record<TrackingState, string> = {
   draft: SITUATION_META.awaiting_orientation.label,
   awaiting_checkin: SITUATION_META.checkin_waiting.label,
   done: SITUATION_META.done.label,
-  invite_pending: "Convite pendente",
+  invite_pending: "Convite não enviado",
   invite_sent: "Convite enviado",
   paused: "Acompanhamento pausado",
+  invite_failed: "Falha no envio do convite",
+  invite_accepted: "Convite aceito",
+  account_created: "Aguardando questionário",
+  questionnaire_pending: "Respondendo questionário",
+  questionnaire_submitted: "Questionário recebido",
+  protocol_preparing: "Protocolo em preparação",
+  protocol_partial: "Protocolo parcial",
 };
 
 /** Ordem em que as situações aparecem no filtro (do que exige ação ao que não exige). */
 export const TRACKING_FILTER_ORDER: TrackingState[] = [
+  "questionnaire_submitted",
+  "protocol_preparing",
+  "protocol_partial",
   "pending",
   "in_progress",
   "draft",
   "awaiting_checkin",
   "done",
+  "account_created",
+  "questionnaire_pending",
+  "invite_accepted",
   "invite_pending",
   "invite_sent",
+  "invite_failed",
   "paused",
 ];
 
@@ -110,6 +223,8 @@ export type StudentEntry = {
   /** true quando o motivo da urgência é dinheiro/atraso (pinta a borda com a cor de atraso). */
   urgentLate: boolean;
   lastUpdate: { iso: string; relative: string; reason: string };
+  /** Cadastro novo (V5): estágio, pacote, recebimento e prazo. `null` sem a view (migração pendente). */
+  onboarding: OnboardingInfo | null;
 };
 
 export const NEEDS_ACTION_MAX_TIER = 4;
@@ -130,16 +245,51 @@ export const GROUP_LABEL: Record<ListGroup, string> = {
   paused: "Pausados",
 };
 
-function trackingStateOf(client: Client, evaluation: EvaluationRow | null): TrackingState {
+const ONBOARDING_TRACKING: Partial<Record<OnboardingStage, OnboardingTrackingState>> = {
+  invite_failed: "invite_failed",
+  invite_accepted: "invite_accepted",
+  account_created: "account_created",
+  questionnaire_pending: "questionnaire_pending",
+  questionnaire_submitted: "questionnaire_submitted",
+  protocol_preparing: "protocol_preparing",
+  protocol_partial: "protocol_partial",
+};
+
+function trackingStateOf(client: Client, evaluation: EvaluationRow | null, onboarding: OnboardingInfo | null): TrackingState {
   if (client.status === "paused") return "paused";
+  const onb = onboarding?.bucket ? ONBOARDING_TRACKING[onboarding.stage] : undefined;
+  if (onb) return onb;
   if (client.invite_status === "pending") return "invite_pending";
   if (client.invite_status === "invited") return "invite_sent";
   return evaluation?.state ?? "awaiting_checkin";
 }
 
-function nextActionText(state: TrackingState, evaluation: EvaluationRow | null): string {
+function protocolText(o: OnboardingInfo | null): string {
+  const parts = [
+    o?.packageLabel ? `Pacote ${o.packageLabel}` : null,
+    o?.receivedAt ? `recebido em ${formatInstantDay(o.receivedAt)}` : null,
+    o?.dueAt ? `${o.overdue ? "prazo vencido em" : "prazo"} ${formatInstantDay(o.dueAt)}` : null,
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
+
+function nextActionText(state: TrackingState, evaluation: EvaluationRow | null, onboarding: OnboardingInfo | null): string {
   const week = evaluation?.weekNumber;
   switch (state) {
+    case "questionnaire_submitted":
+      return `Abrir o questionário e montar o protocolo. ${protocolText(onboarding)}`.trim();
+    case "protocol_preparing":
+      return `Concluir e publicar o protocolo. ${protocolText(onboarding)}`.trim();
+    case "protocol_partial":
+      return `Publicar o módulo que falta. ${protocolText(onboarding)}`.trim();
+    case "questionnaire_pending":
+      return "O aluno está respondendo o questionário inicial";
+    case "account_created":
+      return "Conta criada: aguardando o aluno responder o questionário inicial";
+    case "invite_accepted":
+      return "Convite aceito: aguardando o aluno confirmar o e-mail";
+    case "invite_failed":
+      return "O envio do convite falhou: reenvie ou copie o link";
     case "pending":
       return `Abrir e avaliar o check-in da semana ${week}`;
     case "in_progress":
@@ -179,8 +329,13 @@ function paymentDetailText(status: ClientPaymentStatus, late: FinancePayment | n
 }
 
 /** Última movimentação conhecida do aluno: o instante mais recente entre check-in, avaliação, convite e cadastro. */
-function lastUpdateOf(client: Client, evaluation: EvaluationRow | null): StudentEntry["lastUpdate"] {
+function lastUpdateOf(
+  client: Client,
+  evaluation: EvaluationRow | null,
+  onboarding: OnboardingInfo | null
+): StudentEntry["lastUpdate"] {
   const candidates: { iso: string | null | undefined; reason: string }[] = [
+    { iso: onboarding?.receivedAt, reason: "Questionário recebido" },
     { iso: evaluation?.reviewedAt, reason: "Orientação enviada" },
     { iso: evaluation?.reviewOpenedAt, reason: "Avaliação aberta" },
     { iso: evaluation?.submittedAt, reason: "Check-in enviado" },
@@ -203,11 +358,17 @@ export function buildStudentEntry(input: {
   paymentStatus: ClientPaymentStatus;
   latePayment: FinancePayment | null;
   inviteUrl: string;
+  /** Linha de `client_onboarding_status` do aluno; ausente = comportamento anterior à V5. */
+  onboardingRow?: OnboardingRow | null;
 }): StudentEntry {
   const { client, evaluation, paymentStatus, latePayment, inviteUrl } = input;
-  const state = trackingStateOf(client, evaluation);
+  const onboarding = buildOnboardingInfo(input.onboardingRow);
+  const state = trackingStateOf(client, evaluation, onboarding);
   const paymentLate = paymentStatus === "atrasado";
-  const late = state === "awaiting_checkin" && (evaluation?.late ?? false);
+  const protocolWaiting =
+    state === "questionnaire_submitted" || state === "protocol_preparing" || state === "protocol_partial";
+  const late =
+    (state === "awaiting_checkin" && (evaluation?.late ?? false)) || (protocolWaiting && onboarding?.overdue === true);
 
   // Regra ÚNICA de prioridade (menor tier = mais urgente) e do botão principal:
   //  1 avaliação que o coach precisa fazer (pendente / em avaliação / rascunho)
@@ -226,7 +387,13 @@ export function buildStudentEntry(input: {
   let tierKey = 0;
   let urgentTier = 0;
   const lateKey = Date.parse(`${evaluation?.periodEnd}T00:00:00Z`) || 0;
-  if (state === "pending" || state === "in_progress" || state === "draft") {
+  if (protocolWaiting) {
+    // Protocolo a montar: trabalho do coach, mais urgente primeiro pelo prazo. O botão da lista
+    // abre o perfil; "Abrir questionário"/"Preparar protocolo" ficam na fila "Novos cadastros".
+    tier = 1;
+    primary = "view_tracking";
+    tierKey = Date.parse(onboarding?.dueAt ?? "") || 0;
+  } else if (state === "pending" || state === "in_progress" || state === "draft") {
     tier = 1;
     primary =
       state === "pending" ? "open_evaluation" : state === "in_progress" ? "continue_evaluation" : "finish_orientation";
@@ -241,6 +408,9 @@ export function buildStudentEntry(input: {
     if (state === "awaiting_checkin" && !late)
       candidates.push({ tier: 5, action: "charge_checkin", ok: canWhatsapp, key: 0 });
     if (state === "invite_sent") candidates.push({ tier: 6, action: "copy_invite", ok: true, key: 0 });
+    if (state === "invite_failed") candidates.push({ tier: 4, action: "copy_invite", ok: true, key: 0 });
+    if (state === "invite_accepted" || state === "account_created" || state === "questionnaire_pending")
+      candidates.push({ tier: 6, action: "view_tracking", ok: true, key: 0 });
     const chosen = candidates.find((c) => c.ok);
     if (chosen) {
       tier = chosen.tier;
@@ -268,7 +438,7 @@ export function buildStudentEntry(input: {
       state,
       late,
       weekNumber: evaluation?.weekNumber ?? null,
-      nextAction: nextActionText(state, evaluation),
+      nextAction: nextActionText(state, evaluation, onboarding),
     },
     payment: {
       status: paymentStatus,
@@ -280,7 +450,8 @@ export function buildStudentEntry(input: {
     tierKey,
     needsAction: tier <= NEEDS_ACTION_MAX_TIER,
     urgentLate: urgentTier === 2 || urgentTier === 3,
-    lastUpdate: lastUpdateOf(client, evaluation),
+    lastUpdate: lastUpdateOf(client, evaluation, onboarding),
+    onboarding,
   };
 }
 
@@ -290,7 +461,13 @@ export function buildStudentEntry(input: {
 
 export type SortKey = "urgency" | "name" | "updated";
 
+export type ListView = "all" | "new";
+
 export type ListControls = {
+  /** "new" = aba "Novos cadastros" (fila de onboarding). */
+  view: ListView;
+  /** Filtro dentro de "Novos cadastros". */
+  newFilter: NewSignupBucket | "all";
   query: string;
   tracking: TrackingState | "all";
   payment: ClientPaymentStatus | "all";
@@ -299,6 +476,8 @@ export type ListControls = {
 };
 
 export const DEFAULT_CONTROLS: ListControls = {
+  view: "all",
+  newFilter: "all",
   query: "",
   tracking: "all",
   payment: "all",
@@ -307,7 +486,13 @@ export const DEFAULT_CONTROLS: ListControls = {
 };
 
 export function hasActiveFilters(c: ListControls): boolean {
-  return c.query.trim() !== "" || c.tracking !== "all" || c.payment !== "all" || c.onlyNeedsAction;
+  return (
+    c.query.trim() !== "" ||
+    c.tracking !== "all" ||
+    c.payment !== "all" ||
+    c.onlyNeedsAction ||
+    c.newFilter !== "all"
+  );
 }
 
 /** minúsculas + sem acento, pra "joao" achar "João". */
@@ -321,7 +506,13 @@ function byName(a: StudentEntry, b: StudentEntry): number {
 
 export function filterAndSort(entries: StudentEntry[], controls: ListControls): StudentEntry[] {
   const q = normalize(controls.query.trim());
+  const inQueue = controls.view === "new";
   const filtered = entries.filter((e) => {
+    if (inQueue) {
+      const bucket = e.onboarding?.bucket ?? null;
+      if (!bucket) return false;
+      if (controls.newFilter !== "all" && bucket !== controls.newFilter) return false;
+    }
     if (controls.tracking !== "all" && e.tracking.state !== controls.tracking) return false;
     if (controls.payment !== "all" && e.payment.status !== controls.payment) return false;
     if (controls.onlyNeedsAction && !e.needsAction) return false;
@@ -331,6 +522,13 @@ export function filterAndSort(entries: StudentEntry[], controls: ListControls): 
     }
     return true;
   });
+
+  if (inQueue) {
+    // Fila: protocolo a montar primeiro (prazo mais próximo no topo), depois quem falta responder.
+    const rank = (e: StudentEntry) => BUCKET_ORDER.indexOf(e.onboarding?.bucket ?? "invite_pending");
+    const due = (e: StudentEntry) => Date.parse(e.onboarding?.dueAt ?? "") || Number.MAX_SAFE_INTEGER;
+    return filtered.sort((a, b) => rank(a) - rank(b) || due(a) - due(b) || byName(a, b));
+  }
 
   return filtered.sort((a, b) => {
     if (controls.sort === "name") return byName(a, b);
@@ -352,4 +550,16 @@ export function formatAge(age: number | null): string | null {
 /** 178 -> "1,78 m". */
 export function formatHeight(heightCm: number | null): string | null {
   return heightCm == null ? null : `${(heightCm / 100).toFixed(2).replace(".", ",")} m`;
+}
+
+/** Quantos alunos há em cada balde da fila "Novos cadastros". */
+export function countBuckets(entries: StudentEntry[]): Record<NewSignupBucket | "total", number> {
+  const out = { awaiting_protocol: 0, awaiting_questionnaire: 0, invite_pending: 0, total: 0 };
+  for (const e of entries) {
+    const b = e.onboarding?.bucket;
+    if (!b) continue;
+    out[b] += 1;
+    out.total += 1;
+  }
+  return out;
 }

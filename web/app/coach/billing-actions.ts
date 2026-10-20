@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isCurrentCoachDemo } from "@/lib/demo";
 
 /**
  * "Pagamento confirmado" já foi mostrado: limpa `confirmation_pending` da assinatura da conta do
@@ -24,4 +25,24 @@ export async function acknowledgePaymentConfirmation(): Promise<void> {
     .eq("account_id", coach.account_id)
     .eq("confirmation_pending", true);
   if (error) console.error("Falha ao limpar confirmação de pagamento:", error.message);
+}
+
+/** Mensagem única para qualquer tentativa de cobrança/troca de método numa conta demo. */
+export type DemoBillingGuard = { blocked: true; message: string } | { blocked: false };
+
+/**
+ * Guarda do laboratório (item 28 do TODO V5): conta demo (`accounts.is_demo`, 0023) NUNCA inicia
+ * cobrança real nem troca de forma de pagamento na SyncPay — a resposta é "simulado em demonstração".
+ * Lida no servidor a partir da sessão (nunca de um parâmetro do navegador). Sem a coluna (0023 ainda
+ * não aplicada) toda conta é tratada como real e nada muda. Quem inicia cobrança chama isto ANTES de
+ * falar com a SyncPay (`assinatura/actions.ts`: Pix Automático, troca de método e link do cartão).
+ */
+export async function demoBillingGuard(): Promise<DemoBillingGuard> {
+  if (await isCurrentCoachDemo()) {
+    return {
+      blocked: true,
+      message: "Cobrança simulada em demonstração: nesta conta demo nenhuma cobrança real é iniciada.",
+    };
+  }
+  return { blocked: false };
 }

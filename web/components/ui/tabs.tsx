@@ -1,10 +1,12 @@
 "use client";
 
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { pillItemClass, pillTrackClass } from "./pill";
 
 export type TabItem = { id: string; label: string; content: ReactNode };
 
-/** Abas (role=tablist) com setas/Home/End; alvo de 44px. */
+/** Abas (role=tablist) com setas/Home/End; alvo de 44px. Visual V5 em pílula (trilho escuro,
+ * aba selecionada preenchida em claro) — o mesmo do `Segmented`. */
 export function Tabs({
   items,
   defaultId,
@@ -32,12 +34,7 @@ export function Tabs({
 
   return (
     <div className={className}>
-      {/* overflow-y-hidden: o `-mb-px` das abas (sublinhado sobre a borda) contava como overflow
-          vertical e o `overflow-x-auto` exibia um controle de rolagem vertical solto. */}
-      <div
-        role="tablist"
-        className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
+      <div role="tablist" className={pillTrackClass}>
         {items.map((item, i) => {
           const selected = item.id === active;
           return (
@@ -54,11 +51,7 @@ export function Tabs({
               tabIndex={selected ? 0 : -1}
               onClick={() => setActive(item.id)}
               onKeyDown={(e) => onKeyDown(e, i)}
-              className={`-mb-px min-h-11 shrink-0 border-b-2 px-4 text-sm font-semibold transition-colors ${
-                selected
-                  ? "border-brand text-ink"
-                  : "border-transparent text-ink-muted hover:text-ink active:text-brand"
-              }`}
+              className={pillItemClass(selected)}
             >
               {item.label}
             </button>
@@ -72,7 +65,7 @@ export function Tabs({
           id={`${base}-panel-${item.id}`}
           aria-labelledby={`${base}-tab-${item.id}`}
           hidden={item.id !== active}
-          className="tk-fade pt-4"
+          className="tk-enter pt-4"
         >
           {item.id === active ? item.content : null}
         </div>

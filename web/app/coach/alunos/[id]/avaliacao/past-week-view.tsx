@@ -92,7 +92,7 @@ export default async function PastWeekView({
         />
       </section>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
         <div className="flex min-w-0 flex-col gap-5">
           <ReceivedSection
             id="recebido"
@@ -169,7 +169,7 @@ function RecordedDecision({
     <section
       id="decisao-registrada"
       aria-label="Avaliação e orientação da semana"
-      className="card flex min-w-0 scroll-mt-4 flex-col gap-4 p-4 sm:p-5 lg:sticky lg:top-6"
+      className="card flex min-w-0 scroll-mt-4 flex-col gap-4 p-4 sm:p-5 xl:sticky xl:top-6"
     >
       <div className="flex flex-col gap-1">
         <span className="t-kicker text-ink-muted">Registro da semana {weekNumber}</span>

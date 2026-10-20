@@ -1,3 +1,4 @@
+import { pillItemClass, pillTrackClass } from "@/components/ui/pill";
 import { buttonClass } from "@/components/ui/button";
 
 /**
@@ -13,17 +14,15 @@ export default function SectionNav({
 }) {
   return (
     <nav aria-label="Áreas da avaliação" className="flex flex-wrap items-center gap-2">
-      {items.map((item) => (
-        <a
-          key={item.href}
-          href={item.href}
-          className="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-sm font-semibold text-ink-muted transition-colors hover:border-line-strong hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-        >
-          {item.label}
-        </a>
-      ))}
+      <div className={pillTrackClass}>
+        {items.map((item) => (
+          <a key={item.href} href={item.href} className={pillItemClass(false, "sm")}>
+            {item.label}
+          </a>
+        ))}
+      </div>
       {decision && (
-        <a href={decision.href} className={`${buttonClass({ variant: "primary", size: "md" })} lg:hidden`}>
+        <a href={decision.href} data-decision-shortcut className={`${buttonClass({ variant: "primary", size: "md" })} xl:hidden`}>
           {decision.label}
         </a>
       )}

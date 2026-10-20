@@ -38,7 +38,7 @@ export default async function NotificationBell({
             ? `Notificações, ${unreadCount} ${unreadCount === 1 ? "não lida" : "não lidas"}`
             : "Notificações"
         }
-        className="relative flex min-h-11 min-w-11 items-center justify-center gap-2.5 rounded-md px-2.5 text-sm text-ink-muted transition-colors hover:bg-surface hover:text-ink md:min-w-0 md:justify-start"
+        className="relative flex min-h-11 min-w-11 items-center justify-center gap-3 rounded-[10px] px-2.5 text-sm text-ink-muted transition-colors hover:bg-surface hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand md:min-w-0 md:justify-start md:px-3"
       >
         <svg
           viewBox="0 0 24 24"

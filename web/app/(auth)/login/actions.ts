@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getOrigin } from "@/lib/site-url";
 import { resolveHomeForCurrentUser } from "@/lib/auth/resolve-home";
+import { postLoginDestination } from "@/lib/auth/post-login";
+import { isAdminUserId } from "@/lib/admin/auth";
 import { isEmailRateLimitError, EMAIL_RATE_LIMIT_MESSAGE } from "@/lib/supabase/errors";
 
 export type LoginState = {
@@ -39,7 +41,16 @@ export async function loginCoach(
     return { error: "E-mail ou senha inválidos." };
   }
 
-  const redirectPath = await resolveHomeForCurrentUser(supabase);
+  const home = await resolveHomeForCurrentUser(supabase);
+  // Proprietário (allowlist no servidor) cai em /admin, mesmo tendo perfil de coach.
+  const {
+    data: { user: signedIn },
+  } = await supabase.auth.getUser();
+  const redirectPath = postLoginDestination({
+    isAdmin: isAdminUserId(signedIn?.id),
+    home,
+    next: String(formData.get("next") || ""),
+  });
   if (!redirectPath) {
     // Autenticou no Supabase Auth mas não existe `coach_users` nem `clients` pra esse
     // usuário — conta órfã (não devia acontecer no fluxo normal, mas não pode deixar a

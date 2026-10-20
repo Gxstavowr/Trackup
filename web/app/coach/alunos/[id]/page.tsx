@@ -12,6 +12,7 @@ import GenderSelect from "./gender-select";
 import { normalizeGender } from "@/lib/checkin-catalog";
 import ObservedPatterns from "./observed-patterns";
 import { getStudentContext } from "./student-context";
+import ProtocolPanel from "./protocol-panel";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("pt-BR", {
@@ -80,8 +81,10 @@ export default async function StudentSummaryPage({
 
   return (
     <div className="flex flex-col gap-6">
+      <ProtocolPanel clientId={id} />
+
       <section aria-label="Situação" className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-ink">Situação</h2>
+        <h2 className="t-subtitle text-ink">Situação</h2>
         {/* Acompanhamento e financeiro em áreas separadas — nunca misturados. */}
         <div className="grid gap-3 sm:grid-cols-2">
           <div className={PANEL}>
@@ -147,7 +150,7 @@ export default async function StudentSummaryPage({
       </section>
 
       <section aria-label="Últimos registros" className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-ink">Últimos registros</h2>
+        <h2 className="t-subtitle text-ink">Últimos registros</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className={PANEL}>
             <h3 className={PANEL_TITLE}>Peso</h3>
@@ -212,7 +215,7 @@ export default async function StudentSummaryPage({
       <MetricSettingsPanel clientId={id} />
 
       <section aria-label="Cadastro" className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-ink">Cadastro</h2>
+        <h2 className="t-subtitle text-ink">Cadastro</h2>
         <dl className="grid gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-2">
           <Field label="E-mail" value={client.email || "sem e-mail"} />
           <Field label="Telefone" value={client.phone || "não informado"} />

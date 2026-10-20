@@ -75,7 +75,7 @@ export default async function ClientPhotosPage({
       ) : (
         weeks.map(([week, weekPhotos]) => (
           <section key={week} className="flex flex-col gap-3">
-            <h2 className="text-lg font-medium text-ink">Semana {week}</h2>
+            <h2 className="t-subtitle text-ink">Semana {week}</h2>
             <PhotoTriptych weekNumber={week} photos={weekPhotos} />
           </section>
         ))

@@ -15,6 +15,9 @@ import { mealsKcal } from "@/lib/meal-kcal";
 import type { ClockLogStatus } from "@/lib/meal-clock";
 import { EmptyState, PageHeader } from "../portal-ui";
 import { requireClient } from "../require-client";
+import { accessForModule, getMyOnboardingStatus } from "@/lib/onboarding/status";
+import ModuleLock from "@/components/portal/module-lock";
+import ModulePreparing from "@/components/portal/module-preparing";
 import { MealClockProvider, NextMealStrip } from "../meal-clock";
 import DaySummaryCard from "./day-summary";
 import NutritionMealCard from "./meal-card";
@@ -36,6 +39,39 @@ const DAY_LONG = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "
 export default async function PortalNutritionPage({ searchParams }: { searchParams: Promise<{ dia?: string }> }) {
   const { dia } = await searchParams;
   const { client } = await requireClient();
+
+  // V5 (itens 15/16): módulo fora do pacote -> cadeado; incluído e não publicado -> em preparação.
+  // Retorna ANTES de buscar o plano: o servidor não carrega dados de módulo não liberado.
+  // Aluno legado (sem pacote) não passa por aqui: comportamento anterior.
+  const status = await getMyOnboardingStatus(client.id);
+  if (status.error) {
+    return (
+      <>
+        <PageHeader title="Nutrição" />
+        <p role="status" className="text-sm text-ink-muted">
+          Não foi possível carregar seu plano agora. Tente de novo.
+        </p>
+      </>
+    );
+  }
+  const access = accessForModule(status, "nutrition");
+  if (access && access.state !== "available") {
+    return (
+      <>
+        <PageHeader title="Nutrição" />
+        {access.state === "not_contracted" ? (
+          <ModuleLock module="nutrition" pkg={status.package} />
+        ) : (
+          <ModulePreparing
+            module="nutrition"
+            dueAt={access.dueAt}
+            isOverdue={access.isOverdue}
+            awaitingQuestionnaire={access.state === "awaiting_questionnaire"}
+          />
+        )}
+      </>
+    );
+  }
 
   const now = new Date();
   const clock = getSaoPauloClock(now);
@@ -212,6 +248,10 @@ export default async function PortalNutritionPage({ searchParams }: { searchPara
       ) : (
         dayContent
       )}
+
+      <Link href="/portal/avaliacao#mudancas" className="inline-flex min-h-11 items-center self-start text-sm text-ink-muted hover:text-ink hover:underline">
+        Ver histórico de mudanças
+      </Link>
     </>
   );
 }

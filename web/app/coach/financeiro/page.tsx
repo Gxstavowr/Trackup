@@ -33,12 +33,10 @@ export default async function CoachFinancePage({ searchParams }: PageProps<"/coa
     : "all";
 
   return (
-    <div className="flex flex-col gap-8">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+    <div className="flex flex-col gap-6">
+      <header className="flex flex-col gap-4">
         <div>
-          <span className="t-label text-ink-faint">
-            Trackly · Coach
-          </span>
+          <span className="t-label text-ink-faint">Trackly · Coach</span>
           <h1 className="t-title text-ink">Financeiro</h1>
         </div>
         <MonthNav month={month} currentMonth={currentMonth} status={status} />

@@ -90,7 +90,15 @@ export default function StudentHeader({ ctx }: { ctx: StudentContext }) {
         </div>
         <p className="break-words text-sm text-ink-muted">
           <span className="t-label text-ink-faint">Objetivo </span>
-          {entry.objective ?? <span className="text-ink-faint">não informado no cadastro</span>}
+          {entry.objective ??
+            (entry.onboarding?.receivedAt ? (
+              // Aluno V5: o objetivo veio no questionário inicial — não pedir de novo ao coach.
+              <Link href={`/coach/alunos/${client.id}/questionario`} className="font-medium text-brand hover:underline">
+                ver no questionário inicial
+              </Link>
+            ) : (
+              <span className="text-ink-faint">não informado no cadastro</span>
+            ))}
         </p>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <span className="inline-flex items-center gap-1.5">
